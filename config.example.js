@@ -25,6 +25,10 @@ export const config = {
         normal: { weight: 3, opacity: 0.5 },
         highlighted: { weight: 5, opacity: 0.9 },
     },
+    markerSize: {
+        normal: 24,
+        highlighted: 28,
+    },
     animation: {
         interpolationDuration: 800,
         fadeInDuration: 200,

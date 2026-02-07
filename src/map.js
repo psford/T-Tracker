@@ -59,19 +59,22 @@ export function getMap() {
  * - Otherwise → class vehicle-marker--bus
  *
  * Adds vehicle-marker--highlighted class if the route is currently highlighted.
+ * Passes route color as CSS variable for use in drop-shadow filter.
  *
  * This is the single point of change for swapping placeholder arrows to proper icons.
  *
- * @param {object} vehicle — vehicle object with routeId property
+ * @param {object} vehicle — vehicle object with routeId, color property
  * @returns {string} — HTML string for marker content
  */
 export function getVehicleIconHtml(vehicle) {
     const isGreenLine = vehicle.routeId.startsWith('Green-');
     const markerClass = isGreenLine ? 'vehicle-marker--green-line' : 'vehicle-marker--bus';
     const highlightClass = highlightedRoutes.has(vehicle.routeId) ? 'vehicle-marker--highlighted' : '';
+    const routeColor = vehicle.color || '#888888';
 
     // Inline SVG with dynamic class for colorization
-    return `<div class="vehicle-marker ${markerClass} ${highlightClass}">
+    // Pass route color as CSS variable for drop-shadow filter in highlighted state
+    return `<div class="vehicle-marker ${markerClass} ${highlightClass}" style="--route-color: ${routeColor}">
         <svg class="vehicle-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <polygon points="12,2 22,20 12,16 2,20" fill="white" />
         </svg>
@@ -88,8 +91,9 @@ export function getVehicleIconHtml(vehicle) {
 function createVehicleDivIcon(vehicle) {
     const iconHtml = getVehicleIconHtml(vehicle);
     const isHighlighted = highlightedRoutes.has(vehicle.routeId);
-    const iconSize = isHighlighted ? [28, 28] : [24, 24];
-    const iconAnchor = isHighlighted ? [14, 14] : [12, 12];
+    const size = isHighlighted ? config.markerSize.highlighted : config.markerSize.normal;
+    const iconSize = [size, size];
+    const iconAnchor = [size / 2, size / 2];
 
     return L.divIcon({
         html: iconHtml,
@@ -183,7 +187,7 @@ export function syncVehicleMarkers(vehiclesMap) {
             const marker = vehicleMarkers.get(vehicleId);
             const isHighlighted = highlightedRoutes.has(vehicle.routeId);
             const currentIconSize = marker.getIcon().options.iconSize[0];
-            const shouldBeSize = isHighlighted ? 28 : 24;
+            const shouldBeSize = isHighlighted ? config.markerSize.highlighted : config.markerSize.normal;
 
             // If highlight state changed, mark for icon recreation
             if (currentIconSize !== shouldBeSize) {
@@ -204,6 +208,9 @@ export function syncVehicleMarkers(vehiclesMap) {
 
         // Set new icon with updated size
         marker.setIcon(createVehicleDivIcon(vehicle));
+
+        // Update position to ensure it's correct after icon recreation
+        marker.setLatLng([vehicle.latitude, vehicle.longitude]);
 
         // Re-apply rotation and opacity
         const iconElement = marker.getElement().querySelector('.vehicle-marker');

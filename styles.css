@@ -99,6 +99,21 @@ html, body {
     gap: 4px;
 }
 
+.route-group-heading {
+    font-size: 11px;
+    font-weight: 700;
+    color: #7b8da1;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 8px;
+    margin-bottom: 2px;
+    padding: 0 6px;
+}
+
+.route-group-heading:first-child {
+    margin-top: 0;
+}
+
 .route-item {
     display: flex;
     align-items: center;
@@ -125,17 +140,14 @@ html, body {
 }
 
 /* Highlighted vehicle marker styles (AC4.6, AC4.7) */
-.vehicle-marker--highlighted {
-    width: 28px !important;
-    height: 28px !important;
-}
-
+/* Note: width and height are controlled by createVehicleDivIcon() via Leaflet's iconSize property,
+   which applies inline styles (higher specificity than CSS classes). No !important needed. */
 .vehicle-marker--highlighted .vehicle-icon {
-    filter: drop-shadow(0 0 6px currentColor);
+    filter: drop-shadow(0 0 6px var(--route-color));
     animation: pulse-glow 2s ease-in-out infinite;
 }
 
 @keyframes pulse-glow {
-    0%, 100% { filter: drop-shadow(0 0 4px currentColor); }
-    50% { filter: drop-shadow(0 0 10px currentColor); }
+    0%, 100% { filter: drop-shadow(0 0 4px var(--route-color)); }
+    50% { filter: drop-shadow(0 0 10px var(--route-color)); }
 }

@@ -30,14 +30,30 @@ function groupAndSortRoutes(metadata) {
         return suffixA.localeCompare(suffixB);
     });
 
-    // Sort bus routes numerically
+    // Sort bus routes numerically, then alphanumerically
     busRoutes.sort((a, b) => {
-        const numA = parseInt(a.shortName, 10) || a.shortName;
-        const numB = parseInt(b.shortName, 10) || b.shortName;
-        if (typeof numA === 'number' && typeof numB === 'number') {
+        const numA = parseInt(a.shortName, 10);
+        const numB = parseInt(b.shortName, 10);
+        const aIsNum = !Number.isNaN(numA);
+        const bIsNum = !Number.isNaN(numB);
+
+        // Both are numeric: sort by number
+        if (aIsNum && bIsNum) {
             return numA - numB;
         }
-        return String(numA).localeCompare(String(numB));
+
+        // Only a is numeric: numbers come first
+        if (aIsNum) {
+            return -1;
+        }
+
+        // Only b is numeric: numbers come first
+        if (bIsNum) {
+            return 1;
+        }
+
+        // Both are non-numeric: sort alphabetically
+        return a.shortName.localeCompare(b.shortName);
     });
 
     const groups = [];
@@ -54,6 +70,7 @@ function groupAndSortRoutes(metadata) {
 /**
  * Reads highlighted routes from localStorage.
  * Returns null if not set, otherwise returns a Set of route IDs.
+ * Validates that parsed JSON is an array.
  *
  * @returns {Set<string> | null}
  */
@@ -64,6 +81,10 @@ function readFromStorage() {
     }
     try {
         const array = JSON.parse(stored);
+        if (!Array.isArray(array)) {
+            console.warn('Stored highlighted routes is not an array, ignoring');
+            return null;
+        }
         return new Set(array);
     } catch (error) {
         console.warn('Failed to parse stored highlighted routes:', error);
@@ -129,6 +150,12 @@ export function initUI(routeMetadata, onHighlightChange) {
     routeList.className = 'route-list';
 
     grouped.forEach(({ group, routes }) => {
+        // Add group heading
+        const groupHeading = document.createElement('div');
+        groupHeading.className = 'route-group-heading';
+        groupHeading.textContent = group;
+        routeList.appendChild(groupHeading);
+
         routes.forEach((route) => {
             const label = document.createElement('label');
             label.className = 'route-item';
