@@ -103,10 +103,23 @@ function writeToStorage(highlightedSet) {
 }
 
 /**
+ * Detects if the device is mobile (viewport width < 768px).
+ * Uses CSS media query matching for consistent breakpoint.
+ *
+ * @returns {boolean} true if mobile, false if desktop
+ */
+function isMobileViewport() {
+    return window.matchMedia('(max-width: 767px)').matches;
+}
+
+/**
  * Initializes the route selection UI in the #controls container.
  * Builds a control panel with checkboxes for each route.
  * Restores selection from localStorage (or uses config defaults if no saved state).
  * Calls onHighlightChange with the initial highlighted set and on every checkbox change.
+ *
+ * On mobile: creates a drawer that slides in from the right with a toggle button and backdrop.
+ * On desktop: renders the panel in static position with no toggle or backdrop.
  *
  * @param {Array<Object>} routeMetadata — array of {id, color, shortName, longName, type}
  * @param {Function} onHighlightChange — callback(highlightedSet: Set<routeId>)
@@ -189,6 +202,11 @@ export function initUI(routeMetadata, onHighlightChange) {
 
                 writeToStorage(currentHighlighted);
                 onHighlightChange(currentHighlighted);
+
+                // Close drawer on mobile after checkbox change
+                if (isMobileViewport()) {
+                    closeDrawer();
+                }
             });
 
             routeList.appendChild(label);
@@ -197,6 +215,43 @@ export function initUI(routeMetadata, onHighlightChange) {
 
     panel.appendChild(routeList);
     controlsContainer.appendChild(panel);
+
+    // Create drawer backdrop (mobile only)
+    const backdrop = document.createElement('div');
+    backdrop.className = 'drawer-backdrop';
+    controlsContainer.appendChild(backdrop);
+
+    // Create drawer toggle button (mobile only)
+    const toggleButton = document.createElement('button');
+    toggleButton.className = 'drawer-toggle';
+    toggleButton.setAttribute('aria-label', 'Toggle route filter drawer');
+    toggleButton.innerHTML = '☰'; // Menu/filter icon
+    controlsContainer.appendChild(toggleButton);
+
+    // Drawer state management
+    function openDrawer() {
+        panel.classList.add('control-panel--open');
+        backdrop.classList.add('drawer-backdrop--visible');
+    }
+
+    function closeDrawer() {
+        panel.classList.remove('control-panel--open');
+        backdrop.classList.remove('drawer-backdrop--visible');
+    }
+
+    function toggleDrawer() {
+        if (panel.classList.contains('control-panel--open')) {
+            closeDrawer();
+        } else {
+            openDrawer();
+        }
+    }
+
+    // Toggle button click handler
+    toggleButton.addEventListener('click', toggleDrawer);
+
+    // Backdrop click handler — close drawer
+    backdrop.addEventListener('click', closeDrawer);
 
     // Call onHighlightChange with initial state
     onHighlightChange(initialHighlighted);
