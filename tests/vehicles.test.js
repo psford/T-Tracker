@@ -1,15 +1,11 @@
 // tests/vehicles.test.js — Unit tests for vehicle state management
 import assert from 'assert';
-
-// We'll test the mathematical functions independently
-// Since the full module requires addEventListener, we'll import utils separately
+import { lerp, easeOutCubic, lerpAngle, haversineDistance } from '../src/vehicle-math.js';
 
 /**
  * Test lerp function
  */
 function testLerp() {
-    const lerp = (a, b, t) => a + (b - a) * t;
-
     assert.strictEqual(lerp(0, 10, 0), 0, 'lerp(0,10,0) should be 0');
     assert.strictEqual(lerp(0, 10, 1), 10, 'lerp(0,10,1) should be 10');
     assert.strictEqual(lerp(0, 10, 0.5), 5, 'lerp(0,10,0.5) should be 5');
@@ -22,8 +18,6 @@ function testLerp() {
  * Test easeOutCubic function
  */
 function testEaseOutCubic() {
-    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
-
     assert.strictEqual(easeOutCubic(0), 0, 'easeOutCubic(0) should be 0');
     assert.strictEqual(easeOutCubic(1), 1, 'easeOutCubic(1) should be 1');
 
@@ -43,25 +37,6 @@ function testEaseOutCubic() {
  * Test lerpAngle function
  */
 function testLerpAngle() {
-    const lerpAngle = (a, b, t) => {
-        // Normalize angles to [0, 360)
-        a = a % 360;
-        b = b % 360;
-        if (a < 0) a += 360;
-        if (b < 0) b += 360;
-
-        // Find shortest rotation direction
-        let delta = b - a;
-        if (delta > 180) {
-            delta -= 360;
-        } else if (delta < -180) {
-            delta += 360;
-        }
-
-        // Interpolate along shortest arc
-        return (a + delta * t) % 360;
-    };
-
     // Test 359° to 1° = 2° rotation, not 358°
     const result1 = lerpAngle(359, 1, 0.5);
     assert(result1 === 0 || Math.abs(result1 - 360) < 1, `lerpAngle(359,1,0.5) should be ~0 or ~360, got ${result1}`);
@@ -80,6 +55,11 @@ function testLerpAngle() {
     // Test t=1 returns b
     assert.strictEqual(lerpAngle(45, 90, 1), 90, 'lerpAngle(45,90,1) should be 90');
 
+    // Test negative angle normalization (C1 fix)
+    // lerpAngle(1, 359, 0.75) should not produce negative values
+    const result4 = lerpAngle(1, 359, 0.75);
+    assert(result4 >= 0 && result4 < 360, `lerpAngle should always return [0, 360), got ${result4}`);
+
     console.log('✓ lerpAngle tests passed');
 }
 
@@ -87,22 +67,6 @@ function testLerpAngle() {
  * Test haversineDistance function
  */
 function testHaversineDistance() {
-    const haversineDistance = (lat1, lon1, lat2, lon2) => {
-        const R = 6371000; // Earth radius in meters
-        const toRad = Math.PI / 180;
-
-        const dLat = (lat2 - lat1) * toRad;
-        const dLon = (lon2 - lon1) * toRad;
-
-        const a =
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) *
-                Math.sin(dLon / 2) * Math.sin(dLon / 2);
-
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c;
-    };
-
     // Same location should be 0 meters
     const dist1 = haversineDistance(42.3628, -71.0581, 42.3628, -71.0581);
     assert(dist1 < 1, `Distance between same points should be ~0, got ${dist1}`);

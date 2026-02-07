@@ -1,5 +1,6 @@
 // src/vehicles.js — Vehicle state management and animation loop
 import { config } from '../config.js';
+import { lerp, easeOutCubic, lerpAngle, haversineDistance } from './vehicle-math.js';
 
 // Map<vehicleId, VehicleState>
 const vehicles = new Map();
@@ -8,60 +9,29 @@ const vehicles = new Map();
 const updateCallbacks = [];
 
 /**
- * Linear interpolation: a + (b - a) * t
+ * Helper to create a VehicleState object
  */
-function lerp(a, b, t) {
-    return a + (b - a) * t;
-}
-
-/**
- * Easing function: ease-out-cubic
- * 1 - (1 - t)^3
- */
-function easeOutCubic(t) {
-    return 1 - Math.pow(1 - t, 3);
-}
-
-/**
- * Angle interpolation with shortest arc wrapping
- * Handles 359° to 1° = 2° rotation (not 358°)
- */
-function lerpAngle(a, b, t) {
-    // Normalize angles to [0, 360)
-    a = a % 360;
-    b = b % 360;
-    if (a < 0) a += 360;
-    if (b < 0) b += 360;
-
-    // Find shortest rotation direction
-    let delta = b - a;
-    if (delta > 180) {
-        delta -= 360;
-    } else if (delta < -180) {
-        delta += 360;
-    }
-
-    // Interpolate along shortest arc
-    return (a + delta * t) % 360;
-}
-
-/**
- * Haversine distance in meters between two lat/lng coordinates
- */
-function haversineDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371000; // Earth radius in meters
-    const toRad = Math.PI / 180;
-
-    const dLat = (lat2 - lat1) * toRad;
-    const dLon = (lon2 - lon1) * toRad;
-
-    const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+function createVehicleState(vehicle, duration) {
+    return {
+        id: vehicle.id,
+        latitude: vehicle.latitude,
+        longitude: vehicle.longitude,
+        bearing: vehicle.bearing ?? 0,
+        targetLatitude: vehicle.latitude,
+        targetLongitude: vehicle.longitude,
+        targetBearing: vehicle.bearing ?? 0,
+        prevLatitude: vehicle.latitude,
+        prevLongitude: vehicle.longitude,
+        prevBearing: vehicle.bearing ?? 0,
+        animationStart: performance.now(),
+        animationDuration: duration,
+        routeId: vehicle.routeId,
+        currentStatus: vehicle.currentStatus,
+        directionId: vehicle.directionId,
+        label: vehicle.label,
+        state: 'entering',
+        opacity: 0,
+    };
 }
 
 /**
@@ -71,27 +41,7 @@ function onReset(vehicleArray) {
     vehicles.clear();
 
     for (const vehicle of vehicleArray) {
-        const state = {
-            id: vehicle.id,
-            latitude: vehicle.latitude,
-            longitude: vehicle.longitude,
-            bearing: vehicle.bearing,
-            targetLatitude: vehicle.latitude,
-            targetLongitude: vehicle.longitude,
-            targetBearing: vehicle.bearing,
-            prevLatitude: vehicle.latitude,
-            prevLongitude: vehicle.longitude,
-            prevBearing: vehicle.bearing,
-            animationStart: performance.now(),
-            animationDuration: config.animation.interpolationDuration,
-            routeId: vehicle.routeId,
-            currentStatus: vehicle.currentStatus,
-            directionId: vehicle.directionId,
-            label: vehicle.label,
-            state: 'entering',
-            opacity: 0,
-        };
-
+        const state = createVehicleState(vehicle, config.animation.fadeInDuration);
         vehicles.set(vehicle.id, state);
     }
 }
@@ -100,27 +50,7 @@ function onReset(vehicleArray) {
  * Handle vehicles:add event
  */
 function onAdd(vehicle) {
-    const state = {
-        id: vehicle.id,
-        latitude: vehicle.latitude,
-        longitude: vehicle.longitude,
-        bearing: vehicle.bearing,
-        targetLatitude: vehicle.latitude,
-        targetLongitude: vehicle.longitude,
-        targetBearing: vehicle.bearing,
-        prevLatitude: vehicle.latitude,
-        prevLongitude: vehicle.longitude,
-        prevBearing: vehicle.bearing,
-        animationStart: performance.now(),
-        animationDuration: config.animation.fadeInDuration,
-        routeId: vehicle.routeId,
-        currentStatus: vehicle.currentStatus,
-        directionId: vehicle.directionId,
-        label: vehicle.label,
-        state: 'entering',
-        opacity: 0,
-    };
-
+    const state = createVehicleState(vehicle, config.animation.fadeInDuration);
     vehicles.set(vehicle.id, state);
 }
 
@@ -146,22 +76,23 @@ function onUpdate(vehicle) {
 
     if (distance > config.animation.snapThreshold) {
         // Snap instantly
+        const bearing = vehicle.bearing ?? 0;
         existing.latitude = vehicle.latitude;
         existing.longitude = vehicle.longitude;
-        existing.bearing = vehicle.bearing;
+        existing.bearing = bearing;
         existing.targetLatitude = vehicle.latitude;
         existing.targetLongitude = vehicle.longitude;
-        existing.targetBearing = vehicle.bearing;
+        existing.targetBearing = bearing;
         existing.prevLatitude = vehicle.latitude;
         existing.prevLongitude = vehicle.longitude;
-        existing.prevBearing = vehicle.bearing;
+        existing.prevBearing = bearing;
         existing.animationStart = performance.now();
         existing.animationDuration = 0;
     } else {
         // Set target and animate
         existing.targetLatitude = vehicle.latitude;
         existing.targetLongitude = vehicle.longitude;
-        existing.targetBearing = vehicle.bearing;
+        existing.targetBearing = vehicle.bearing ?? 0;
         existing.animationStart = performance.now();
         existing.animationDuration = config.animation.interpolationDuration;
     }
@@ -172,10 +103,9 @@ function onUpdate(vehicle) {
     existing.directionId = vehicle.directionId;
     existing.label = vehicle.label;
 
-    // Return to active if not already
-    if (existing.state === 'entering') {
-        existing.state = 'active';
-    }
+    // Note: State transition from 'entering' to 'active' is handled by animate()
+    // when fade-in completes (t >= 1.0). This ensures we don't skip fade-in animations
+    // when updates arrive before the fade-in finishes.
 }
 
 /**
@@ -194,8 +124,6 @@ function onRemove(eventDetail) {
  * requestAnimationFrame loop — interpolates all vehicles
  */
 function animate(timestamp) {
-    const changedVehicles = [];
-
     for (const vehicle of vehicles.values()) {
         const elapsed = timestamp - vehicle.animationStart;
         let t = elapsed / vehicle.animationDuration;
@@ -225,8 +153,6 @@ function animate(timestamp) {
                 continue;
             }
         }
-
-        changedVehicles.push(vehicle);
     }
 
     // Call registered callbacks
