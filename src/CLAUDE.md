@@ -1,11 +1,11 @@
 # T-Tracker Source Modules
 
-Last verified: 2026-02-07
+Last verified: 2026-02-07 (updated for vehicle-popup.js)
 
 ## Purpose
-Six ES6 modules that separate data acquisition (SSE), state management (interpolation),
+Seven ES6 modules that separate data acquisition (SSE), state management (interpolation),
 rendering (Leaflet markers/polylines), user controls (route filtering), polyline decoding,
-and route organization.
+route organization, and popup content formatting.
 
 ## Data Flow
 ```
@@ -13,7 +13,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
                                           ^                           ^
                                        ui.js (configure)      polyline.js (decode)
                                           ^                      route-sorter.js
-                                          (organize routes)
+                                          (organize routes)   vehicle-popup.js (format)
 ```
 
 ## Contracts
@@ -43,6 +43,8 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Guarantees**: Route polylines render below vehicle markers (layer ordering).
   Marker icons reflect highlight state (size 24px normal, 28px highlighted).
   Route colors from MBTA API applied to polylines and marker glow.
+  Vehicle popups bound to markers on creation. Desktop: hover opens, mouseout closes. Mobile: tap opens.
+  Popup content refreshes when popup is open and vehicle data changes (throttled by updatedAt comparison).
 - **Expects**: Leaflet `L` global available. `config.map.*`, `config.tiles.*` set.
 
 ### vehicle-math.js -- Pure Math
@@ -71,6 +73,11 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Green Line branches (B, C, D, E) sorted alphabetically first,
   then bus routes sorted numerically (1, 2, ...) then alphanumerically (CT1, ...).
 - **Expects**: Array of route objects with {id, shortName, color, type} properties
+
+### vehicle-popup.js -- Popup Content Formatting
+- **Exposes**: `formatVehiclePopup(vehicle, stopName, routeMeta)`, `formatStatus(currentStatus, stopName)`, `formatSpeed(speedMs)`, `formatTimeAgo(updatedAt)`
+- **Guarantees**: Pure functions, no side effects. Returns HTML strings. Gracefully handles null/missing data (omits sections rather than showing empty/broken content). Speed converted from m/s to mph.
+- **Expects**: Vehicle object with {label, routeId, currentStatus, directionId, speed, updatedAt}. Stop name as string or null. Route metadata as {shortName, color} or null.
 
 ## Key Decisions
 - Event-driven (CustomEvent/EventTarget) over direct function calls: enables multiple subscribers
