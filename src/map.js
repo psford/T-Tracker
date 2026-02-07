@@ -21,6 +21,9 @@ let highlightedRoutes = new Set();
 // Map<routeId, color> — color lookup for vehicle markers (populated by loadRoutes)
 const routeColorMap = new Map();
 
+// Map<stopId, {id, name, latitude, longitude}> — caches stop data fetched on startup
+let stopsData = new Map();
+
 export function initMap(containerId) {
     map = L.map(containerId, {
         center: config.map.center,
@@ -425,4 +428,52 @@ export function setHighlightedRoutes(routeIds) {
             });
         });
     });
+}
+
+/**
+ * Fetches stops from MBTA API and caches them for session.
+ * Filters by route_type 0 (Light Rail) and 3 (Bus).
+ * Parses JSON:API response and stores stop data keyed by stop ID.
+ *
+ * Graceful degradation: if fetch fails, app continues without stop data.
+ */
+export async function loadStops() {
+    try {
+        const apiUrl = new URL(`${config.api.baseUrl}/stops`);
+        apiUrl.searchParams.append('filter[route_type]', '0,3'); // Light Rail (0) and Bus (3)
+        apiUrl.searchParams.append('api_key', config.api.key);
+
+        const response = await fetch(apiUrl.toString());
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const jsonApi = await response.json();
+        const stops = jsonApi.data || [];
+
+        // Parse each stop from JSON:API and store in Map
+        stops.forEach((stop) => {
+            stopsData.set(stop.id, {
+                id: stop.id,
+                name: stop.attributes?.name || '',
+                latitude: stop.attributes?.latitude || 0,
+                longitude: stop.attributes?.longitude || 0,
+            });
+        });
+
+        console.log(`Cached ${stops.length} stops`);
+    } catch (error) {
+        console.error('Failed to load stops:', error.message);
+        // Do not crash — app continues without stop data
+    }
+}
+
+/**
+ * Returns the cached stops data Map.
+ * Key: stop ID (string), Value: {id, name, latitude, longitude}
+ *
+ * @returns {Map<string, Object>} — stopsData Map
+ */
+export function getStopData() {
+    return stopsData;
 }

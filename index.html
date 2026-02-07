@@ -28,7 +28,7 @@
 
     <!-- App entry point (ES6 module) -->
     <script type="module">
-        import { initMap, loadRoutes, syncVehicleMarkers, getRouteMetadata, setHighlightedRoutes } from './src/map.js';
+        import { initMap, loadRoutes, loadStops, syncVehicleMarkers, getRouteMetadata, setHighlightedRoutes } from './src/map.js';
         import { connect, apiEvents } from './src/api.js';
         import { initVehicles, onVehicleUpdate } from './src/vehicles.js';
         import { initUI } from './src/ui.js';
@@ -37,8 +37,8 @@
         initVehicles(apiEvents, () => map.getBounds());
         onVehicleUpdate(syncVehicleMarkers);
 
-        // Load routes, then initialize UI with route data
-        loadRoutes().then(() => {
+        // Load routes and stops in parallel on startup
+        Promise.all([loadRoutes(), loadStops()]).then(() => {
             const metadata = getRouteMetadata();
             initUI(metadata, setHighlightedRoutes);
         });
