@@ -32,6 +32,8 @@ function createVehicleState(vehicle, duration) {
         animationDuration: duration,
         routeId: vehicle.routeId,
         currentStatus: vehicle.currentStatus,
+        stopId: vehicle.stopId,
+        currentStopSequence: vehicle.currentStopSequence,
         directionId: vehicle.directionId,
         label: vehicle.label,
         state: 'entering',
@@ -105,6 +107,8 @@ function onUpdate(vehicle) {
     // Update metadata
     existing.routeId = vehicle.routeId;
     existing.currentStatus = vehicle.currentStatus;
+    existing.stopId = vehicle.stopId;
+    existing.currentStopSequence = vehicle.currentStopSequence;
     existing.directionId = vehicle.directionId;
     existing.label = vehicle.label;
 
