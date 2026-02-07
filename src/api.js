@@ -68,9 +68,9 @@ function recordParseError() {
 /**
  * Parse a JSON:API vehicle object into a flat structure
  * @param {Object} data — JSON:API vehicle object
- * @returns {Object} Flattened vehicle object
+ * @returns {Object|null} Flattened vehicle object, or null if latitude/longitude are invalid
  */
-function parseVehicle(data) {
+export function parseVehicle(data) {
     // Handle remove events (only id and type)
     if (!data.attributes) {
         return { id: data.id };
@@ -97,6 +97,13 @@ function parseVehicle(data) {
         if (apiKey in data.attributes) {
             vehicle[camelKey] = data.attributes[apiKey];
         }
+    }
+
+    // Validate that latitude and longitude are valid numbers
+    if (vehicle.latitude == null || vehicle.longitude == null ||
+        typeof vehicle.latitude !== 'number' || typeof vehicle.longitude !== 'number' ||
+        Number.isNaN(vehicle.latitude) || Number.isNaN(vehicle.longitude)) {
+        return null;
     }
 
     // Map relationships (extract id from nested data structure)
@@ -189,7 +196,7 @@ export function connect() {
             emitStatusEvent('connected', 'Live');
 
             try {
-                const vehicles = JSON.parse(e.data).map(parseVehicle);
+                const vehicles = JSON.parse(e.data).map(parseVehicle).filter(v => v !== null);
                 emitVehicleEvent('vehicles:reset', vehicles);
             } catch (err) {
                 console.error('Failed to parse reset event:', err.message);
@@ -200,7 +207,9 @@ export function connect() {
         eventSource.addEventListener('add', (e) => {
             try {
                 const vehicle = parseVehicle(JSON.parse(e.data));
-                emitVehicleEvent('vehicles:add', vehicle);
+                if (vehicle !== null) {
+                    emitVehicleEvent('vehicles:add', vehicle);
+                }
             } catch (err) {
                 console.error('Failed to parse add event:', err.message);
                 recordParseError();
@@ -210,7 +219,9 @@ export function connect() {
         eventSource.addEventListener('update', (e) => {
             try {
                 const vehicle = parseVehicle(JSON.parse(e.data));
-                emitVehicleEvent('vehicles:update', vehicle);
+                if (vehicle !== null) {
+                    emitVehicleEvent('vehicles:update', vehicle);
+                }
             } catch (err) {
                 console.error('Failed to parse update event:', err.message);
                 recordParseError();

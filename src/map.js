@@ -1,5 +1,6 @@
 // src/map.js — Leaflet map initialization and layer management
 import { config } from '../config.js';
+import { decodePolyline } from './polyline.js';
 
 let map = null;
 
@@ -78,11 +79,11 @@ export function getVehicleIconHtml(vehicle) {
     const highlightClass = highlightedRoutes.has(vehicle.routeId) ? 'vehicle-marker--highlighted' : '';
     const routeColor = routeColorMap.get(vehicle.routeId) || '#888888';
 
-    // Inline SVG with dynamic class for colorization
+    // Inline SVG with direct fill color (no CSS filters)
     // Pass route color as CSS variable for drop-shadow filter in highlighted state
     return `<div class="vehicle-marker ${markerClass} ${highlightClass}" style="--route-color: ${routeColor}">
         <svg class="vehicle-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <polygon points="12,2 22,20 12,16 2,20" fill="white" />
+            <polygon points="12,2 22,20 12,16 2,20" fill="${routeColor}" />
         </svg>
     </div>`;
 }
@@ -239,52 +240,6 @@ export function syncVehicleMarkers(vehiclesMap) {
     });
 }
 
-/**
- * Decodes a Google-encoded polyline string to an array of [lat, lng] coordinate pairs.
- * Implements the standard Google polyline encoding algorithm.
- *
- * @param {string} encoded — the encoded polyline string
- * @returns {Array<Array<number>>} — array of [lat, lng] coordinate pairs
- */
-export function decodePolyline(encoded) {
-    const coords = [];
-    let index = 0;
-    let lat = 0;
-    let lng = 0;
-
-    while (index < encoded.length) {
-        let result = 0;
-        let shift = 0;
-        let byte;
-
-        // Decode latitude
-        do {
-            byte = encoded.charCodeAt(index++) - 63;
-            result |= (byte & 0x1f) << shift;
-            shift += 5;
-        } while (byte >= 0x20);
-
-        const dlat = (result & 1) ? ~(result >> 1) : result >> 1;
-        lat += dlat;
-
-        result = 0;
-        shift = 0;
-
-        // Decode longitude
-        do {
-            byte = encoded.charCodeAt(index++) - 63;
-            result |= (byte & 0x1f) << shift;
-            shift += 5;
-        } while (byte >= 0x20);
-
-        const dlng = (result & 1) ? ~(result >> 1) : result >> 1;
-        lng += dlng;
-
-        coords.push([lat / 1e5, lng / 1e5]);
-    }
-
-    return coords;
-}
 
 /**
  * Fetches routes from MBTA API with the full JSON:API relationship chain

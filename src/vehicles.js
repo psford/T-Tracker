@@ -163,11 +163,30 @@ function animate(timestamp) {
     const bounds = getViewportBounds ? getViewportBounds() : null;
 
     for (const vehicle of vehicles.values()) {
+        // Guard against zero duration (snap complete: position already set in onUpdate)
+        if (vehicle.animationDuration <= 0) {
+            continue;
+        }
+
         const elapsed = timestamp - vehicle.animationStart;
         let t = elapsed / vehicle.animationDuration;
         t = Math.min(t, 1.0);
 
         const eased = easeOutCubic(t);
+
+        // Handle entering/exiting opacity transitions (must always run, regardless of viewport)
+        if (vehicle.state === 'entering') {
+            vehicle.opacity = lerp(0, 1, eased);
+            if (t >= 1.0) {
+                vehicle.state = 'active';
+            }
+        } else if (vehicle.state === 'exiting') {
+            vehicle.opacity = lerp(1, 0, eased);
+            if (t >= 1.0) {
+                vehicles.delete(vehicle.id);
+                continue;
+            }
+        }
 
         // Viewport culling: skip interpolation math for out-of-viewport vehicles (performance optimization)
         if (!isWithinBounds(vehicle, bounds)) {
@@ -182,20 +201,6 @@ function animate(timestamp) {
         vehicle.latitude = lerp(prevLat, vehicle.targetLatitude, eased);
         vehicle.longitude = lerp(prevLon, vehicle.targetLongitude, eased);
         vehicle.bearing = lerpAngle(prevBearing, vehicle.targetBearing, eased);
-
-        // Handle entering/exiting opacity transitions
-        if (vehicle.state === 'entering') {
-            vehicle.opacity = lerp(0, 1, eased);
-            if (t >= 1.0) {
-                vehicle.state = 'active';
-            }
-        } else if (vehicle.state === 'exiting') {
-            vehicle.opacity = lerp(1, 0, eased);
-            if (t >= 1.0) {
-                vehicles.delete(vehicle.id);
-                continue;
-            }
-        }
     }
 
     // Call registered callbacks with FULL vehicles map (not filtered)

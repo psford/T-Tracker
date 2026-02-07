@@ -63,13 +63,8 @@ html, body {
     transition: opacity 200ms ease;
 }
 
-.vehicle-marker--green-line {
-    filter: brightness(0) saturate(1) invert(1) sepia(1) hue-rotate(120deg) saturate(2);
-}
-
-.vehicle-marker--bus {
-    filter: brightness(0) saturate(1) invert(1) sepia(1) hue-rotate(45deg) saturate(2);
-}
+/* Vehicle marker color is now applied directly to SVG fill attribute in getVehicleIconHtml() */
+/* No CSS filters needed — glow animation on .vehicle-icon applies cleanly */
 
 /* Control panel styles (AC4) */
 .control-panel {

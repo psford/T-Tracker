@@ -2,6 +2,26 @@
 
 Last verified: 2026-02-07
 
+## Data Flow Architecture
+
+```
+MBTA API (SSE) → api.js (parse + validate) → vehicles.js (interpolate + animate)
+                                                      ↓
+                                                 vehicle-math.js (pure math)
+                                                      ↓
+                                              map.js (render + highlight)
+                                                      ↑
+                                                   ui.js (configure)
+```
+
+All data flows through dedicated modules with clear responsibilities:
+- `api.js`: JSON:API parsing, null validation, event emission
+- `vehicles.js`: State management, animation loop, viewport culling
+- `vehicle-math.js`: Pure math (lerp, easing, distance, angle interpolation)
+- `polyline.js`: Pure function for Google polyline decoding
+- `map.js`: Leaflet rendering, marker management, route highlighting
+- `ui.js`: Route selection UI, localStorage persistence, grouping/sorting
+
 ## Tech Stack
 - Language: JavaScript (ES6 modules, no build tools)
 - Map: Leaflet 1.9.4 (CDN with SRI hash)
