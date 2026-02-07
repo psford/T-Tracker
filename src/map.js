@@ -18,6 +18,9 @@ let routeLayerGroup = null;
 // Set<routeId> — tracks currently highlighted route IDs for Phase 6 styling
 let highlightedRoutes = new Set();
 
+// Map<routeId, color> — color lookup for vehicle markers (populated by loadRoutes)
+const routeColorMap = new Map();
+
 export function initMap(containerId) {
     map = L.map(containerId, {
         center: config.map.center,
@@ -70,7 +73,7 @@ export function getVehicleIconHtml(vehicle) {
     const isGreenLine = vehicle.routeId.startsWith('Green-');
     const markerClass = isGreenLine ? 'vehicle-marker--green-line' : 'vehicle-marker--bus';
     const highlightClass = highlightedRoutes.has(vehicle.routeId) ? 'vehicle-marker--highlighted' : '';
-    const routeColor = vehicle.color || '#888888';
+    const routeColor = routeColorMap.get(vehicle.routeId) || '#888888';
 
     // Inline SVG with dynamic class for colorization
     // Pass route color as CSS variable for drop-shadow filter in highlighted state
@@ -333,6 +336,9 @@ export async function loadRoutes() {
                 longName,
                 type,
             });
+
+            // Store color in lookup map for vehicle icon generation
+            routeColorMap.set(routeId, color);
 
             // Initialize polylines array for this route
             const polylines = [];
