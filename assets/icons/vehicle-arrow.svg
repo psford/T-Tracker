@@ -1,0 +1,5 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- North-pointing directional arrow for vehicle markers -->
+  <!-- Fill white; CSS will apply rotation and colorization -->
+  <polygon points="12,2 22,20 12,16 2,20" fill="white" />
+</svg>

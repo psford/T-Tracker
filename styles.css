@@ -54,3 +54,19 @@ html, body {
     color: #ff6666;
     font-size: 14px;
 }
+
+/* Vehicle marker styles (AC2) */
+.vehicle-marker {
+    width: 24px;
+    height: 24px;
+    pointer-events: auto;
+    transition: opacity 200ms ease;
+}
+
+.vehicle-marker--green-line {
+    filter: brightness(0) saturate(1) invert(1) sepia(1) hue-rotate(120deg) saturate(2);
+}
+
+.vehicle-marker--bus {
+    filter: brightness(0) saturate(1) invert(1) sepia(1) hue-rotate(45deg) saturate(2);
+}
