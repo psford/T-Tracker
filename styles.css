@@ -70,3 +70,56 @@ html, body {
 .vehicle-marker--bus {
     filter: brightness(0) saturate(1) invert(1) sepia(1) hue-rotate(45deg) saturate(2);
 }
+
+/* Control panel styles (AC4) */
+.control-panel {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1000;
+    background: rgba(22, 33, 62, 0.95);
+    border: 1px solid #0f3460;
+    border-radius: 8px;
+    padding: 12px;
+    max-height: 60vh;
+    overflow-y: auto;
+    min-width: 180px;
+}
+
+.control-panel__title {
+    font-size: 14px;
+    color: #e0e0e0;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.route-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.route-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.route-item:hover {
+    background: rgba(15, 52, 96, 0.5);
+}
+
+.route-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.route-name {
+    color: #c0c0d0;
+}
