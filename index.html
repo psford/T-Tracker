@@ -23,23 +23,14 @@
 
     <!-- App entry point (ES6 module) -->
     <script type="module">
-        import { initMap } from './src/map.js';
+        import { initMap, syncVehicleMarkers } from './src/map.js';
         import { connect, apiEvents } from './src/api.js';
-        import { initVehicles, getVehicles } from './src/vehicles.js';
+        import { initVehicles, onVehicleUpdate } from './src/vehicles.js';
 
         initMap('map');
         initVehicles(apiEvents);
+        onVehicleUpdate(syncVehicleMarkers);
         connect();
-
-        // Debug: log vehicle count every 2 seconds
-        setInterval(() => {
-            const vehicles = getVehicles();
-            console.log(`Tracking ${vehicles.size} vehicles`);
-            const first = vehicles.values().next().value;
-            if (first) {
-                console.log(`  ${first.id}: ${first.latitude.toFixed(5)}, ${first.longitude.toFixed(5)} bearing=${first.bearing.toFixed(0)}`);
-            }
-        }, 2000);
     </script>
 </body>
 </html>
