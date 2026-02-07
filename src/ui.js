@@ -3,6 +3,9 @@ import { config } from '../config.js';
 
 const STORAGE_KEY = 'ttracker-highlighted-routes';
 
+// Cache the media query result to avoid recreating the MediaQueryList on every call
+const mobileMediaQuery = window.matchMedia('(max-width: 767px)');
+
 /**
  * Organizes route metadata into groups with sorting:
  * 1. Green Line branches (B, C, D, E) sorted alphabetically
@@ -104,12 +107,12 @@ function writeToStorage(highlightedSet) {
 
 /**
  * Detects if the device is mobile (viewport width < 768px).
- * Uses CSS media query matching for consistent breakpoint.
+ * Uses cached CSS media query matching for consistent breakpoint.
  *
  * @returns {boolean} true if mobile, false if desktop
  */
 function isMobileViewport() {
-    return window.matchMedia('(max-width: 767px)').matches;
+    return mobileMediaQuery.matches;
 }
 
 /**
@@ -252,6 +255,13 @@ export function initUI(routeMetadata, onHighlightChange) {
 
     // Backdrop click handler — close drawer
     backdrop.addEventListener('click', closeDrawer);
+
+    // Escape key handler — close drawer when Escape is pressed and drawer is open
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && panel.classList.contains('control-panel--open')) {
+            closeDrawer();
+        }
+    });
 
     // Call onHighlightChange with initial state
     onHighlightChange(initialHighlighted);

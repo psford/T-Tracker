@@ -133,7 +133,7 @@ function isWithinBounds(vehicle, bounds) {
     if (!bounds) return true; // No bounds filter = all vehicles visible
 
     // Leaflet LatLngBounds object
-    if (bounds.contains) {
+    if (typeof bounds.contains === 'function') {
         return bounds.contains([vehicle.latitude, vehicle.longitude]);
     }
 
@@ -165,6 +165,11 @@ function animate(timestamp) {
 
         const eased = easeOutCubic(t);
 
+        // Viewport culling: skip interpolation math for out-of-viewport vehicles (performance optimization)
+        if (!isWithinBounds(vehicle, bounds)) {
+            continue;
+        }
+
         // Interpolate position
         const prevLat = vehicle.prevLatitude;
         const prevLon = vehicle.prevLongitude;
@@ -189,16 +194,10 @@ function animate(timestamp) {
         }
     }
 
-    // Call registered callbacks only for vehicles within viewport
+    // Call registered callbacks with FULL vehicles map (not filtered)
+    // Callbacks can use visibility information from earlier in the frame if needed
     for (const callback of updateCallbacks) {
-        // Create a filtered map of visible vehicles
-        const visibleVehicles = new Map();
-        for (const [id, vehicle] of vehicles.entries()) {
-            if (isWithinBounds(vehicle, bounds)) {
-                visibleVehicles.set(id, vehicle);
-            }
-        }
-        callback(visibleVehicles);
+        callback(vehicles);
     }
 
     // Request next frame if tab is visible
@@ -245,8 +244,13 @@ export function initVehicles(apiEventsTarget, viewportBoundsCallback) {
             }
             // Resume animation loop
             animationFrameId = requestAnimationFrame(animate);
+        } else {
+            // Tab became hidden: cancel animation frame to prevent wasted CPU
+            if (animationFrameId !== null) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
         }
-        // If tab becomes hidden, animate() will stop requesting frames naturally
     });
 
     // Start animation loop
