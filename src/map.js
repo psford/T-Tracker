@@ -1,6 +1,7 @@
 // src/map.js — Leaflet map initialization and layer management
 import { config } from '../config.js';
 import { decodePolyline } from './polyline.js';
+import { formatVehiclePopup } from './vehicle-popup.js';
 
 let map = null;
 
@@ -24,6 +25,9 @@ const routeColorMap = new Map();
 
 // Map<stopId, {id, name, latitude, longitude}> — caches stop data fetched on startup
 let stopsData = new Map();
+
+// Track last updatedAt per vehicle to avoid unnecessary popup refreshes at 60fps
+const lastPopupUpdatedAt = new Map();
 
 export function initMap(containerId) {
     map = L.map(containerId, {
@@ -89,6 +93,19 @@ export function getVehicleIconHtml(vehicle) {
 }
 
 /**
+ * Generates popup HTML content for a vehicle using cached stop and route data.
+ * Pure data lookup — formatting delegated to vehicle-popup.js.
+ *
+ * @param {object} vehicle — vehicle state object
+ * @returns {string} — HTML string for popup content
+ */
+function getPopupContent(vehicle) {
+    const stopName = vehicle.stopId ? (stopsData.get(vehicle.stopId)?.name || null) : null;
+    const routeMeta = routeMetadata.find(r => r.id === vehicle.routeId) || null;
+    return formatVehiclePopup(vehicle, stopName, routeMeta);
+}
+
+/**
  * Helper to create a divIcon for a vehicle with current highlight state.
  * Determines icon size based on whether route is highlighted.
  *
@@ -113,6 +130,7 @@ function createVehicleDivIcon(vehicle) {
 /**
  * Creates a new vehicle marker on the map with L.divIcon.
  * Adds to vehicleMarkers Map and to Leaflet map.
+ * Binds a popup for hover/tap interaction.
  *
  * @param {object} vehicle — vehicle object with latitude, longitude, bearing, opacity
  */
@@ -127,6 +145,21 @@ export function createVehicleMarker(vehicle) {
             icon: createVehicleDivIcon(vehicle),
         }
     ).addTo(map);
+
+    // Bind popup with initial content
+    marker.bindPopup(getPopupContent(vehicle), {
+        className: 'vehicle-popup-container',
+        closeButton: false,
+        autoPan: false,
+    });
+
+    // Desktop: open on hover, close on mouseout
+    marker.on('mouseover', function () {
+        this.openPopup();
+    });
+    marker.on('mouseout', function () {
+        this.closePopup();
+    });
 
     // Apply initial rotation and opacity
     const iconElement = marker.getElement().querySelector('.vehicle-marker');
@@ -162,6 +195,7 @@ export function updateVehicleMarker(vehicle) {
 
 /**
  * Removes a vehicle marker from the map and vehicleMarkers Map.
+ * Cleans up popup update tracking.
  *
  * @param {string} vehicleId — the vehicle ID to remove
  */
@@ -173,6 +207,7 @@ export function removeVehicleMarker(vehicleId) {
 
     map.removeLayer(marker);
     vehicleMarkers.delete(vehicleId);
+    lastPopupUpdatedAt.delete(vehicleId);
 }
 
 /**
@@ -202,6 +237,15 @@ export function syncVehicleMarkers(vehiclesMap) {
             } else {
                 // Otherwise just update position/rotation
                 updateVehicleMarker(vehicle);
+            }
+
+            // Refresh popup content if popup is open and data changed
+            if (marker.isPopupOpen()) {
+                const lastUpdated = lastPopupUpdatedAt.get(vehicleId);
+                if (vehicle.updatedAt !== lastUpdated) {
+                    marker.getPopup().setContent(getPopupContent(vehicle));
+                    lastPopupUpdatedAt.set(vehicleId, vehicle.updatedAt);
+                }
             }
         } else {
             createVehicleMarker(vehicle);
