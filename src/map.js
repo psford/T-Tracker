@@ -6,6 +6,15 @@ let map = null;
 // Map<vehicleId, L.Marker> — tracks active vehicle markers on the map
 const vehicleMarkers = new Map();
 
+// Map<routeId, L.Polyline[]> — stores polylines for each route (for Phase 6 highlighting)
+const routePolylines = new Map();
+
+// Array of route metadata [{id, color, shortName, longName, type}] — for Phase 6 UI
+let routeMetadata = [];
+
+// L.layerGroup for route polylines — added before vehicle markers to render below them
+let routeLayerGroup = null;
+
 export function initMap(containerId) {
     map = L.map(containerId, {
         center: config.map.center,
@@ -165,4 +174,161 @@ export function syncVehicleMarkers(vehiclesMap) {
     vehicleIdsToRemove.forEach((vehicleId) => {
         removeVehicleMarker(vehicleId);
     });
+}
+
+/**
+ * Decodes a Google-encoded polyline string to an array of [lat, lng] coordinate pairs.
+ * Implements the standard Google polyline encoding algorithm.
+ *
+ * @param {string} encoded — the encoded polyline string
+ * @returns {Array<Array<number>>} — array of [lat, lng] coordinate pairs
+ */
+export function decodePolyline(encoded) {
+    const coords = [];
+    let index = 0;
+    let lat = 0;
+    let lng = 0;
+
+    while (index < encoded.length) {
+        let result = 0;
+        let shift = 0;
+        let byte;
+
+        // Decode latitude
+        do {
+            byte = encoded.charCodeAt(index++) - 63;
+            result |= (byte & 0x1f) << shift;
+            shift += 5;
+        } while (byte >= 0x20);
+
+        const dlat = (result & 1) ? ~(result >> 1) : result >> 1;
+        lat += dlat;
+
+        result = 0;
+        shift = 0;
+
+        // Decode longitude
+        do {
+            byte = encoded.charCodeAt(index++) - 63;
+            result |= (byte & 0x1f) << shift;
+            shift += 5;
+        } while (byte >= 0x20);
+
+        const dlng = (result & 1) ? ~(result >> 1) : result >> 1;
+        lng += dlng;
+
+        coords.push([lat / 1e5, lng / 1e5]);
+    }
+
+    return coords;
+}
+
+/**
+ * Fetches routes from MBTA API with the full JSON:API relationship chain
+ * (route → route_patterns → representative_trip → shape → polyline).
+ * Decodes polylines and creates Leaflet polyline layers.
+ * Stores metadata for Phase 6 UI and polylines for Phase 6 highlighting.
+ *
+ * Layer ordering: Adds route layer group to map BEFORE vehicle markers
+ * so polylines render below markers.
+ */
+export async function loadRoutes() {
+    try {
+        const apiUrl = new URL(`${config.api.baseUrl}/routes`);
+        apiUrl.searchParams.append('filter[type]', '0,3'); // Light Rail (0) and Bus (3)
+        apiUrl.searchParams.append('include', 'route_patterns.representative_trip.shape');
+        apiUrl.searchParams.append('api_key', config.api.key);
+
+        const response = await fetch(apiUrl.toString());
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const jsonApi = await response.json();
+        const routes = jsonApi.data;
+        const included = jsonApi.included || [];
+
+        // Create a map for quick lookup of included resources by type and id
+        const includedMap = new Map();
+        included.forEach((item) => {
+            const key = `${item.type}:${item.id}`;
+            includedMap.set(key, item);
+        });
+
+        // Initialize route layer group if not already done
+        if (!routeLayerGroup) {
+            routeLayerGroup = L.layerGroup().addTo(map);
+        }
+
+        // Process each route
+        routes.forEach((route) => {
+            const routeId = route.id;
+            const color = route.attributes.color ? `#${route.attributes.color}` : '#888888';
+            const shortName = route.attributes.short_name || routeId;
+            const longName = route.attributes.long_name || '';
+            const type = route.attributes.type;
+
+            // Store route metadata
+            routeMetadata.push({
+                id: routeId,
+                color,
+                shortName,
+                longName,
+                type,
+            });
+
+            // Initialize polylines array for this route
+            const polylines = [];
+            routePolylines.set(routeId, polylines);
+
+            // Walk the relationship chain: route → route_patterns → representative_trip → shape
+            const routePatternsData = route.relationships?.route_patterns?.data || [];
+
+            routePatternsData.forEach((patternRef) => {
+                const pattern = includedMap.get(`route_pattern:${patternRef.id}`);
+                if (!pattern) return;
+
+                const tripRef = pattern.relationships?.representative_trip?.data;
+                if (!tripRef) return;
+
+                const trip = includedMap.get(`trip:${tripRef.id}`);
+                if (!trip) return;
+
+                const shapeRef = trip.relationships?.shape?.data;
+                if (!shapeRef) return;
+
+                const shape = includedMap.get(`shape:${shapeRef.id}`);
+                if (!shape) return;
+
+                const encodedPolyline = shape.attributes?.polyline;
+                if (!encodedPolyline) return;
+
+                // Decode and create polyline
+                const coords = decodePolyline(encodedPolyline);
+                const polyline = L.polyline(coords, {
+                    color,
+                    weight: config.routeStyles.normal.weight,
+                    opacity: config.routeStyles.normal.opacity,
+                });
+
+                polyline.addTo(routeLayerGroup);
+                polylines.push(polyline);
+            });
+        });
+
+        console.log(`Loaded ${routes.length} routes with polylines`);
+    } catch (error) {
+        console.error('Failed to load routes:', error.message);
+        // Do not crash — app still works without route lines
+    }
+}
+
+/**
+ * Returns the stored route metadata array for Phase 6 UI.
+ * Each element is {id, color, shortName, longName, type}.
+ *
+ * @returns {Array<Object>} — route metadata
+ */
+export function getRouteMetadata() {
+    return routeMetadata;
 }

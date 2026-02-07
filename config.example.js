@@ -21,6 +21,10 @@ export const config = {
     routes: {
         defaultHighlighted: ['Green-E'],
     },
+    routeStyles: {
+        normal: { weight: 3, opacity: 0.5 },
+        highlighted: { weight: 5, opacity: 0.9 },
+    },
     animation: {
         interpolationDuration: 800,
         fadeInDuration: 200,
