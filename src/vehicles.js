@@ -36,6 +36,8 @@ function createVehicleState(vehicle, duration) {
         currentStopSequence: vehicle.currentStopSequence,
         directionId: vehicle.directionId,
         label: vehicle.label,
+        speed: vehicle.speed ?? null,
+        updatedAt: vehicle.updatedAt ?? null,
         state: 'entering',
         opacity: 0,
     };
@@ -111,6 +113,8 @@ function onUpdate(vehicle) {
     existing.currentStopSequence = vehicle.currentStopSequence;
     existing.directionId = vehicle.directionId;
     existing.label = vehicle.label;
+    existing.speed = vehicle.speed ?? null;
+    existing.updatedAt = vehicle.updatedAt ?? null;
 
     // Note: State transition from 'entering' to 'active' is handled by animate()
     // when fade-in completes (t >= 1.0). This ensures we don't skip fade-in animations
