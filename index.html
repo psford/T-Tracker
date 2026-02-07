@@ -24,16 +24,21 @@
 
     <!-- App entry point (ES6 module) -->
     <script type="module">
-        import { initMap, loadRoutes, syncVehicleMarkers } from './src/map.js';
+        import { initMap, loadRoutes, syncVehicleMarkers, getRouteMetadata, setHighlightedRoutes } from './src/map.js';
         import { connect, apiEvents } from './src/api.js';
         import { initVehicles, onVehicleUpdate } from './src/vehicles.js';
+        import { initUI } from './src/ui.js';
 
         initMap('map');
         initVehicles(apiEvents);
         onVehicleUpdate(syncVehicleMarkers);
 
-        // Load routes and connect to SSE in parallel — neither blocks the other
-        loadRoutes();
+        // Load routes, then initialize UI with route data
+        loadRoutes().then(() => {
+            const metadata = getRouteMetadata();
+            initUI(metadata, setHighlightedRoutes);
+        });
+
         connect();
     </script>
 </body>
