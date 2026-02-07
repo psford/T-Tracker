@@ -2,6 +2,22 @@
 // No imports, no DOM access, no Leaflet dependency
 
 /**
+ * Escape HTML special characters to prevent injection
+ * @param {string} str - String to escape
+ * @returns {string} Escaped string safe for HTML interpolation
+ * @private
+ */
+function escapeHtml(str) {
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+/**
  * Format vehicle status with optional stop name
  * @param {string|null} currentStatus - Status code ('STOPPED_AT', 'IN_TRANSIT_TO', 'INCOMING_AT', or null)
  * @param {string|null} stopName - Stop name or null
@@ -14,11 +30,11 @@ export function formatStatus(currentStatus, stopName) {
 
     switch (currentStatus) {
         case 'STOPPED_AT':
-            return stopName ? `Stopped at ${stopName}` : 'Stopped';
+            return stopName ? `Stopped at ${escapeHtml(stopName)}` : 'Stopped';
         case 'IN_TRANSIT_TO':
-            return stopName ? `In transit to ${stopName}` : 'In transit';
+            return stopName ? `In transit to ${escapeHtml(stopName)}` : 'In transit';
         case 'INCOMING_AT':
-            return stopName ? `Approaching ${stopName}` : 'Approaching';
+            return stopName ? `Approaching ${escapeHtml(stopName)}` : 'Approaching';
         default:
             return '';
     }
@@ -83,14 +99,14 @@ export function formatTimeAgo(updatedAt) {
  */
 export function formatVehiclePopup(vehicle, stopName, routeMeta) {
     // Extract route display properties
-    const routeName = routeMeta?.shortName || vehicle.routeId;
+    const routeName = escapeHtml(routeMeta?.shortName || vehicle.routeId);
     const routeColor = routeMeta?.color || '#888888';
 
     // Build header with color swatch, route name, and vehicle label
     const headerHtml = `<div class="vehicle-popup__header">
         <span class="vehicle-popup__swatch" style="background: ${routeColor}"></span>
         <span class="vehicle-popup__route">${routeName}</span>
-        <span class="vehicle-popup__label">#${vehicle.label}</span>
+        <span class="vehicle-popup__label">#${escapeHtml(vehicle.label)}</span>
     </div>`;
 
     // Build status line (omit entire div if empty)
