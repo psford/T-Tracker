@@ -11,6 +11,60 @@ const MAX_RECONNECT_DELAY = 30000; // 30s max
 const RECONNECT_MULTIPLIER = 2;
 let reconnectTimer = null;
 
+// Status tracking
+let connectionStartTime = null;
+let parseErrorCount = 0;
+let parseErrorResetTimer = null;
+const PARSE_ERROR_THRESHOLD = 5;
+const PARSE_ERROR_WINDOW = 30000; // 30 seconds in ms
+const RAPID_CLOSE_THRESHOLD = 1000; // 1 second in ms
+let rapidCloseCount = 0;
+
+/**
+ * Emit a connection status event
+ * @param {string} state — 'connected' | 'reconnecting' | 'error'
+ * @param {string} message — User-friendly status message
+ */
+function emitStatusEvent(state, message) {
+    const event = new CustomEvent('connection:status', {
+        detail: { state, message }
+    });
+    apiEvents.dispatchEvent(event);
+    console.log(`[Status] ${state}: ${message}`);
+}
+
+/**
+ * Reset parse error counter
+ */
+function resetParseErrorCounter() {
+    if (parseErrorResetTimer) {
+        clearTimeout(parseErrorResetTimer);
+    }
+    parseErrorCount = 0;
+}
+
+/**
+ * Track parse error and emit warning if threshold exceeded
+ */
+function recordParseError() {
+    parseErrorCount++;
+
+    // Clear previous reset timer
+    if (parseErrorResetTimer) {
+        clearTimeout(parseErrorResetTimer);
+    }
+
+    // Set timer to reset counter after window expires
+    parseErrorResetTimer = setTimeout(() => {
+        parseErrorCount = 0;
+    }, PARSE_ERROR_WINDOW);
+
+    // Check if threshold exceeded
+    if (parseErrorCount >= PARSE_ERROR_THRESHOLD) {
+        emitStatusEvent('error', 'Data format errors');
+    }
+}
+
 /**
  * Parse a JSON:API vehicle object into a flat structure
  * @param {Object} data — JSON:API vehicle object
@@ -120,6 +174,8 @@ export function connect() {
 
     const url = buildUrl();
     console.log('Connecting to MBTA SSE...');
+    connectionStartTime = Date.now();
+    emitStatusEvent('reconnecting', 'Connecting...');
 
     try {
         eventSource = new EventSource(url);
@@ -128,12 +184,16 @@ export function connect() {
         eventSource.addEventListener('reset', (e) => {
             console.log('Received reset event');
             resetBackoff();
+            resetParseErrorCounter();
+            rapidCloseCount = 0; // Reset rapid close counter on successful message
+            emitStatusEvent('connected', 'Live');
 
             try {
                 const vehicles = JSON.parse(e.data).map(parseVehicle);
                 emitVehicleEvent('vehicles:reset', vehicles);
             } catch (err) {
                 console.error('Failed to parse reset event:', err.message);
+                recordParseError();
             }
         });
 
@@ -143,6 +203,7 @@ export function connect() {
                 emitVehicleEvent('vehicles:add', vehicle);
             } catch (err) {
                 console.error('Failed to parse add event:', err.message);
+                recordParseError();
             }
         });
 
@@ -152,6 +213,7 @@ export function connect() {
                 emitVehicleEvent('vehicles:update', vehicle);
             } catch (err) {
                 console.error('Failed to parse update event:', err.message);
+                recordParseError();
             }
         });
 
@@ -161,12 +223,34 @@ export function connect() {
                 emitVehicleEvent('vehicles:remove', { id: data.id });
             } catch (err) {
                 console.error('Failed to parse remove event:', err.message);
+                recordParseError();
             }
         });
 
         // Handle connection errors
         eventSource.addEventListener('error', () => {
             console.warn('SSE connection error — closing and reconnecting...');
+
+            // Detect rate limiting: connection closed quickly after opening
+            const timeConnected = Date.now() - connectionStartTime;
+            if (timeConnected < RAPID_CLOSE_THRESHOLD) {
+                rapidCloseCount++;
+                if (rapidCloseCount >= 2) {
+                    // Likely rate limited
+                    emitStatusEvent('error', 'Rate limited — retrying...');
+                    // Temporarily increase backoff aggressively for rate limiting
+                    reconnectDelay = Math.min(reconnectDelay * 4, MAX_RECONNECT_DELAY);
+                    rapidCloseCount = 0;
+                } else {
+                    emitStatusEvent('reconnecting', `Reconnecting in ${Math.round(reconnectDelay / 1000)}s...`);
+                }
+            } else {
+                // Normal error
+                rapidCloseCount = 0;
+                const nextDelay = Math.round(reconnectDelay / 1000);
+                emitStatusEvent('reconnecting', `Reconnecting in ${nextDelay}s...`);
+            }
+
             disconnect();
             scheduleReconnect();
         });

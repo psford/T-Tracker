@@ -16,6 +16,10 @@
 <body>
     <div id="map"></div>
     <div id="controls"></div>
+    <div id="status" class="connection-status">
+        <span class="status-dot"></span>
+        <span class="status-text">Connecting...</span>
+    </div>
 
     <!-- Leaflet JS (global L) -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
@@ -37,6 +41,17 @@
         loadRoutes().then(() => {
             const metadata = getRouteMetadata();
             initUI(metadata, setHighlightedRoutes);
+        });
+
+        // Wire connection status indicator
+        const statusEl = document.getElementById('status');
+        const statusDot = statusEl.querySelector('.status-dot');
+        const statusText = statusEl.querySelector('.status-text');
+
+        apiEvents.addEventListener('connection:status', (e) => {
+            const { state, message } = e.detail;
+            statusEl.className = `connection-status connection-status--${state}`;
+            statusText.textContent = message;
         });
 
         connect();
