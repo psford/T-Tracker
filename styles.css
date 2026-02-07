@@ -123,3 +123,19 @@ html, body {
 .route-name {
     color: #c0c0d0;
 }
+
+/* Highlighted vehicle marker styles (AC4.6, AC4.7) */
+.vehicle-marker--highlighted {
+    width: 28px !important;
+    height: 28px !important;
+}
+
+.vehicle-marker--highlighted .vehicle-icon {
+    filter: drop-shadow(0 0 6px currentColor);
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+    0%, 100% { filter: drop-shadow(0 0 4px currentColor); }
+    50% { filter: drop-shadow(0 0 10px currentColor); }
+}

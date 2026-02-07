@@ -15,6 +15,9 @@ let routeMetadata = [];
 // L.layerGroup for route polylines — added before vehicle markers to render below them
 let routeLayerGroup = null;
 
+// Set<routeId> — tracks currently highlighted route IDs for Phase 6 styling
+let highlightedRoutes = new Set();
+
 export function initMap(containerId) {
     map = L.map(containerId, {
         center: config.map.center,
@@ -55,6 +58,8 @@ export function getMap() {
  * - "Green-*" → class vehicle-marker--green-line
  * - Otherwise → class vehicle-marker--bus
  *
+ * Adds vehicle-marker--highlighted class if the route is currently highlighted.
+ *
  * This is the single point of change for swapping placeholder arrows to proper icons.
  *
  * @param {object} vehicle — vehicle object with routeId property
@@ -63,13 +68,35 @@ export function getMap() {
 export function getVehicleIconHtml(vehicle) {
     const isGreenLine = vehicle.routeId.startsWith('Green-');
     const markerClass = isGreenLine ? 'vehicle-marker--green-line' : 'vehicle-marker--bus';
+    const highlightClass = highlightedRoutes.has(vehicle.routeId) ? 'vehicle-marker--highlighted' : '';
 
     // Inline SVG with dynamic class for colorization
-    return `<div class="vehicle-marker ${markerClass}">
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    return `<div class="vehicle-marker ${markerClass} ${highlightClass}">
+        <svg class="vehicle-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <polygon points="12,2 22,20 12,16 2,20" fill="white" />
         </svg>
     </div>`;
+}
+
+/**
+ * Helper to create a divIcon for a vehicle with current highlight state.
+ * Determines icon size based on whether route is highlighted.
+ *
+ * @param {object} vehicle — vehicle object with routeId
+ * @returns {L.DivIcon} — divIcon instance
+ */
+function createVehicleDivIcon(vehicle) {
+    const iconHtml = getVehicleIconHtml(vehicle);
+    const isHighlighted = highlightedRoutes.has(vehicle.routeId);
+    const iconSize = isHighlighted ? [28, 28] : [24, 24];
+    const iconAnchor = isHighlighted ? [14, 14] : [12, 12];
+
+    return L.divIcon({
+        html: iconHtml,
+        className: '', // Avoid Leaflet's default icon styling
+        iconSize,
+        iconAnchor,
+    });
 }
 
 /**
@@ -83,17 +110,10 @@ export function createVehicleMarker(vehicle) {
         return; // Marker already exists
     }
 
-    const iconHtml = getVehicleIconHtml(vehicle);
-
     const marker = L.marker(
         [vehicle.latitude, vehicle.longitude],
         {
-            icon: L.divIcon({
-                html: iconHtml,
-                className: '', // Avoid Leaflet's default icon styling
-                iconSize: [24, 24],
-                iconAnchor: [12, 12],
-            }),
+            icon: createVehicleDivIcon(vehicle),
         }
     ).addTo(map);
 
@@ -148,18 +168,48 @@ export function removeVehicleMarker(vehicleId) {
  * Reconciliation function called from animation loop.
  * Syncs vehicleMarkers Map with current vehiclesMap state:
  * - Creates markers for new vehicles
- * - Updates existing markers
+ * - Updates existing markers (including re-creating divIcon if highlight state changed)
  * - Removes markers for vehicles no longer in vehiclesMap
  *
  * @param {Map<vehicleId, vehicle>} vehiclesMap — current vehicle state from vehicles.js
  */
 export function syncVehicleMarkers(vehiclesMap) {
+    // Track which markers need icon recreation due to highlight state change
+    const markersToRecreate = [];
+
     // Update existing and create new markers
     vehiclesMap.forEach((vehicle, vehicleId) => {
         if (vehicleMarkers.has(vehicleId)) {
-            updateVehicleMarker(vehicle);
+            const marker = vehicleMarkers.get(vehicleId);
+            const isHighlighted = highlightedRoutes.has(vehicle.routeId);
+            const currentIconSize = marker.getIcon().options.iconSize[0];
+            const shouldBeSize = isHighlighted ? 28 : 24;
+
+            // If highlight state changed, mark for icon recreation
+            if (currentIconSize !== shouldBeSize) {
+                markersToRecreate.push(vehicleId);
+            } else {
+                // Otherwise just update position/rotation
+                updateVehicleMarker(vehicle);
+            }
         } else {
             createVehicleMarker(vehicle);
+        }
+    });
+
+    // Recreate icons for markers with changed highlight state
+    markersToRecreate.forEach((vehicleId) => {
+        const vehicle = vehiclesMap.get(vehicleId);
+        const marker = vehicleMarkers.get(vehicleId);
+
+        // Set new icon with updated size
+        marker.setIcon(createVehicleDivIcon(vehicle));
+
+        // Re-apply rotation and opacity
+        const iconElement = marker.getElement().querySelector('.vehicle-marker');
+        if (iconElement) {
+            iconElement.style.transform = `rotate(${vehicle.bearing}deg)`;
+            iconElement.style.opacity = vehicle.opacity;
         }
     });
 
@@ -331,4 +381,35 @@ export async function loadRoutes() {
  */
 export function getRouteMetadata() {
     return routeMetadata;
+}
+
+/**
+ * Updates the set of highlighted routes and applies styling to polylines and vehicle markers.
+ * Called when user selects/deselects routes in the UI.
+ *
+ * For each route in routePolylines:
+ * - If routeIds contains the route: apply highlighted style (weight 5, opacity 0.9)
+ * - Otherwise: apply normal style (weight 3, opacity 0.5)
+ *
+ * Vehicle markers are re-created on next syncVehicleMarkers call to reflect size/glow changes.
+ *
+ * @param {Set<routeId>} routeIds — set of route IDs that should be highlighted
+ */
+export function setHighlightedRoutes(routeIds) {
+    highlightedRoutes = new Set(routeIds);
+
+    // Update polyline styling for all routes
+    routePolylines.forEach((polylines, routeId) => {
+        const isHighlighted = highlightedRoutes.has(routeId);
+        const style = isHighlighted
+            ? config.routeStyles.highlighted
+            : config.routeStyles.normal;
+
+        polylines.forEach((polyline) => {
+            polyline.setStyle({
+                weight: style.weight,
+                opacity: style.opacity,
+            });
+        });
+    });
 }
