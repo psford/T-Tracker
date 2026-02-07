@@ -85,7 +85,7 @@ The deliverable is a web application that:
 - **mbta-tracker.AC6.2 Success:** No build step required for Phase 1 (pure ES6 modules)
 - **mbta-tracker.AC6.3 Success:** Application connects directly to MBTA API via CORS
 - **mbta-tracker.AC6.4 Success:** All assets load from CDN or local files (no server needed)
-- **mbta-tracker.AC6.5 Edge:** file:// protocol works for local development (ES6 modules supported)
+- **mbta-tracker.AC6.5 Edge:** Local development requires a simple HTTP server (e.g., `python -m http.server 8000`) since ES6 modules require HTTP, not file:// protocol
 
 ### mbta-tracker.AC7: Cross-Cutting Behaviors
 - **mbta-tracker.AC7.1:** All MBTA API errors include user-friendly messages (no raw error objects shown)
