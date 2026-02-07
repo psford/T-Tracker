@@ -24,7 +24,18 @@
     <!-- App entry point (ES6 module) -->
     <script type="module">
         import { initMap } from './src/map.js';
+        import { connect, apiEvents } from './src/api.js';
+
         initMap('map');
+
+        apiEvents.addEventListener('vehicles:reset', (e) => {
+            console.log('Reset — vehicles:', e.detail.length);
+        });
+        apiEvents.addEventListener('vehicles:update', (e) => {
+            console.log('Update:', e.detail.id, e.detail.latitude, e.detail.longitude);
+        });
+
+        connect();
     </script>
 </body>
 </html>
