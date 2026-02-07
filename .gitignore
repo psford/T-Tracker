@@ -1,0 +1,18 @@
+# Environment variables (contains API keys)
+.env
+
+# Configuration files with secrets
+config.js
+
+# Node modules (if we use any build tools)
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
