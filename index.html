@@ -29,8 +29,8 @@
         import { initVehicles, onVehicleUpdate } from './src/vehicles.js';
         import { initUI } from './src/ui.js';
 
-        initMap('map');
-        initVehicles(apiEvents);
+        const map = initMap('map');
+        initVehicles(apiEvents, () => map.getBounds());
         onVehicleUpdate(syncVehicleMarkers);
 
         // Load routes, then initialize UI with route data

@@ -8,6 +8,11 @@ const vehicles = new Map();
 // Callbacks registered via onVehicleUpdate()
 const updateCallbacks = [];
 
+// Page visibility and animation control
+let isTabVisible = !document.hidden;
+let animationFrameId = null;
+let getViewportBounds = null; // Callback to get current map bounds
+
 /**
  * Helper to create a VehicleState object
  */
@@ -121,9 +126,38 @@ function onRemove(eventDetail) {
 }
 
 /**
+ * Check if a vehicle position is within viewport bounds
+ * Handles both Leaflet LatLngBounds and custom {north, south, east, west} objects
+ */
+function isWithinBounds(vehicle, bounds) {
+    if (!bounds) return true; // No bounds filter = all vehicles visible
+
+    // Leaflet LatLngBounds object
+    if (bounds.contains) {
+        return bounds.contains([vehicle.latitude, vehicle.longitude]);
+    }
+
+    // Custom {north, south, east, west} object
+    if (bounds.north !== undefined && bounds.south !== undefined) {
+        return (
+            vehicle.latitude >= bounds.south &&
+            vehicle.latitude <= bounds.north &&
+            vehicle.longitude >= bounds.west &&
+            vehicle.longitude <= bounds.east
+        );
+    }
+
+    // Unrecognized bounds format, don't filter
+    return true;
+}
+
+/**
  * requestAnimationFrame loop — interpolates all vehicles
  */
 function animate(timestamp) {
+    // Get current viewport bounds for culling
+    const bounds = getViewportBounds ? getViewportBounds() : null;
+
     for (const vehicle of vehicles.values()) {
         const elapsed = timestamp - vehicle.animationStart;
         let t = elapsed / vehicle.animationDuration;
@@ -155,20 +189,31 @@ function animate(timestamp) {
         }
     }
 
-    // Call registered callbacks
+    // Call registered callbacks only for vehicles within viewport
     for (const callback of updateCallbacks) {
-        callback(vehicles);
+        // Create a filtered map of visible vehicles
+        const visibleVehicles = new Map();
+        for (const [id, vehicle] of vehicles.entries()) {
+            if (isWithinBounds(vehicle, bounds)) {
+                visibleVehicles.set(id, vehicle);
+            }
+        }
+        callback(visibleVehicles);
     }
 
-    // Request next frame
-    requestAnimationFrame(animate);
+    // Request next frame if tab is visible
+    if (isTabVisible) {
+        animationFrameId = requestAnimationFrame(animate);
+    }
 }
 
 /**
  * Initialize vehicle state management
  * Subscribe to API events and start animation loop
+ * @param {EventTarget} apiEventsTarget - Event target for vehicles:* events
+ * @param {Function} [viewportBoundsCallback] - Optional callback returning viewport bounds
  */
-export function initVehicles(apiEventsTarget) {
+export function initVehicles(apiEventsTarget, viewportBoundsCallback) {
     apiEventsTarget.addEventListener('vehicles:reset', (e) => {
         onReset(e.detail);
     });
@@ -185,8 +230,27 @@ export function initVehicles(apiEventsTarget) {
         onRemove(e.detail);
     });
 
+    // Store viewport bounds callback
+    getViewportBounds = viewportBoundsCallback;
+
+    // Set up Page Visibility API to pause animation when tab is hidden
+    document.addEventListener('visibilitychange', () => {
+        isTabVisible = !document.hidden;
+
+        if (isTabVisible) {
+            // Tab became visible: reset animation start times and resume
+            const now = performance.now();
+            for (const vehicle of vehicles.values()) {
+                vehicle.animationStart = now;
+            }
+            // Resume animation loop
+            animationFrameId = requestAnimationFrame(animate);
+        }
+        // If tab becomes hidden, animate() will stop requesting frames naturally
+    });
+
     // Start animation loop
-    requestAnimationFrame(animate);
+    animationFrameId = requestAnimationFrame(animate);
 }
 
 /**
