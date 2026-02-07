@@ -3,7 +3,7 @@
 Last verified: 2026-02-07 (updated for vehicle-popup.js)
 
 ## Purpose
-Seven ES6 modules that separate data acquisition (SSE), state management (interpolation),
+Eight ES6 modules that separate data acquisition (SSE), state management (interpolation),
 rendering (Leaflet markers/polylines), user controls (route filtering), polyline decoding,
 route organization, and popup content formatting.
 
