@@ -40,7 +40,6 @@ All data flows through dedicated modules with clear responsibilities:
 - `config.js` -- All configuration (API key, map center, animation timing, route defaults)
 - `config.example.js` -- Template for config.js (committed; config.js is gitignored)
 - `src/` -- Application modules (see `src/CLAUDE.md` for contracts)
-- `assets/icons/` -- SVG vehicle icons (white arrow, CSS-colorized)
 - `tests/` -- Unit tests for pure math functions
 - `docs/` -- Design plans and implementation phase docs
 

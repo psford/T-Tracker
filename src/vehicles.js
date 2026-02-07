@@ -163,8 +163,16 @@ function animate(timestamp) {
     const bounds = getViewportBounds ? getViewportBounds() : null;
 
     for (const vehicle of vehicles.values()) {
-        // Guard against zero duration (snap complete: position already set in onUpdate)
+        // Handle entering/exiting opacity transitions (must always run, regardless of viewport)
+        // When animationDuration <= 0 (snap complete), we still need state transitions
         if (vehicle.animationDuration <= 0) {
+            // Snap: position already set in onUpdate, but handle state transitions
+            if (vehicle.state === 'entering') {
+                vehicle.opacity = 1;
+                vehicle.state = 'active';
+            } else if (vehicle.state === 'exiting') {
+                vehicles.delete(vehicle.id);
+            }
             continue;
         }
 
