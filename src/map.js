@@ -26,6 +26,9 @@ const routeColorMap = new Map();
 // Map<stopId, {id, name, latitude, longitude}> — caches stop data fetched on startup
 let stopsData = new Map();
 
+// Map<routeId, L.Marker[]> — route name labels placed along polylines
+const routeLabels = new Map();
+
 // Track last updatedAt per vehicle to avoid unnecessary popup refreshes at 60fps
 const lastPopupUpdatedAt = new Map();
 
@@ -379,6 +382,53 @@ export async function loadRoutes() {
                 polyline.addTo(routeLayerGroup);
                 polylines.push(polyline);
             });
+
+            // Create route name labels along the longest polyline
+            let longestCoords = [];
+            polylines.forEach((pl) => {
+                const latlngs = pl.getLatLngs();
+                if (latlngs.length > longestCoords.length) {
+                    longestCoords = latlngs;
+                }
+            });
+
+            if (longestCoords.length >= 20) {
+                const labels = [];
+                const numLabels = Math.max(1, Math.min(5, Math.floor(longestCoords.length / 100)));
+                const interval = Math.floor(longestCoords.length / (numLabels + 1));
+
+                for (let n = 1; n <= numLabels; n++) {
+                    const i = n * interval;
+                    const point = longestCoords[i];
+                    const prev = longestCoords[Math.max(0, i - 5)];
+                    const next = longestCoords[Math.min(longestCoords.length - 1, i + 5)];
+
+                    // Calculate line angle for label rotation (keep text readable)
+                    const cosLat = Math.cos(point.lat * Math.PI / 180);
+                    const dx = (next.lng - prev.lng) * cosLat;
+                    const dy = next.lat - prev.lat;
+                    let rotation = -Math.atan2(dy, dx) * (180 / Math.PI);
+                    if (rotation > 90) rotation -= 180;
+                    else if (rotation < -90) rotation += 180;
+
+                    const icon = L.divIcon({
+                        html: `<span class="route-label" style="--route-color: ${color}; transform: rotate(${rotation.toFixed(1)}deg)">${shortName}</span>`,
+                        className: '',
+                        iconSize: [0, 0],
+                        iconAnchor: [0, 0],
+                    });
+
+                    const marker = L.marker([point.lat, point.lng], {
+                        icon,
+                        interactive: false,
+                        zIndexOffset: -1000,
+                    }).addTo(routeLayerGroup);
+
+                    labels.push(marker);
+                }
+
+                routeLabels.set(routeId, labels);
+            }
         });
 
         console.log(`Loaded ${routes.length} routes with polylines`);
@@ -403,9 +453,10 @@ export function getRouteMetadata() {
  * Called when user selects/deselects routes in the UI.
  *
  * For each route in routePolylines:
- * - If routeIds contains the route: apply highlighted style (weight 5, opacity 0.9)
- * - Otherwise: apply normal style (weight 3, opacity 0.5)
+ * - If routeIds contains the route: apply highlighted style (bright)
+ * - Otherwise: apply normal style (dimmed)
  *
+ * Also updates route label opacity to match polyline state.
  * Vehicle markers are re-created on next syncVehicleMarkers call to reflect size/glow changes.
  *
  * @param {Set<routeId>} routeIds — set of route IDs that should be highlighted
@@ -425,6 +476,16 @@ export function setHighlightedRoutes(routeIds) {
                 weight: style.weight,
                 opacity: style.opacity,
             });
+        });
+    });
+
+    // Update route label opacity to match polyline state
+    routeLabels.forEach((labels, routeId) => {
+        const isHighlighted = highlightedRoutes.has(routeId);
+        const opacity = isHighlighted ? 1 : 0.35;
+        labels.forEach((marker) => {
+            const el = marker.getElement();
+            if (el) el.style.opacity = opacity;
         });
     });
 }
