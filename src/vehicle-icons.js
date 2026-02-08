@@ -11,7 +11,7 @@
  * - Designed for 0 0 48 32 viewBox (48px wide, 32px tall)
  * - Default orientation faces right (east)
  * - Body uses `currentColor` for fill (set by map.js via CSS)
- * - Details use fixed colors: windows #rgba(255,255,255,0.85), wheels #333, lines rgba(255,255,255,0.3)
+ * - Details use fixed colors: windows rgba(255,255,255,0.85), wheels #333, lines rgba(255,255,255,0.3)
  */
 export const VEHICLE_ICONS = {
   // Type 0: Trolley/Streetcar (Green Line)
