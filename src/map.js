@@ -17,8 +17,8 @@ let routeMetadata = [];
 // L.layerGroup for route polylines — added before vehicle markers to render below them
 let routeLayerGroup = null;
 
-// Set<routeId> — tracks currently highlighted route IDs for Phase 6 styling
-let highlightedRoutes = new Set();
+// Set<routeId> — tracks currently visible route IDs for visibility filtering
+let visibleRoutes = new Set();
 
 // Map<routeId, color> — color lookup for vehicle markers (populated by loadRoutes)
 const routeColorMap = new Map();
@@ -76,8 +76,7 @@ export function getMap() {
  * - Type 2 (commuter rail) → class vehicle-marker--commuter-rail
  * - Type 3 (bus) or unknown → class vehicle-marker--bus
  *
- * Adds vehicle-marker--highlighted class if the route is currently highlighted.
- * Passes route color as CSS variable for use in drop-shadow filter.
+ * Passes route color as CSS variable for marker styling.
  *
  * This is the single point of change for swapping placeholder arrows to proper icons.
  *
@@ -94,12 +93,10 @@ export function getVehicleIconHtml(vehicle) {
     } else {
         markerClass = 'vehicle-marker--bus';
     }
-    const highlightClass = highlightedRoutes.has(vehicle.routeId) ? 'vehicle-marker--highlighted' : '';
     const routeColor = routeColorMap.get(vehicle.routeId) || '#888888';
 
-    // Inline SVG with direct fill color (no CSS filters)
-    // Pass route color as CSS variable for drop-shadow filter in highlighted state
-    return `<div class="vehicle-marker ${markerClass} ${highlightClass}" style="--route-color: ${routeColor}">
+    // Inline SVG with direct fill color
+    return `<div class="vehicle-marker ${markerClass}" style="--route-color: ${routeColor}">
         <svg class="vehicle-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <polygon points="12,2 22,20 12,16 2,20" fill="${routeColor}" />
         </svg>
@@ -120,16 +117,15 @@ function getPopupContent(vehicle) {
 }
 
 /**
- * Helper to create a divIcon for a vehicle with current highlight state.
- * Determines icon size based on whether route is highlighted.
+ * Helper to create a divIcon for a vehicle.
+ * Uses uniform size for all markers (24px).
  *
  * @param {object} vehicle — vehicle object with routeId
  * @returns {L.DivIcon} — divIcon instance
  */
 function createVehicleDivIcon(vehicle) {
     const iconHtml = getVehicleIconHtml(vehicle);
-    const isHighlighted = highlightedRoutes.has(vehicle.routeId);
-    const size = isHighlighted ? config.markerSize.highlighted : config.markerSize.normal;
+    const size = 24;
     const iconSize = [size, size];
     const iconAnchor = [size / 2, size / 2];
 
@@ -182,6 +178,9 @@ export function createVehicleMarker(vehicle) {
         iconElement.style.opacity = vehicle.opacity;
     }
 
+    // Store vehicle data reference for use by setVisibleRoutes()
+    marker._vehicleData = vehicle;
+
     vehicleMarkers.set(vehicle.id, marker);
 }
 
@@ -226,32 +225,29 @@ export function removeVehicleMarker(vehicleId) {
 
 /**
  * Reconciliation function called from animation loop.
- * Syncs vehicleMarkers Map with current vehiclesMap state:
- * - Creates markers for new vehicles
- * - Updates existing markers (including re-creating divIcon if highlight state changed)
- * - Removes markers for vehicles no longer in vehiclesMap
+ * Syncs vehicleMarkers Map with current vehiclesMap state, filtering by visibleRoutes:
+ * - Creates markers for new visible vehicles
+ * - Updates existing markers position/rotation
+ * - Removes markers for vehicles no longer in vehiclesMap or whose route is hidden
  *
  * @param {Map<vehicleId, vehicle>} vehiclesMap — current vehicle state from vehicles.js
  */
 export function syncVehicleMarkers(vehiclesMap) {
-    // Track which markers need icon recreation due to highlight state change
-    const markersToRecreate = [];
-
-    // Update existing and create new markers
+    // Filter to only visible routes
+    const filteredVehicles = new Map();
     vehiclesMap.forEach((vehicle, vehicleId) => {
+        if (visibleRoutes.has(vehicle.routeId)) {
+            filteredVehicles.set(vehicleId, vehicle);
+        }
+    });
+
+    // Update existing and create new markers for visible vehicles
+    filteredVehicles.forEach((vehicle, vehicleId) => {
         if (vehicleMarkers.has(vehicleId)) {
             const marker = vehicleMarkers.get(vehicleId);
-            const isHighlighted = highlightedRoutes.has(vehicle.routeId);
-            const currentIconSize = marker.getIcon().options.iconSize[0];
-            const shouldBeSize = isHighlighted ? config.markerSize.highlighted : config.markerSize.normal;
 
-            // If highlight state changed, mark for icon recreation
-            if (currentIconSize !== shouldBeSize) {
-                markersToRecreate.push(vehicleId);
-            } else {
-                // Otherwise just update position/rotation
-                updateVehicleMarker(vehicle);
-            }
+            // Update position/rotation
+            updateVehicleMarker(vehicle);
 
             // Refresh popup content if popup is open and data changed
             if (marker.isPopupOpen()) {
@@ -266,29 +262,10 @@ export function syncVehicleMarkers(vehiclesMap) {
         }
     });
 
-    // Recreate icons for markers with changed highlight state
-    markersToRecreate.forEach((vehicleId) => {
-        const vehicle = vehiclesMap.get(vehicleId);
-        const marker = vehicleMarkers.get(vehicleId);
-
-        // Set new icon with updated size
-        marker.setIcon(createVehicleDivIcon(vehicle));
-
-        // Update position to ensure it's correct after icon recreation
-        marker.setLatLng([vehicle.latitude, vehicle.longitude]);
-
-        // Re-apply rotation and opacity
-        const iconElement = marker.getElement().querySelector('.vehicle-marker');
-        if (iconElement) {
-            iconElement.style.transform = `rotate(${vehicle.bearing}deg)`;
-            iconElement.style.opacity = vehicle.opacity;
-        }
-    });
-
-    // Remove markers for vehicles no longer in vehiclesMap
+    // Remove stale markers (vehicles that are gone or whose route is now hidden)
     const vehicleIdsToRemove = [];
     vehicleMarkers.forEach((marker, vehicleId) => {
-        if (!vehiclesMap.has(vehicleId)) {
+        if (!filteredVehicles.has(vehicleId)) {
             vehicleIdsToRemove.push(vehicleId);
         }
     });
@@ -463,44 +440,57 @@ export function getRouteMetadata() {
 }
 
 /**
- * Updates the set of highlighted routes and applies styling to polylines and vehicle markers.
+ * Updates the set of visible routes and applies show/hide to polylines, labels, and vehicle markers.
  * Called when user selects/deselects routes in the UI.
  *
  * For each route in routePolylines:
- * - If routeIds contains the route: apply highlighted style (bright)
- * - Otherwise: apply normal style (dimmed)
+ * - If routeIds contains the route: show polyline with uniform weight, add labels to map
+ * - Otherwise: remove polyline and labels from map
  *
- * Also updates route label opacity to match polyline state.
- * Vehicle markers are re-created on next syncVehicleMarkers call to reflect size/glow changes.
+ * Also immediately removes vehicle markers for hidden routes.
  *
- * @param {Set<routeId>} routeIds — set of route IDs that should be highlighted
+ * @param {Array<routeId>} routeIds — array of route IDs that should be visible
  */
-export function setHighlightedRoutes(routeIds) {
-    highlightedRoutes = new Set(routeIds);
+export function setVisibleRoutes(routeIds) {
+    visibleRoutes = new Set(routeIds);
 
-    // Update polyline styling for all routes
+    // Show/hide polylines with uniform weight
+    const weight = 4; // Placeholder — Phase 5 replaces with adaptive weight
     routePolylines.forEach((polylines, routeId) => {
-        const isHighlighted = highlightedRoutes.has(routeId);
-        const style = isHighlighted
-            ? config.routeStyles.highlighted
-            : config.routeStyles.normal;
-
+        const isVisible = visibleRoutes.has(routeId);
         polylines.forEach((polyline) => {
-            polyline.setStyle({
-                weight: style.weight,
-                opacity: style.opacity,
-            });
+            if (isVisible) {
+                if (!routeLayerGroup.hasLayer(polyline)) {
+                    routeLayerGroup.addLayer(polyline);
+                }
+                polyline.setStyle({ weight, opacity: 0.9 });
+            } else {
+                routeLayerGroup.removeLayer(polyline);
+            }
         });
     });
 
-    // Update route label opacity to match polyline state
+    // Show/hide route labels (labels are on routeLayerGroup, not map directly)
     routeLabels.forEach((labels, routeId) => {
-        const isHighlighted = highlightedRoutes.has(routeId);
-        const opacity = isHighlighted ? 1 : 0.35;
+        const isVisible = visibleRoutes.has(routeId);
         labels.forEach((marker) => {
-            const el = marker.getElement();
-            if (el) el.style.opacity = opacity;
+            if (isVisible) {
+                if (!routeLayerGroup.hasLayer(marker)) {
+                    routeLayerGroup.addLayer(marker);
+                }
+            } else {
+                routeLayerGroup.removeLayer(marker);
+            }
         });
+    });
+
+    // Remove vehicle markers for hidden routes immediately
+    vehicleMarkers.forEach((marker, vehicleId) => {
+        const vehicle = marker._vehicleData; // stored on marker during creation
+        if (vehicle && !visibleRoutes.has(vehicle.routeId)) {
+            map.removeLayer(marker);
+            vehicleMarkers.delete(vehicleId);
+        }
     });
 }
 
