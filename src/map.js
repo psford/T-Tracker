@@ -300,7 +300,7 @@ export function syncVehicleMarkers(vehiclesMap) {
 export async function loadRoutes() {
     try {
         const apiUrl = new URL(`${config.api.baseUrl}/routes`);
-        apiUrl.searchParams.append('filter[type]', '0,3'); // Light Rail (0) and Bus (3)
+        apiUrl.searchParams.append('filter[type]', '0,1,2,3'); // Light Rail (0), Heavy Rail (1), Commuter Rail (2), Bus (3)
         apiUrl.searchParams.append('include', 'route_patterns.representative_trip.shape');
         apiUrl.searchParams.append('api_key', config.api.key);
 
