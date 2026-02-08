@@ -3,9 +3,9 @@
 Last verified: 2026-02-08
 
 ## Purpose
-Eight ES6 modules that separate data acquisition (SSE), state management (interpolation),
+Nine ES6 modules that separate data acquisition (SSE), state management (interpolation),
 rendering (Leaflet markers/polylines), user controls (route filtering), polyline decoding,
-route organization, and popup content formatting.
+route organization, popup content formatting, and vehicle icon data.
 
 ## Data Flow
 ```
