@@ -129,9 +129,8 @@ function getPopupContent(vehicle) {
  */
 function createVehicleDivIcon(vehicle) {
     const iconHtml = getVehicleIconHtml(vehicle);
-    const size = 24;
-    const iconSize = [size, size];
-    const iconAnchor = [size / 2, size / 2];
+    const iconSize = [48, 32];
+    const iconAnchor = [24, 16];
 
     return L.divIcon({
         html: iconHtml,
