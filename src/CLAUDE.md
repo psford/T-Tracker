@@ -49,10 +49,11 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Expects**: Leaflet `L` global available. `config.map.*`, `config.tiles.*` set.
 
 ### vehicle-math.js -- Pure Math
-- **Exposes**: `lerp(a, b, t)`, `easeOutCubic(t)`, `lerpAngle(a, b, t)`, `haversineDistance(lat1, lon1, lat2, lon2)`
+- **Exposes**: `lerp(a, b, t)`, `easeOutCubic(t)`, `lerpAngle(a, b, t)`, `haversineDistance(lat1, lon1, lat2, lon2)`, `darkenHexColor(hex, amount)`
 - **Guarantees**: Pure functions, no side effects. `lerpAngle` always returns [0, 360).
   `haversineDistance` returns meters.
-- **Expects**: Numeric inputs
+  `darkenHexColor` darkens a hex color by reducing each RGB channel by the specified amount (0-1).
+- **Expects**: Numeric inputs for math functions. Hex color string and amount (0-1) for `darkenHexColor`.
 
 ### ui.js -- Route Selection Panel
 - **Exposes**: `initUI(routeMetadata, onVisibilityChange)`

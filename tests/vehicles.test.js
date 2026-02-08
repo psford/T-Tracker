@@ -90,7 +90,7 @@ function testDarkenHexColor() {
     const darkRedResult = darkenHexColor('#DA291C', 0.15);
     const darkRedLower = darkRedResult.toLowerCase();
     // Original: #DA291C = (218, 41, 28)
-    // Darkened 15%: (218*0.85, 41*0.85, 28*0.85) ≈ (185, 34, 23) = #B92217
+    // Darkened 15%: (218*0.85, 41*0.85, 28*0.85) = (185, 35, 24) = #B92318
     assert(darkRedLower !== '#da291c', 'darkenHexColor should darken the color');
 
     // Verify it produces a hex string

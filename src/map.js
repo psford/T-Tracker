@@ -373,7 +373,7 @@ export async function loadRoutes() {
                 const coords = decodePolyline(encodedPolyline);
                 const polyline = L.polyline(coords, {
                     color,
-                    weight: 4,
+                    weight: 3,
                     opacity: 0.9,
                 });
 
