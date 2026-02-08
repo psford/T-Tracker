@@ -6,75 +6,124 @@ import { groupAndSortRoutes } from '../src/route-sorter.js';
  * Test groupAndSortRoutes function
  */
 function testGroupAndSortRoutes() {
-    // Test with mixed Green Line and Bus routes
-    const metadata = [
-        { id: 'Green-D', color: '#00A551', shortName: 'D', type: 0 },
-        { id: '23', color: '#FFC72C', shortName: '23', type: 3 },
-        { id: 'Green-C', color: '#00A551', shortName: 'C', type: 0 },
-        { id: '1', color: '#FFC72C', shortName: '1', type: 3 },
-        { id: 'Green-B', color: '#00A551', shortName: 'B', type: 0 },
-        { id: '101', color: '#FFC72C', shortName: '101', type: 3 },
-        { id: 'Green-E', color: '#00A551', shortName: 'E', type: 0 },
-        { id: 'SL1', color: '#FF6600', shortName: 'SL1', type: 3 },
+    // Test 1: Full network with all three groups (Subway with subgroups, Bus, Commuter Rail)
+    // AC2.6, AC2.7, AC2.8, AC2.9
+    const fullMetadata = [
+        // Green Line (type 0)
+        { id: 'Green-D', color: '#00A551', shortName: 'D', longName: 'Green Line D Branch', type: 0 },
+        { id: 'Green-C', color: '#00A551', shortName: 'C', longName: 'Green Line C Branch', type: 0 },
+        { id: 'Green-B', color: '#00A551', shortName: 'B', longName: 'Green Line B Branch', type: 0 },
+        { id: 'Green-E', color: '#00A551', shortName: 'E', longName: 'Green Line E Branch', type: 0 },
+        // Heavy Rail (type 1): Red, Orange, Blue
+        { id: 'Red', color: '#DA291C', shortName: 'Red', longName: 'Red Line', type: 1 },
+        { id: 'Orange', color: '#ED8936', shortName: 'Orange', longName: 'Orange Line', type: 1 },
+        { id: 'Blue', color: '#003DA5', shortName: 'Blue', longName: 'Blue Line', type: 1 },
+        // Bus (type 3)
+        { id: '23', color: '#FFC72C', shortName: '23', longName: '23 - Ruby Street/Charles Street', type: 3 },
+        { id: '1', color: '#FFC72C', shortName: '1', longName: '1 - Harvard/Nubian via Mass. Ave.', type: 3 },
+        { id: '101', color: '#FFC72C', shortName: '101', longName: '101 - Dudley Station', type: 3 },
+        { id: 'SL1', color: '#FF6600', shortName: 'SL1', longName: 'Silver Line 1', type: 3 },
+        // Commuter Rail (type 2)
+        { id: 'CR-Worcester', color: '#80276C', shortName: 'CR-Worcester', longName: 'Worcester/Framingham Line', type: 2 },
+        { id: 'CR-Providence', color: '#80276C', shortName: 'CR-Providence', longName: 'Providence/Stoughton Line', type: 2 },
     ];
 
-    const result = groupAndSortRoutes(metadata);
+    const result = groupAndSortRoutes(fullMetadata);
 
-    // Should have 2 groups (Green Line and Bus)
-    assert.strictEqual(result.length, 2, 'Should have 2 groups (Green Line and Bus)');
+    // AC2.6: Should have 3 groups (Subway, Bus, Commuter Rail)
+    assert.strictEqual(result.length, 3, 'Should have 3 groups (Subway, Bus, Commuter Rail)');
 
-    // First group should be Green Line
-    assert.strictEqual(result[0].group, 'Green Line', 'First group should be Green Line');
-    assert.strictEqual(result[0].routes.length, 4, 'Green Line should have 4 routes');
+    // AC2.6 & AC2.7: First group should be Subway with subGroups for Green Line
+    assert.strictEqual(result[0].group, 'Subway', 'First group should be Subway');
+    assert.strictEqual(result[0].routes.length, 3, 'Subway routes should contain Red, Orange, Blue (3 routes)');
+    assert.strictEqual(result[0].subGroups !== undefined, true, 'Subway should have subGroups');
+    assert.strictEqual(result[0].subGroups.length, 1, 'Subway should have 1 subgroup (Green Line)');
 
-    // Green Line routes should be sorted: B, C, D, E
-    const greenLineIds = result[0].routes.map((r) => r.id);
+    // AC2.7: Green Line subgroup should be nested correctly
+    assert.strictEqual(result[0].subGroups[0].group, 'Green Line', 'Nested group should be Green Line');
+    assert.strictEqual(result[0].subGroups[0].routes.length, 4, 'Green Line should have 4 routes (B, C, D, E)');
+
+    // Green Line branches should be sorted B, C, D, E
+    const greenLineIds = result[0].subGroups[0].routes.map((r) => r.id);
     assert.deepStrictEqual(greenLineIds, ['Green-B', 'Green-C', 'Green-D', 'Green-E'], 'Green Line should be sorted B, C, D, E');
 
-    // Second group should be Bus Routes
-    assert.strictEqual(result[1].group, 'Bus Routes', 'Second group should be Bus Routes');
-    assert.strictEqual(result[1].routes.length, 4, 'Bus Routes should have 4 routes');
+    // AC2.6: Heavy rail (Red, Orange, Blue) should be in main Subway routes (not in subGroups)
+    const heavyRailIds = result[0].routes.map((r) => r.id);
+    assert.deepStrictEqual(heavyRailIds, ['Red', 'Orange', 'Blue'], 'Heavy rail should be Red, Orange, Blue in fixed order');
 
-    // Bus routes should be sorted: numeric first (1, 23, 101), then alpha (SL1)
-    const busRoutes = result[1].routes;
-    assert.strictEqual(busRoutes[0].shortName, '1', 'First bus route should be numeric 1');
-    assert.strictEqual(busRoutes[1].shortName, '23', 'Second bus route should be numeric 23');
-    assert.strictEqual(busRoutes[2].shortName, '101', 'Third bus route should be numeric 101');
-    assert.strictEqual(busRoutes[3].shortName, 'SL1', 'Fourth bus route should be alpha SL1');
+    // AC2.8: Second group should be Bus, sorted numerically then alphanumerically
+    assert.strictEqual(result[1].group, 'Bus', 'Second group should be Bus');
+    assert.strictEqual(result[1].routes.length, 4, 'Bus should have 4 routes');
+    assert.strictEqual(result[1].subGroups === undefined, true, 'Bus group should not have subGroups');
 
-    // Test with only Green Line routes
-    const greenOnly = [
-        { id: 'Green-E', color: '#00A551', shortName: 'E', type: 0 },
-        { id: 'Green-B', color: '#00A551', shortName: 'B', type: 0 },
+    const busShortNames = result[1].routes.map((r) => r.shortName);
+    assert.deepStrictEqual(busShortNames, ['1', '23', '101', 'SL1'], 'Bus routes should be sorted: numeric (1, 23, 101), then alpha (SL1)');
+
+    // AC2.9: Third group should be Commuter Rail, sorted alphabetically by longName
+    assert.strictEqual(result[2].group, 'Commuter Rail', 'Third group should be Commuter Rail');
+    assert.strictEqual(result[2].routes.length, 2, 'Commuter Rail should have 2 routes');
+    assert.strictEqual(result[2].subGroups === undefined, true, 'Commuter Rail group should not have subGroups');
+
+    const crLongNames = result[2].routes.map((r) => r.longName);
+    assert.deepStrictEqual(crLongNames, ['Providence/Stoughton Line', 'Worcester/Framingham Line'], 'Commuter Rail should be sorted alphabetically by longName');
+
+    // Test 2: Only subway routes (Green Line + Heavy Rail)
+    const subwayOnly = [
+        { id: 'Green-E', color: '#00A551', shortName: 'E', longName: 'Green Line E Branch', type: 0 },
+        { id: 'Green-B', color: '#00A551', shortName: 'B', longName: 'Green Line B Branch', type: 0 },
+        { id: 'Red', color: '#DA291C', shortName: 'Red', longName: 'Red Line', type: 1 },
     ];
-    const result2 = groupAndSortRoutes(greenOnly);
-    assert.strictEqual(result2.length, 1, 'Should have 1 group (Green Line only)');
-    assert.strictEqual(result2[0].group, 'Green Line', 'Group should be Green Line');
-    assert.deepStrictEqual(
-        result2[0].routes.map((r) => r.id),
-        ['Green-B', 'Green-E'],
-        'Green Line should be sorted B, E'
-    );
+    const result2 = groupAndSortRoutes(subwayOnly);
+    assert.strictEqual(result2.length, 1, 'Should have 1 group (Subway only)');
+    assert.strictEqual(result2[0].group, 'Subway', 'Group should be Subway');
+    assert.strictEqual(result2[0].routes.length, 1, 'Subway routes should have Red only');
+    assert.strictEqual(result2[0].subGroups.length, 1, 'Subway should have Green Line subgroup');
 
-    // Test with only Bus routes
+    // Test 3: Only bus routes
     const busOnly = [
-        { id: '50', color: '#FFC72C', shortName: '50', type: 3 },
-        { id: 'CT1', color: '#FFC72C', shortName: 'CT1', type: 3 },
-        { id: '5', color: '#FFC72C', shortName: '5', type: 3 },
+        { id: '50', color: '#FFC72C', shortName: '50', longName: '50 - Cleary Square', type: 3 },
+        { id: 'CT1', color: '#FFC72C', shortName: 'CT1', longName: 'Crosstown 1', type: 3 },
+        { id: '5', color: '#FFC72C', shortName: '5', longName: '5 - Riverway', type: 3 },
     ];
     const result3 = groupAndSortRoutes(busOnly);
-    assert.strictEqual(result3.length, 1, 'Should have 1 group (Bus Routes only)');
-    assert.strictEqual(result3[0].group, 'Bus Routes', 'Group should be Bus Routes');
-    // Numeric: 5, 50; then alpha: CT1
+    assert.strictEqual(result3.length, 1, 'Should have 1 group (Bus only)');
+    assert.strictEqual(result3[0].group, 'Bus', 'Group should be Bus');
+    assert.strictEqual(result3[0].routes.length, 3, 'Bus should have 3 routes');
+    assert.strictEqual(result3[0].subGroups === undefined, true, 'Bus group should not have subGroups');
     assert.deepStrictEqual(
         result3[0].routes.map((r) => r.shortName),
         ['5', '50', 'CT1'],
         'Bus routes should be sorted: numeric (5, 50), then alpha (CT1)'
     );
 
-    // Test empty array
-    const result4 = groupAndSortRoutes([]);
-    assert.strictEqual(result4.length, 0, 'Empty array should return empty groups');
+    // Test 4: Only commuter rail
+    const crOnly = [
+        { id: 'CR-Worcester', color: '#80276C', shortName: 'CR-Worcester', longName: 'Worcester/Framingham Line', type: 2 },
+        { id: 'CR-Providence', color: '#80276C', shortName: 'CR-Providence', longName: 'Providence/Stoughton Line', type: 2 },
+        { id: 'CR-Franklin', color: '#80276C', shortName: 'CR-Franklin', longName: 'Franklin Line', type: 2 },
+    ];
+    const result4 = groupAndSortRoutes(crOnly);
+    assert.strictEqual(result4.length, 1, 'Should have 1 group (Commuter Rail only)');
+    assert.strictEqual(result4[0].group, 'Commuter Rail', 'Group should be Commuter Rail');
+    assert.strictEqual(result4[0].routes.length, 3, 'Commuter Rail should have 3 routes');
+    const crNames = result4[0].routes.map((r) => r.longName);
+    assert.deepStrictEqual(crNames, ['Franklin Line', 'Providence/Stoughton Line', 'Worcester/Framingham Line'], 'Commuter Rail should be sorted alphabetically by longName');
+
+    // Test 5: Empty array
+    const result5 = groupAndSortRoutes([]);
+    assert.strictEqual(result5.length, 0, 'Empty array should return empty groups');
+
+    // Test 6: Subway without Green Line (only Heavy Rail)
+    const heavyRailOnly = [
+        { id: 'Red', color: '#DA291C', shortName: 'Red', longName: 'Red Line', type: 1 },
+        { id: 'Orange', color: '#ED8936', shortName: 'Orange', longName: 'Orange Line', type: 1 },
+        { id: 'Blue', color: '#003DA5', shortName: 'Blue', longName: 'Blue Line', type: 1 },
+    ];
+    const result6 = groupAndSortRoutes(heavyRailOnly);
+    assert.strictEqual(result6.length, 1, 'Should have 1 group (Subway only)');
+    assert.strictEqual(result6[0].group, 'Subway', 'Group should be Subway');
+    assert.strictEqual(result6[0].routes.length, 3, 'Subway should have 3 routes');
+    assert.strictEqual(result6[0].subGroups === undefined, true, 'Subway should not have subGroups when no Green Line');
 
     console.log('✓ groupAndSortRoutes tests passed');
 }
