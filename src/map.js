@@ -71,6 +71,11 @@ export function getMap() {
     return map;
 }
 
+// Fallback SVG polygon if icon data is missing (icons.AC6.6)
+// Scaled from original arrow (12,2 22,20 12,16 2,20) in 24x24 viewBox
+// to fit 0 0 48 32 viewBox: 2x horizontal, 1.333x vertical
+const ARROW_FALLBACK = '<polygon points="24,3 44,27 24,21 4,27" fill="currentColor" />';
+
 /**
  * Returns HTML string for vehicle marker icon based on vehicle type.
  * Determines vehicle type from routeTypeMap (populated from MBTA route metadata):
@@ -97,7 +102,7 @@ export function getVehicleIconHtml(vehicle) {
     }
 
     const routeColor = routeColorMap.get(vehicle.routeId) || '#888888';
-    const iconSvg = VEHICLE_ICONS[routeType] || DEFAULT_ICON;
+    const iconSvg = VEHICLE_ICONS[routeType] || DEFAULT_ICON || ARROW_FALLBACK;
 
     // Inline SVG with type-specific icon from vehicle-icons module
     return `<div class="vehicle-marker ${markerClass}" style="--route-color: ${routeColor}; color: ${routeColor}">
