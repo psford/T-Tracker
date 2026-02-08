@@ -95,4 +95,4 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - api.js is the only module that talks to MBTA API
 - All MBTA JSON:API parsing happens at the api.js boundary (downstream modules receive flat objects)
 - vehicles.js owns the canonical vehicle state Map; map.js only renders from it
-- config.js is the single source for all tunable parameters
+- config.js is the single source for all tunable parameters (exception: default visibility is derived from service type in ui.js, not config)
