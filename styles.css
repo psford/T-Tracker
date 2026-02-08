@@ -94,19 +94,50 @@ html, body {
     gap: 4px;
 }
 
-.route-group-heading {
-    font-size: 11px;
-    font-weight: 700;
-    color: #7b8da1;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-top: 8px;
-    margin-bottom: 2px;
-    padding: 0 6px;
+/* Service type group container */
+.service-group {
+    margin-bottom: 4px;
 }
 
-.route-group-heading:first-child {
-    margin-top: 0;
+/* Master toggle header row */
+.service-group__header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #7b8da1;
+}
+
+.service-group__header:hover {
+    background: rgba(15, 52, 96, 0.5);
+}
+
+/* Children container — holds route items */
+.service-group__children {
+    padding-left: 8px;
+}
+
+/* Collapsed state — hide children */
+.service-group__children--collapsed {
+    display: none;
+}
+
+/* Sub-group heading (e.g., "Green Line" within Subway) */
+.route-subgroup-heading {
+    font-size: 10px;
+    font-weight: 600;
+    color: #6b7d91;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-top: 4px;
+    margin-bottom: 2px;
+    padding: 0 6px;
 }
 
 .route-item {
@@ -186,6 +217,11 @@ html, body {
     .route-item {
         padding: 10px 12px;
         min-height: 44px; /* Touch-friendly minimum */
+    }
+
+    .service-group__header {
+        padding: 10px 12px;
+        min-height: 44px;
     }
 
     .drawer-toggle {
