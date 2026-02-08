@@ -95,12 +95,14 @@ export function getVehicleIconHtml(vehicle) {
     } else {
         markerClass = 'vehicle-marker--bus';
     }
-    const routeColor = routeColorMap.get(vehicle.routeId) || '#888888';
 
-    // Inline SVG with direct fill color
-    return `<div class="vehicle-marker ${markerClass}" style="--route-color: ${routeColor}">
-        <svg class="vehicle-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <polygon points="12,2 22,20 12,16 2,20" fill="${routeColor}" />
+    const routeColor = routeColorMap.get(vehicle.routeId) || '#888888';
+    const iconSvg = VEHICLE_ICONS[routeType] || DEFAULT_ICON;
+
+    // Inline SVG with type-specific icon from vehicle-icons module
+    return `<div class="vehicle-marker ${markerClass}" style="--route-color: ${routeColor}; color: ${routeColor}">
+        <svg class="vehicle-icon" viewBox="0 0 48 32" xmlns="http://www.w3.org/2000/svg">
+            ${iconSvg}
         </svg>
     </div>`;
 }
