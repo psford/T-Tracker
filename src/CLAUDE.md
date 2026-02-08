@@ -69,15 +69,18 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 
 ### route-sorter.js -- Route Sorting and Grouping
 - **Exposes**: `groupAndSortRoutes(routes)`
-- **Guarantees**: Pure function. Returns routes organized into groups with sorting:
-  Green Line branches (B, C, D, E) sorted alphabetically first,
-  then bus routes sorted numerically (1, 2, ...) then alphanumerically (CT1, ...).
-- **Expects**: Array of route objects with {id, shortName, color, type} properties
+- **Guarantees**: Pure function. Returns routes organized into three top-level groups with sorting:
+  Subway (types 0 + 1): Red, Orange, Blue in fixed order in main routes array, with Green Line
+  branches (B, C, D, E) sorted alphabetically in a nested subGroup. Bus (type 3): sorted
+  numerically (1, 2, ...) then alphanumerically (CT1, ...). Commuter Rail (type 2): sorted
+  alphabetically by longName. Return shape: `Array<{group, routes, subGroups?}>` where subGroups
+  is an optional array of `{group, routes}` for nested groups (Green Line within Subway).
+- **Expects**: Array of route objects with {id, shortName, longName, color, type} properties
 
 ### vehicle-popup.js -- Popup Content Formatting
 - **Exposes**: `formatVehiclePopup(vehicle, stopName, routeMeta)`, `formatStatus(currentStatus, stopName)`, `formatSpeed(speedMs)`, `formatTimeAgo(updatedAt)`
-- **Guarantees**: Pure functions, no side effects. Returns HTML strings. Gracefully handles null/missing data (omits sections rather than showing empty/broken content). Speed converted from m/s to mph.
-- **Expects**: Vehicle object with {label, routeId, currentStatus, directionId, speed, updatedAt}. Stop name as string or null. Route metadata as {shortName, color} or null.
+- **Guarantees**: Pure functions, no side effects. Returns HTML strings. Gracefully handles null/missing data (omits sections rather than showing empty/broken content). Speed converted from m/s to mph. Commuter rail (type 2) displays longName; subway and bus display shortName for conciseness.
+- **Expects**: Vehicle object with {label, routeId, currentStatus, directionId, speed, updatedAt}. Stop name as string or null. Route metadata as {shortName, longName, color, type} or null.
 
 ## Key Decisions
 - Event-driven (CustomEvent/EventTarget) over direct function calls: enables multiple subscribers
