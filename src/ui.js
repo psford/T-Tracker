@@ -1,5 +1,4 @@
 // src/ui.js — Route selection control panel UI
-import { config } from '../config.js';
 import { groupAndSortRoutes } from './route-sorter.js';
 
 const STORAGE_KEY = 'ttracker-visible-routes';
@@ -57,7 +56,7 @@ function readServiceToggles() {
     }
     try {
         const obj = JSON.parse(stored);
-        if (typeof obj !== 'object' || obj === null) {
+        if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
             return null;
         }
         return obj;
@@ -112,7 +111,7 @@ function isMobileViewport() {
 /**
  * Initializes the route selection UI in the #controls container.
  * Builds a control panel with three-tier collapsible checkboxes (service groups, routes, subgroups).
- * Restores selection from localStorage (or uses config defaults if no saved state).
+ * Restores selection from localStorage (or uses service type defaults if no saved state: Subway on, Bus/Commuter Rail off).
  * Calls onVisibilityChange with the initial visible set and on every checkbox change.
  *
  * On mobile: creates a drawer that slides in from the right with a toggle button and backdrop.

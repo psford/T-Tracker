@@ -58,8 +58,9 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 ### ui.js -- Route Selection Panel
 - **Exposes**: `initUI(routeMetadata, onVisibilityChange)`
 - **Guarantees**: Populates #controls with checkboxes grouped in three-tier hierarchy: Subway (heavy rail + Green Line branches), Bus, Commuter Rail.
-  Persists selections to localStorage (key: `ttracker-visible-routes`).
-  Restores from localStorage on load, falls back to config defaults.
+  Persists service toggle states to localStorage (key: `ttracker-service-toggles`) and individual route selections to localStorage (key: `ttracker-visible-routes`).
+  First-visit defaults: Subway on, Bus off, Commuter Rail off (derived from metadata, not config).
+  Returning-visit behavior: restores stored state, silently drops removed routes, adds new routes as visible if their service type is enabled.
   Mobile (<768px): slide-in drawer with backdrop. Desktop: static panel.
 - **Expects**: `#controls` element in DOM. Route metadata from `getRouteMetadata()`.
 
