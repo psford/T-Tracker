@@ -20,15 +20,7 @@ export const config = {
         maxZoom: 20,
     },
     routes: {
-        defaultHighlighted: ['Green-E'],
-    },
-    routeStyles: {
-        normal: { weight: 2, opacity: 0.15 },
-        highlighted: { weight: 5, opacity: 0.9 },
-    },
-    markerSize: {
-        normal: 24,
-        highlighted: 28,
+        defaultVisible: ['Green-B', 'Green-C', 'Green-D', 'Green-E', 'Red', 'Orange', 'Blue'],
     },
     animation: {
         interpolationDuration: 800,
