@@ -2,6 +2,7 @@
 import { config } from '../config.js';
 import { decodePolyline } from './polyline.js';
 import { formatVehiclePopup } from './vehicle-popup.js';
+import { darkenHexColor } from './vehicle-math.js';
 
 let map = null;
 
@@ -316,10 +317,16 @@ export async function loadRoutes() {
         // Process each route
         routes.forEach((route) => {
             const routeId = route.id;
-            const color = route.attributes.color ? `#${route.attributes.color}` : '#888888';
+            let color = route.attributes.color ? `#${route.attributes.color}` : '#888888';
             const shortName = route.attributes.short_name || routeId;
             const longName = route.attributes.long_name || '';
             const type = route.attributes.type;
+
+            // Darken heavy rail and commuter rail colors for dark map theme
+            // Green Line (type 0) and Bus (type 3) already theme-appropriate
+            if (type === 1 || type === 2) {
+                color = darkenHexColor(color, 0.15);
+            }
 
             // Store route metadata
             routeMetadata.push({
@@ -440,11 +447,27 @@ export function getRouteMetadata() {
 }
 
 /**
+ * Calculates adaptive polyline weight based on number of visible routes.
+ * Balances visibility across varying network density:
+ * - 1-4 routes: ~5px (small network, thick lines for clarity)
+ * - 5-15 routes: ~3px (medium network, moderate thickness)
+ * - 16+ routes: ~2px (dense network, thin lines to avoid clutter)
+ *
+ * @param {number} visibleCount — number of currently visible routes
+ * @returns {number} — polyline weight in pixels
+ */
+function getAdaptiveWeight(visibleCount) {
+    if (visibleCount <= 4) return 5;
+    if (visibleCount <= 15) return 3;
+    return 2;
+}
+
+/**
  * Updates the set of visible routes and applies show/hide to polylines, labels, and vehicle markers.
  * Called when user selects/deselects routes in the UI.
  *
  * For each route in routePolylines:
- * - If routeIds contains the route: show polyline with uniform weight, add labels to map
+ * - If routeIds contains the route: show polyline with adaptive weight, add labels to map
  * - Otherwise: remove polyline and labels from map
  *
  * Also immediately removes vehicle markers for hidden routes.
@@ -454,8 +477,10 @@ export function getRouteMetadata() {
 export function setVisibleRoutes(routeIds) {
     visibleRoutes = new Set(routeIds);
 
-    // Show/hide polylines with uniform weight
-    const weight = 4; // Placeholder — Phase 5 replaces with adaptive weight
+    // Calculate adaptive weight based on visible route count
+    const weight = getAdaptiveWeight(visibleRoutes.size);
+
+    // Show/hide polylines with adaptive weight
     routePolylines.forEach((polylines, routeId) => {
         const isVisible = visibleRoutes.has(routeId);
         polylines.forEach((polyline) => {
