@@ -83,6 +83,32 @@ function testHaversineDistance() {
 }
 
 /**
+ * Parse hex color string to RGB object
+ * Helper for color distinctness testing
+ */
+function parseHexColor(hex) {
+    return {
+        r: parseInt(hex.slice(1, 3), 16),
+        g: parseInt(hex.slice(3, 5), 16),
+        b: parseInt(hex.slice(5, 7), 16)
+    };
+}
+
+/**
+ * Check if two RGB colors differ by at least minDelta in at least one channel
+ */
+function colorsDistinct(hex1, hex2, minDelta = 30) {
+    const c1 = parseHexColor(hex1);
+    const c2 = parseHexColor(hex2);
+
+    const rDiff = Math.abs(c1.r - c2.r);
+    const gDiff = Math.abs(c1.g - c2.g);
+    const bDiff = Math.abs(c1.b - c2.b);
+
+    return rDiff >= minDelta || gDiff >= minDelta || bDiff >= minDelta;
+}
+
+/**
  * Test darkenHexColor function
  */
 function testDarkenHexColor() {
@@ -112,11 +138,32 @@ function testDarkenHexColor() {
     assert(darkBlueLower !== '#003da5', 'Blue should be darkened');
     assert(/^#[0-9a-f]{6}$/i.test(darkBlueResult), 'darkenHexColor should return valid hex string');
 
+    // AC4.5: Commuter Rail purple darkening — #80276C darkened by 15%
+    const darkPurpleResult = darkenHexColor('#80276C', 0.15);
+    const darkPurpleLower = darkPurpleResult.toLowerCase();
+    // Original: #80276C = (128, 39, 108)
+    // Darkened 15%: (128*0.85, 39*0.85, 108*0.85) ≈ (109, 33, 92) = #6d215c
+    assert(/^#[0-9a-f]{6}$/i.test(darkPurpleResult), 'darkenHexColor should return valid hex string for purple');
+    assert(darkPurpleLower !== '#80276c', 'Purple should be darkened');
+
     // AC4.8: Darkened colors should remain distinct from each other
-    // Red, Orange, Blue darkened should all be different from each other
-    assert(darkRedLower !== darkOrangeLower, 'Darkened red and orange should be distinct');
-    assert(darkRedLower !== darkBlueLower, 'Darkened red and blue should be distinct');
-    assert(darkOrangeLower !== darkBlueLower, 'Darkened orange and blue should be distinct');
+    // All four darkened colors (Red, Orange, Blue, Purple) must be visually distinct
+    // Each pair must differ by at least 30 in at least one RGB channel
+    const colorPairs = [
+        [darkRedLower, darkOrangeLower, 'red and orange'],
+        [darkRedLower, darkBlueLower, 'red and blue'],
+        [darkRedLower, darkPurpleLower, 'red and purple'],
+        [darkOrangeLower, darkBlueLower, 'orange and blue'],
+        [darkOrangeLower, darkPurpleLower, 'orange and purple'],
+        [darkBlueLower, darkPurpleLower, 'blue and purple']
+    ];
+
+    colorPairs.forEach(([hex1, hex2, label]) => {
+        assert(
+            colorsDistinct(hex1, hex2, 30),
+            `Darkened ${label} should differ by at least 30 in one RGB channel: ${hex1} vs ${hex2}`
+        );
+    });
 
     // Edge: amount=0 should return the same color (no change)
     const noChangeResult = darkenHexColor('#FFFFFF', 0).toLowerCase();
