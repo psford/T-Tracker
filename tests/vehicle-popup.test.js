@@ -258,6 +258,73 @@ function testFormatVehiclePopup() {
     );
     assert(result5.includes('15 mph'), 'Should still include speed');
 
+    // Test 6: Commuter Rail with longName — should show longName (Worcester/Framingham Line)
+    const vehicleCR = {
+        label: '101',
+        routeId: 'CR-Worcester',
+        currentStatus: 'IN_TRANSIT_TO',
+        directionId: 0,
+        speed: 15,
+        updatedAt: new Date(Date.now() - 30000).toISOString(),
+    };
+
+    const routeMetaCR = {
+        shortName: 'CR-Worcester',
+        longName: 'Worcester/Framingham Line',
+        color: '#80276C',
+        type: 2,
+    };
+
+    const result6 = formatVehiclePopup(vehicleCR, 'Union Station', routeMetaCR);
+
+    assert(result6.includes('Worcester/Framingham Line'), 'Should include longName for commuter rail');
+    assert(!result6.includes('CR-Worcester'), 'Should not include shortName (CR-Worcester) for commuter rail');
+    assert(result6.includes('101'), 'Should include vehicle label');
+
+    // Test 7: Subway with longName — should show shortName (Red), not longName (Red Line)
+    const vehicleSubway = {
+        label: '2104',
+        routeId: 'Red',
+        currentStatus: 'STOPPED_AT',
+        directionId: 1,
+        speed: null,
+        updatedAt: new Date(Date.now() - 5000).toISOString(),
+    };
+
+    const routeMetaSubway = {
+        shortName: 'Red',
+        longName: 'Red Line',
+        color: '#DA291C',
+        type: 1,
+    };
+
+    const result7 = formatVehiclePopup(vehicleSubway, 'Downtown Crossing', routeMetaSubway);
+
+    assert(result7.includes('<span class="vehicle-popup__route">Red</span>'), 'Should include shortName (Red) for subway');
+    assert(!result7.includes('Red Line'), 'Should not include longName (Red Line) for subway');
+
+    // Test 8: Bus with longName — should show shortName (1), not verbose longName
+    const vehicleBus = {
+        label: '3450',
+        routeId: '1',
+        currentStatus: 'INCOMING_AT',
+        directionId: 0,
+        speed: 8.9408,
+        updatedAt: new Date(Date.now() - 3000).toISOString(),
+    };
+
+    const routeMetaBus = {
+        shortName: '1',
+        longName: '1 - Harvard/Nubian via Mass. Ave.',
+        color: '#FFC72C',
+        type: 3,
+    };
+
+    const result8 = formatVehiclePopup(vehicleBus, 'Park Street', routeMetaBus);
+
+    assert(result8.includes('<span class="vehicle-popup__route">1</span>'), 'Should include shortName (1) for bus');
+    assert(!result8.includes('1 - Harvard/Nubian'), 'Should not include verbose longName for bus');
+
     console.log('✓ formatVehiclePopup tests passed');
 }
 

@@ -94,12 +94,21 @@ export function formatTimeAgo(updatedAt) {
  * Format complete vehicle popup HTML
  * @param {Object} vehicle - Vehicle object with {label, routeId, currentStatus, directionId, speed, updatedAt}
  * @param {string|null} stopName - Stop name or null (already resolved)
- * @param {Object|null} routeMeta - Route metadata {shortName, color} or null
+ * @param {Object|null} routeMeta - Route metadata {shortName, longName, color, type} or null
  * @returns {string} HTML string for popup content
  */
 export function formatVehiclePopup(vehicle, stopName, routeMeta) {
     // Extract route display properties
-    const routeName = escapeHtml(routeMeta?.shortName || vehicle.routeId);
+    // For commuter rail (type 2), use longName for better context (e.g., "Worcester/Framingham Line")
+    // For subway and bus, use shortName for conciseness ("Red", "1" is better than "Red Line" or verbose bus name)
+    let routeName;
+    if (routeMeta?.type === 2) {
+        // Commuter Rail: "Worcester/Framingham Line" is clearer than "CR-Worcester"
+        routeName = escapeHtml(routeMeta?.longName || routeMeta?.shortName || vehicle.routeId);
+    } else {
+        // Subway and Bus: shortName ("Red", "1") is more concise
+        routeName = escapeHtml(routeMeta?.shortName || vehicle.routeId);
+    }
     const routeColor = routeMeta?.color || '#888888';
 
     // Build header with color swatch, route name, and vehicle label
