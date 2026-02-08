@@ -2,7 +2,7 @@
 import { config } from '../config.js';
 import { decodePolyline } from './polyline.js';
 import { formatVehiclePopup } from './vehicle-popup.js';
-import { darkenHexColor } from './vehicle-math.js';
+import { darkenHexColor, bearingToTransform } from './vehicle-math.js';
 import { VEHICLE_ICONS, DEFAULT_ICON } from './vehicle-icons.js';
 
 let map = null;
@@ -177,7 +177,8 @@ export function createVehicleMarker(vehicle) {
     // Apply initial rotation and opacity
     const iconElement = marker.getElement().querySelector('.vehicle-marker');
     if (iconElement) {
-        iconElement.style.transform = `rotate(${vehicle.bearing}deg)`;
+        const { rotate, scaleX } = bearingToTransform(vehicle.bearing);
+        iconElement.style.transform = `scaleX(${scaleX}) rotate(${rotate}deg)`;
         iconElement.style.opacity = vehicle.opacity;
     }
 
@@ -204,7 +205,8 @@ export function updateVehicleMarker(vehicle) {
     // Update rotation and opacity
     const iconElement = marker.getElement().querySelector('.vehicle-marker');
     if (iconElement) {
-        iconElement.style.transform = `rotate(${vehicle.bearing}deg)`;
+        const { rotate, scaleX } = bearingToTransform(vehicle.bearing);
+        iconElement.style.transform = `scaleX(${scaleX}) rotate(${rotate}deg)`;
         iconElement.style.opacity = vehicle.opacity;
     }
 }
