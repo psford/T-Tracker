@@ -49,11 +49,12 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Expects**: Leaflet `L` global available. `config.map.*`, `config.tiles.*` set.
 
 ### vehicle-math.js -- Pure Math
-- **Exposes**: `lerp(a, b, t)`, `easeOutCubic(t)`, `lerpAngle(a, b, t)`, `haversineDistance(lat1, lon1, lat2, lon2)`, `darkenHexColor(hex, amount)`
+- **Exposes**: `lerp(a, b, t)`, `easeOutCubic(t)`, `lerpAngle(a, b, t)`, `haversineDistance(lat1, lon1, lat2, lon2)`, `darkenHexColor(hex, amount)`, `bearingToTransform(bearing)`
 - **Guarantees**: Pure functions, no side effects. `lerpAngle` always returns [0, 360).
   `haversineDistance` returns meters.
   `darkenHexColor` darkens a hex color by reducing each RGB channel by the specified amount (0-1).
-- **Expects**: Numeric inputs for math functions. Hex color string and amount (0-1) for `darkenHexColor`.
+  `bearingToTransform` converts compass bearing (0-360) to CSS transform values {rotate, scaleX} for directional vehicle icons; returns {rotate: 0, scaleX: 1} for null/undefined bearing.
+- **Expects**: Numeric inputs for math functions. Hex color string and amount (0-1) for `darkenHexColor`. Number|null|undefined for `bearingToTransform` bearing input.
 
 ### ui.js -- Route Selection Panel
 - **Exposes**: `initUI(routeMetadata, onVisibilityChange)`
