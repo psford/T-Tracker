@@ -165,19 +165,6 @@ html, body {
     color: #c0c0d0;
 }
 
-/* Highlighted vehicle marker styles (AC4.6, AC4.7) */
-/* Note: width and height are controlled by createVehicleDivIcon() via Leaflet's iconSize property,
-   which applies inline styles (higher specificity than CSS classes). No !important needed. */
-.vehicle-marker--highlighted .vehicle-icon {
-    filter: drop-shadow(0 0 6px var(--route-color));
-    animation: pulse-glow 2s ease-in-out infinite;
-}
-
-@keyframes pulse-glow {
-    0%, 100% { filter: drop-shadow(0 0 4px var(--route-color)); }
-    50% { filter: drop-shadow(0 0 10px var(--route-color)); }
-}
-
 /* Mobile: drawer behavior */
 @media (max-width: 767px) {
     .control-panel {
