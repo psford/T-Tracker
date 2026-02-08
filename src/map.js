@@ -492,7 +492,7 @@ export function setHighlightedRoutes(routeIds) {
 
 /**
  * Fetches stops from MBTA API and caches them for session.
- * Filters by route_type 0 (Light Rail) and 3 (Bus).
+ * Filters by route_type 0 (Light Rail), 1 (Heavy Rail), 2 (Commuter Rail), and 3 (Bus).
  * Parses JSON:API response and stores stop data keyed by stop ID.
  *
  * Graceful degradation: if fetch fails, app continues without stop data.
@@ -500,7 +500,7 @@ export function setHighlightedRoutes(routeIds) {
 export async function loadStops() {
     try {
         const apiUrl = new URL(`${config.api.baseUrl}/stops`);
-        apiUrl.searchParams.append('filter[route_type]', '0,3'); // Light Rail (0) and Bus (3)
+        apiUrl.searchParams.append('filter[route_type]', '0,1,2,3'); // Light Rail (0), Heavy Rail (1), Commuter Rail (2), Bus (3)
         apiUrl.searchParams.append('api_key', config.api.key);
 
         const response = await fetch(apiUrl.toString());
