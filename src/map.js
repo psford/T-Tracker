@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { decodePolyline } from './polyline.js';
 import { formatVehiclePopup } from './vehicle-popup.js';
 import { darkenHexColor } from './vehicle-math.js';
+import { VEHICLE_ICONS, DEFAULT_ICON } from './vehicle-icons.js';
 
 let map = null;
 
