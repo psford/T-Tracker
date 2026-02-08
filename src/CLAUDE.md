@@ -1,6 +1,6 @@
 # T-Tracker Source Modules
 
-Last verified: 2026-02-07 (updated for vehicle-popup.js)
+Last verified: 2026-02-07 (updated for visibility model contracts)
 
 ## Purpose
 Eight ES6 modules that separate data acquisition (SSE), state management (interpolation),
@@ -38,12 +38,13 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 
 ### map.js -- Leaflet Rendering
 - **Exposes**: `initMap(containerId)`, `loadRoutes()`, `loadStops()`,
-  `syncVehicleMarkers(vehiclesMap)`, `getRouteMetadata()`, `setHighlightedRoutes(routeIds)`,
+  `syncVehicleMarkers(vehiclesMap)`, `getRouteMetadata()`, `setVisibleRoutes(routeIds)`,
   `getStopData()`
 - **Guarantees**: Route polylines render below vehicle markers (layer ordering).
-  Marker icons reflect highlight state (size 24px normal, 28px highlighted).
-  Route colors from MBTA API applied to polylines and marker glow.
-  Vehicle popups bound to markers on creation. Desktop: hover opens, mouseout closes. Mobile: tap opens.
+  Visible routes render polylines and vehicle markers at uniform 24px size.
+  Hidden routes have no polylines or markers on map. Vehicle markers uniform across all visible routes (no size distinction).
+  Route colors from MBTA API applied to polylines. Vehicle popups bound to markers on creation.
+  Desktop: hover opens, mouseout closes. Mobile: tap opens.
   Popup content refreshes when popup is open and vehicle data changes (throttled by updatedAt comparison).
 - **Expects**: Leaflet `L` global available. `config.map.*`, `config.tiles.*` set.
 
@@ -54,9 +55,9 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Expects**: Numeric inputs
 
 ### ui.js -- Route Selection Panel
-- **Exposes**: `initUI(routeMetadata, onHighlightChange)`
-- **Guarantees**: Populates #controls with checkboxes grouped by Green Line / Bus.
-  Persists selections to localStorage (key: `ttracker-highlighted-routes`).
+- **Exposes**: `initUI(routeMetadata, onVisibilityChange)`
+- **Guarantees**: Populates #controls with checkboxes grouped in three-tier hierarchy: Subway (heavy rail + Green Line branches), Bus, Commuter Rail.
+  Persists selections to localStorage (key: `ttracker-visible-routes`).
   Restores from localStorage on load, falls back to config defaults.
   Mobile (<768px): slide-in drawer with backdrop. Desktop: static panel.
 - **Expects**: `#controls` element in DOM. Route metadata from `getRouteMetadata()`.
@@ -69,18 +70,19 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 
 ### route-sorter.js -- Route Sorting and Grouping
 - **Exposes**: `groupAndSortRoutes(routes)`
-- **Guarantees**: Pure function. Returns routes organized into three top-level groups with sorting:
-  Subway (types 0 + 1): Red, Orange, Blue in fixed order in main routes array, with Green Line
-  branches (B, C, D, E) sorted alphabetically in a nested subGroup. Bus (type 3): sorted
-  numerically (1, 2, ...) then alphanumerically (CT1, ...). Commuter Rail (type 2): sorted
-  alphabetically by longName. Return shape: `Array<{group, routes, subGroups?}>` where subGroups
-  is an optional array of `{group, routes}` for nested groups (Green Line within Subway).
+- **Guarantees**: Pure function. Returns routes organized into three top-level groups:
+  (1) Subway (types 0 + 1): Heavy rail routes (Red, Orange, Blue) in fixed order, with optional subgroup
+  for Green Line branches (B, C, D, E) sorted alphabetically.
+  (2) Bus (type 3): Sorted numerically (1, 2, ...) then alphanumerically (CT1, ...).
+  (3) Commuter Rail (type 2): Sorted alphabetically by longName.
+  Return shape: `Array<{group: string, routes: Array<Object>, subGroups?: Array<{group: string, routes: Array<Object>}>}>`.
+  Each group only appears if it has routes.
 - **Expects**: Array of route objects with {id, shortName, longName, color, type} properties
 
 ### vehicle-popup.js -- Popup Content Formatting
 - **Exposes**: `formatVehiclePopup(vehicle, stopName, routeMeta)`, `formatStatus(currentStatus, stopName)`, `formatSpeed(speedMs)`, `formatTimeAgo(updatedAt)`
-- **Guarantees**: Pure functions, no side effects. Returns HTML strings. Gracefully handles null/missing data (omits sections rather than showing empty/broken content). Speed converted from m/s to mph. Commuter rail (type 2) displays longName; subway and bus display shortName for conciseness.
-- **Expects**: Vehicle object with {label, routeId, currentStatus, directionId, speed, updatedAt}. Stop name as string or null. Route metadata as {shortName, longName, color, type} or null.
+- **Guarantees**: Pure functions, no side effects. Returns HTML strings. Gracefully handles null/missing data (omits sections rather than showing empty/broken content). Speed converted from m/s to mph. Commuter rail (type 2) displays longName for context; subway and bus display shortName for conciseness.
+- **Expects**: Vehicle object with {label, routeId, currentStatus, directionId, speed, updatedAt}. Stop name as string or null. Route metadata as {type, shortName, longName, color} or null.
 
 ## Key Decisions
 - Event-driven (CustomEvent/EventTarget) over direct function calls: enables multiple subscribers
