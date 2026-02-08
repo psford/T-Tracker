@@ -1,6 +1,6 @@
 # T-Tracker Source Modules
 
-Last verified: 2026-02-07 (updated for visibility model contracts)
+Last verified: 2026-02-08
 
 ## Purpose
 Eight ES6 modules that separate data acquisition (SSE), state management (interpolation),
@@ -14,6 +14,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
                                        ui.js (configure)      polyline.js (decode)
                                           ^                      route-sorter.js
                                           (organize routes)   vehicle-popup.js (format)
+                                                              vehicle-icons.js (icon data)
 ```
 
 ## Contracts
@@ -41,8 +42,8 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   `syncVehicleMarkers(vehiclesMap)`, `getRouteMetadata()`, `setVisibleRoutes(routeIds)`,
   `getStopData()`
 - **Guarantees**: Route polylines render below vehicle markers (layer ordering).
-  Visible routes render polylines and vehicle markers at uniform 48x32 rectangular size.
-  Hidden routes have no polylines or markers on map. Vehicle markers uniform across all visible routes (no size distinction).
+  Visible routes render polylines and 48x32 vehicle icon markers with type-specific SVG silhouettes.
+  Hidden routes have no polylines or markers on map. Icons filled with route color, accented with fixed contrast details.
   Route colors from MBTA API applied to polylines. Vehicle popups bound to markers on creation.
   Desktop: hover opens, mouseout closes. Mobile: tap opens.
   Popup content refreshes when popup is open and vehicle data changes (throttled by updatedAt comparison).
@@ -55,6 +56,15 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   `darkenHexColor` darkens a hex color by reducing each RGB channel by the specified amount (0-1).
   `bearingToTransform` converts compass bearing (0-360) to CSS transform values {rotate, scaleX} for directional vehicle icons; returns {rotate: 0, scaleX: 1} for null/undefined bearing.
 - **Expects**: Numeric inputs for math functions. Hex color string and amount (0-1) for `darkenHexColor`. Number|null|undefined for `bearingToTransform` bearing input.
+
+### vehicle-icons.js -- Vehicle Icon SVG Data
+- **Exposes**: `VEHICLE_ICONS` (object), `DEFAULT_ICON` (string)
+- **Guarantees**: Pure data module, no logic, no dependencies, no imports.
+  `VEHICLE_ICONS` maps MBTA route type numbers (0-4) to SVG content strings.
+  Icons designed for viewBox `0 0 48 32`, facing right (east) by default.
+  Body shapes use `currentColor` for route color fill.
+  `DEFAULT_ICON` equals `VEHICLE_ICONS[3]` (bus) for unknown route types.
+- **Expects**: Nothing (pure data)
 
 ### ui.js -- Route Selection Panel
 - **Exposes**: `initUI(routeMetadata, onVisibilityChange)`
