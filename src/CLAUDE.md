@@ -41,7 +41,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   `syncVehicleMarkers(vehiclesMap)`, `getRouteMetadata()`, `setVisibleRoutes(routeIds)`,
   `getStopData()`
 - **Guarantees**: Route polylines render below vehicle markers (layer ordering).
-  Visible routes render polylines and vehicle markers at uniform 24px size.
+  Visible routes render polylines and vehicle markers at uniform 48x32 rectangular size.
   Hidden routes have no polylines or markers on map. Vehicle markers uniform across all visible routes (no size distinction).
   Route colors from MBTA API applied to polylines. Vehicle popups bound to markers on creation.
   Desktop: hover opens, mouseout closes. Mobile: tap opens.

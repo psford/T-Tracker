@@ -122,7 +122,7 @@ function getPopupContent(vehicle) {
 
 /**
  * Helper to create a divIcon for a vehicle.
- * Uses uniform size for all markers (24px).
+ * Uses uniform size for all markers (48x32 rectangular).
  *
  * @param {object} vehicle — vehicle object with routeId
  * @returns {L.DivIcon} — divIcon instance
