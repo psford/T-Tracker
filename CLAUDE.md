@@ -9,7 +9,7 @@ MBTA API (SSE) → api.js (parse + validate) → vehicles.js (interpolate + anim
                                                       ↓
                                                  vehicle-math.js (pure math)
                                                       ↓
-                                              map.js (render + highlight)
+                                              map.js (render + visibility)
                                                       ↑
                                                    ui.js (configure)
 ```
@@ -17,9 +17,9 @@ MBTA API (SSE) → api.js (parse + validate) → vehicles.js (interpolate + anim
 All data flows through dedicated modules with clear responsibilities:
 - `api.js`: JSON:API parsing, null validation, event emission
 - `vehicles.js`: State management, animation loop, viewport culling
-- `vehicle-math.js`: Pure math (lerp, easing, distance, angle interpolation)
+- `vehicle-math.js`: Pure math (lerp, easing, distance, angle interpolation, color manipulation)
 - `polyline.js`: Pure function for Google polyline decoding
-- `map.js`: Leaflet rendering, marker management, route highlighting
+- `map.js`: Leaflet rendering, marker management, route visibility filtering
 - `ui.js`: Route selection UI, localStorage persistence, grouping/sorting
 
 ## Tech Stack
@@ -53,7 +53,8 @@ All data flows through dedicated modules with clear responsibilities:
 ## Configuration
 - `config.js` holds API key, map settings, animation timing, route defaults
 - Gitignored (contains API key); copy `config.example.js` to create
-- Route highlighting defaults configurable without code changes
+- Default visibility derived from service type (Subway on, Bus/CR off on first visit)
+- `routes.defaultVisible` in config is vestigial; ui.js derives defaults from metadata
 - Animation thresholds (snap >100m, interpolation 800ms, fade 200ms)
 
 ## Boundaries

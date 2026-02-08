@@ -1,6 +1,6 @@
 # T-Tracker Source Modules
 
-Last verified: 2026-02-07 (updated for vehicle-popup.js)
+Last verified: 2026-02-07 (updated for visibility model contracts)
 
 ## Purpose
 Eight ES6 modules that separate data acquisition (SSE), state management (interpolation),
@@ -38,26 +38,29 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 
 ### map.js -- Leaflet Rendering
 - **Exposes**: `initMap(containerId)`, `loadRoutes()`, `loadStops()`,
-  `syncVehicleMarkers(vehiclesMap)`, `getRouteMetadata()`, `setHighlightedRoutes(routeIds)`,
+  `syncVehicleMarkers(vehiclesMap)`, `getRouteMetadata()`, `setVisibleRoutes(routeIds)`,
   `getStopData()`
 - **Guarantees**: Route polylines render below vehicle markers (layer ordering).
-  Marker icons reflect highlight state (size 24px normal, 28px highlighted).
-  Route colors from MBTA API applied to polylines and marker glow.
-  Vehicle popups bound to markers on creation. Desktop: hover opens, mouseout closes. Mobile: tap opens.
+  Visible routes render polylines and vehicle markers at uniform 24px size.
+  Hidden routes have no polylines or markers on map. Vehicle markers uniform across all visible routes (no size distinction).
+  Route colors from MBTA API applied to polylines. Vehicle popups bound to markers on creation.
+  Desktop: hover opens, mouseout closes. Mobile: tap opens.
   Popup content refreshes when popup is open and vehicle data changes (throttled by updatedAt comparison).
 - **Expects**: Leaflet `L` global available. `config.map.*`, `config.tiles.*` set.
 
 ### vehicle-math.js -- Pure Math
-- **Exposes**: `lerp(a, b, t)`, `easeOutCubic(t)`, `lerpAngle(a, b, t)`, `haversineDistance(lat1, lon1, lat2, lon2)`
+- **Exposes**: `lerp(a, b, t)`, `easeOutCubic(t)`, `lerpAngle(a, b, t)`, `haversineDistance(lat1, lon1, lat2, lon2)`, `darkenHexColor(hex, amount)`
 - **Guarantees**: Pure functions, no side effects. `lerpAngle` always returns [0, 360).
   `haversineDistance` returns meters.
-- **Expects**: Numeric inputs
+  `darkenHexColor` darkens a hex color by reducing each RGB channel by the specified amount (0-1).
+- **Expects**: Numeric inputs for math functions. Hex color string and amount (0-1) for `darkenHexColor`.
 
 ### ui.js -- Route Selection Panel
-- **Exposes**: `initUI(routeMetadata, onHighlightChange)`
-- **Guarantees**: Populates #controls with checkboxes grouped by Green Line / Bus.
-  Persists selections to localStorage (key: `ttracker-highlighted-routes`).
-  Restores from localStorage on load, falls back to config defaults.
+- **Exposes**: `initUI(routeMetadata, onVisibilityChange)`
+- **Guarantees**: Populates #controls with checkboxes grouped in three-tier hierarchy: Subway (heavy rail + Green Line branches), Bus, Commuter Rail.
+  Persists service toggle states to localStorage (key: `ttracker-service-toggles`) and individual route selections to localStorage (key: `ttracker-visible-routes`).
+  First-visit defaults: Subway on, Bus off, Commuter Rail off (derived from metadata, not config).
+  Returning-visit behavior: restores stored state, silently drops removed routes, adds new routes as visible if their service type is enabled.
   Mobile (<768px): slide-in drawer with backdrop. Desktop: static panel.
 - **Expects**: `#controls` element in DOM. Route metadata from `getRouteMetadata()`.
 
@@ -69,15 +72,19 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 
 ### route-sorter.js -- Route Sorting and Grouping
 - **Exposes**: `groupAndSortRoutes(routes)`
-- **Guarantees**: Pure function. Returns routes organized into groups with sorting:
-  Green Line branches (B, C, D, E) sorted alphabetically first,
-  then bus routes sorted numerically (1, 2, ...) then alphanumerically (CT1, ...).
-- **Expects**: Array of route objects with {id, shortName, color, type} properties
+- **Guarantees**: Pure function. Returns routes organized into three top-level groups:
+  (1) Subway (types 0 + 1): Heavy rail routes (Red, Orange, Blue) in fixed order, with optional subgroup
+  for Green Line branches (B, C, D, E) sorted alphabetically.
+  (2) Bus (type 3): Sorted numerically (1, 2, ...) then alphanumerically (CT1, ...).
+  (3) Commuter Rail (type 2): Sorted alphabetically by longName.
+  Return shape: `Array<{group: string, routes: Array<Object>, subGroups?: Array<{group: string, routes: Array<Object>}>}>`.
+  Each group only appears if it has routes.
+- **Expects**: Array of route objects with {id, shortName, longName, color, type} properties
 
 ### vehicle-popup.js -- Popup Content Formatting
 - **Exposes**: `formatVehiclePopup(vehicle, stopName, routeMeta)`, `formatStatus(currentStatus, stopName)`, `formatSpeed(speedMs)`, `formatTimeAgo(updatedAt)`
-- **Guarantees**: Pure functions, no side effects. Returns HTML strings. Gracefully handles null/missing data (omits sections rather than showing empty/broken content). Speed converted from m/s to mph.
-- **Expects**: Vehicle object with {label, routeId, currentStatus, directionId, speed, updatedAt}. Stop name as string or null. Route metadata as {shortName, color} or null.
+- **Guarantees**: Pure functions, no side effects. Returns HTML strings. Gracefully handles null/missing data (omits sections rather than showing empty/broken content). Speed converted from m/s to mph. Commuter rail (type 2) displays longName for context; subway and bus display shortName for conciseness.
+- **Expects**: Vehicle object with {label, routeId, currentStatus, directionId, speed, updatedAt}. Stop name as string or null. Route metadata as {type, shortName, longName, color} or null.
 
 ## Key Decisions
 - Event-driven (CustomEvent/EventTarget) over direct function calls: enables multiple subscribers
@@ -88,4 +95,4 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - api.js is the only module that talks to MBTA API
 - All MBTA JSON:API parsing happens at the api.js boundary (downstream modules receive flat objects)
 - vehicles.js owns the canonical vehicle state Map; map.js only renders from it
-- config.js is the single source for all tunable parameters
+- config.js is the single source for all tunable parameters (exception: default visibility is derived from service type in ui.js, not config)

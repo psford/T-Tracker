@@ -1,6 +1,7 @@
 // config.example.js — Configuration template
 // Copy to config.js and replace YOUR_API_KEY_HERE with your MBTA API key
 // Get a free key at https://api-v3.mbta.com
+// Streams: Light Rail (Green), Heavy Rail (Red/Orange/Blue), Commuter Rail, Bus
 export const config = {
     api: {
         key: 'YOUR_API_KEY_HERE',
@@ -19,15 +20,7 @@ export const config = {
         maxZoom: 20,
     },
     routes: {
-        defaultHighlighted: ['Green-E'],
-    },
-    routeStyles: {
-        normal: { weight: 2, opacity: 0.15 },
-        highlighted: { weight: 5, opacity: 0.9 },
-    },
-    markerSize: {
-        normal: 24,
-        highlighted: 28,
+        defaultVisible: ['Green-B', 'Green-C', 'Green-D', 'Green-E', 'Red', 'Orange', 'Blue'],
     },
     animation: {
         interpolationDuration: 800,

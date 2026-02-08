@@ -63,8 +63,8 @@ html, body {
     transition: opacity 200ms ease;
 }
 
-/* Vehicle marker color is now applied directly to SVG fill attribute in getVehicleIconHtml() */
-/* No CSS filters needed — glow animation on .vehicle-icon applies cleanly */
+/* Vehicle marker color is applied directly via SVG fill attribute in getVehicleIconHtml() */
+/* No pulsing glow animation — color applied directly without filters */
 
 /* Control panel styles (AC4) */
 .control-panel {
@@ -94,19 +94,50 @@ html, body {
     gap: 4px;
 }
 
-.route-group-heading {
-    font-size: 11px;
-    font-weight: 700;
-    color: #7b8da1;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-top: 8px;
-    margin-bottom: 2px;
-    padding: 0 6px;
+/* Service type group container */
+.service-group {
+    margin-bottom: 4px;
 }
 
-.route-group-heading:first-child {
-    margin-top: 0;
+/* Master toggle header row */
+.service-group__header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #7b8da1;
+}
+
+.service-group__header:hover {
+    background: rgba(15, 52, 96, 0.5);
+}
+
+/* Children container — holds route items */
+.service-group__children {
+    padding-left: 8px;
+}
+
+/* Collapsed state — hide children */
+.service-group__children--collapsed {
+    display: none;
+}
+
+/* Sub-group heading (e.g., "Green Line" within Subway) */
+.route-subgroup-heading {
+    font-size: 10px;
+    font-weight: 600;
+    color: #6b7d91;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-top: 4px;
+    margin-bottom: 2px;
+    padding: 0 6px;
 }
 
 .route-item {
@@ -132,19 +163,6 @@ html, body {
 
 .route-name {
     color: #c0c0d0;
-}
-
-/* Highlighted vehicle marker styles (AC4.6, AC4.7) */
-/* Note: width and height are controlled by createVehicleDivIcon() via Leaflet's iconSize property,
-   which applies inline styles (higher specificity than CSS classes). No !important needed. */
-.vehicle-marker--highlighted .vehicle-icon {
-    filter: drop-shadow(0 0 6px var(--route-color));
-    animation: pulse-glow 2s ease-in-out infinite;
-}
-
-@keyframes pulse-glow {
-    0%, 100% { filter: drop-shadow(0 0 4px var(--route-color)); }
-    50% { filter: drop-shadow(0 0 10px var(--route-color)); }
 }
 
 /* Mobile: drawer behavior */
@@ -186,6 +204,11 @@ html, body {
     .route-item {
         padding: 10px 12px;
         min-height: 44px; /* Touch-friendly minimum */
+    }
+
+    .service-group__header {
+        padding: 10px 12px;
+        min-height: 44px;
     }
 
     .drawer-toggle {

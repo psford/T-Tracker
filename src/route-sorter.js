@@ -2,21 +2,35 @@
 // Extracted from ui.js for testability (no browser dependencies)
 
 /**
- * Organizes route metadata into groups with sorting:
- * 1. Green Line branches (B, C, D, E) sorted alphabetically
- * 2. Bus routes sorted numerically
+ * Organizes route metadata into three top-level groups with nested subgroups:
+ * 1. Subway (type 0 + 1):
+ *    - Heavy rail (Red, Orange, Blue) in fixed order in main routes
+ *    - Green Line (type 0) as nested subgroup with branches (B, C, D, E) sorted alphabetically
+ * 2. Bus (type 3): sorted numerically then alphanumerically
+ * 3. Commuter Rail (type 2): sorted alphabetically by longName
  *
- * @param {Array<Object>} metadata — array of {id, color, shortName, type}
- * @returns {Array<{group: string, routes: Array<Object>}>}
+ * @param {Array<Object>} metadata — array of {id, color, shortName, longName, type}
+ * @returns {Array<{group: string, routes: Array<Object>, subGroups?: Array<{group, routes}>}>}
  */
 export function groupAndSortRoutes(metadata) {
     const greenLineRoutes = [];
+    const heavyRailRoutes = [];
     const busRoutes = [];
+    const commuterRailRoutes = [];
 
+    // Classify routes by type
     metadata.forEach((route) => {
-        if (route.id.startsWith('Green-')) {
+        if (route.type === 0) {
+            // Light Rail (Green Line)
             greenLineRoutes.push(route);
-        } else {
+        } else if (route.type === 1) {
+            // Heavy Rail (Red, Orange, Blue)
+            heavyRailRoutes.push(route);
+        } else if (route.type === 2) {
+            // Commuter Rail
+            commuterRailRoutes.push(route);
+        } else if (route.type === 3) {
+            // Bus
             busRoutes.push(route);
         }
     });
@@ -26,6 +40,12 @@ export function groupAndSortRoutes(metadata) {
         const suffixA = a.id.replace('Green-', '');
         const suffixB = b.id.replace('Green-', '');
         return suffixA.localeCompare(suffixB);
+    });
+
+    // Sort heavy rail by fixed priority order: Red, Orange, Blue
+    const heavyRailOrder = { 'Red': 0, 'Orange': 1, 'Blue': 2 };
+    heavyRailRoutes.sort((a, b) => {
+        return (heavyRailOrder[a.id] ?? 999) - (heavyRailOrder[b.id] ?? 999);
     });
 
     // Sort bus routes numerically, then alphanumerically
@@ -54,12 +74,48 @@ export function groupAndSortRoutes(metadata) {
         return a.shortName.localeCompare(b.shortName);
     });
 
+    // Sort Commuter Rail alphabetically by longName
+    commuterRailRoutes.sort((a, b) => {
+        return (a.longName || '').localeCompare(b.longName || '');
+    });
+
+    // Build result with 3-tier structure
     const groups = [];
-    if (greenLineRoutes.length > 0) {
-        groups.push({ group: 'Green Line', routes: greenLineRoutes });
+
+    // Subway group: heavy rail in routes, Green Line as subgroup
+    if (heavyRailRoutes.length > 0 || greenLineRoutes.length > 0) {
+        const subwayGroup = {
+            group: 'Subway',
+            routes: heavyRailRoutes,
+        };
+
+        // Add Green Line as subgroup only if it exists
+        if (greenLineRoutes.length > 0) {
+            subwayGroup.subGroups = [
+                {
+                    group: 'Green Line',
+                    routes: greenLineRoutes,
+                }
+            ];
+        }
+
+        groups.push(subwayGroup);
     }
+
+    // Bus group
     if (busRoutes.length > 0) {
-        groups.push({ group: 'Bus Routes', routes: busRoutes });
+        groups.push({
+            group: 'Bus',
+            routes: busRoutes,
+        });
+    }
+
+    // Commuter Rail group
+    if (commuterRailRoutes.length > 0) {
+        groups.push({
+            group: 'Commuter Rail',
+            routes: commuterRailRoutes,
+        });
     }
 
     return groups;

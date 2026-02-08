@@ -1,6 +1,6 @@
 // tests/vehicles.test.js — Unit tests for vehicle state management
 import assert from 'assert';
-import { lerp, easeOutCubic, lerpAngle, haversineDistance } from '../src/vehicle-math.js';
+import { lerp, easeOutCubic, lerpAngle, haversineDistance, darkenHexColor } from '../src/vehicle-math.js';
 
 /**
  * Test lerp function
@@ -83,6 +83,104 @@ function testHaversineDistance() {
 }
 
 /**
+ * Parse hex color string to RGB object
+ * Helper for color distinctness testing
+ */
+function parseHexColor(hex) {
+    return {
+        r: parseInt(hex.slice(1, 3), 16),
+        g: parseInt(hex.slice(3, 5), 16),
+        b: parseInt(hex.slice(5, 7), 16)
+    };
+}
+
+/**
+ * Check if two RGB colors differ by at least minDelta in at least one channel
+ */
+function colorsDistinct(hex1, hex2, minDelta = 30) {
+    const c1 = parseHexColor(hex1);
+    const c2 = parseHexColor(hex2);
+
+    const rDiff = Math.abs(c1.r - c2.r);
+    const gDiff = Math.abs(c1.g - c2.g);
+    const bDiff = Math.abs(c1.b - c2.b);
+
+    return rDiff >= minDelta || gDiff >= minDelta || bDiff >= minDelta;
+}
+
+/**
+ * Test darkenHexColor function
+ */
+function testDarkenHexColor() {
+    // AC4.1: Red Line darkening — #DA291C darkened by 15%
+    const darkRedResult = darkenHexColor('#DA291C', 0.15);
+    const darkRedLower = darkRedResult.toLowerCase();
+    // Original: #DA291C = (218, 41, 28)
+    // Darkened 15%: (218*0.85, 41*0.85, 28*0.85) = (185, 35, 24) = #B92318
+    assert(darkRedLower !== '#da291c', 'darkenHexColor should darken the color');
+
+    // Verify it produces a hex string
+    assert(/^#[0-9a-f]{6}$/i.test(darkRedResult), 'darkenHexColor should return valid hex string');
+
+    // AC4.2: Orange Line darkening — #ED8B00 darkened by 15%
+    const darkOrangeResult = darkenHexColor('#ED8B00', 0.15);
+    const darkOrangeLower = darkOrangeResult.toLowerCase();
+    // Original: #ED8B00 = (237, 139, 0)
+    // Darkened 15%: (237*0.85, 139*0.85, 0*0.85) ≈ (201, 118, 0) = #C97600
+    assert(darkOrangeLower !== '#ed8b00', 'Orange should be darkened');
+    assert(/^#[0-9a-f]{6}$/i.test(darkOrangeResult), 'darkenHexColor should return valid hex string');
+
+    // AC4.3: Blue Line darkening — #003DA5 darkened by 15%
+    const darkBlueResult = darkenHexColor('#003DA5', 0.15);
+    const darkBlueLower = darkBlueResult.toLowerCase();
+    // Original: #003DA5 = (0, 61, 165)
+    // Darkened 15%: (0*0.85, 61*0.85, 165*0.85) ≈ (0, 51, 140) = #00338C
+    assert(darkBlueLower !== '#003da5', 'Blue should be darkened');
+    assert(/^#[0-9a-f]{6}$/i.test(darkBlueResult), 'darkenHexColor should return valid hex string');
+
+    // AC4.5: Commuter Rail purple darkening — #80276C darkened by 15%
+    const darkPurpleResult = darkenHexColor('#80276C', 0.15);
+    const darkPurpleLower = darkPurpleResult.toLowerCase();
+    // Original: #80276C = (128, 39, 108)
+    // Darkened 15%: (128*0.85, 39*0.85, 108*0.85) ≈ (109, 33, 92) = #6d215c
+    assert(/^#[0-9a-f]{6}$/i.test(darkPurpleResult), 'darkenHexColor should return valid hex string for purple');
+    assert(darkPurpleLower !== '#80276c', 'Purple should be darkened');
+
+    // AC4.8: Darkened colors should remain distinct from each other
+    // All four darkened colors (Red, Orange, Blue, Purple) must be visually distinct
+    // Each pair must differ by at least 30 in at least one RGB channel
+    const colorPairs = [
+        [darkRedLower, darkOrangeLower, 'red and orange'],
+        [darkRedLower, darkBlueLower, 'red and blue'],
+        [darkRedLower, darkPurpleLower, 'red and purple'],
+        [darkOrangeLower, darkBlueLower, 'orange and blue'],
+        [darkOrangeLower, darkPurpleLower, 'orange and purple'],
+        [darkBlueLower, darkPurpleLower, 'blue and purple']
+    ];
+
+    colorPairs.forEach(([hex1, hex2, label]) => {
+        assert(
+            colorsDistinct(hex1, hex2, 30),
+            `Darkened ${label} should differ by at least 30 in one RGB channel: ${hex1} vs ${hex2}`
+        );
+    });
+
+    // Edge: amount=0 should return the same color (no change)
+    const noChangeResult = darkenHexColor('#FFFFFF', 0).toLowerCase();
+    assert(noChangeResult === '#ffffff', 'amount=0 should produce no change');
+
+    // Edge: Black stays black with any amount
+    const blackResult = darkenHexColor('#000000', 0.5).toLowerCase();
+    assert(blackResult === '#000000', 'Black with any darkening should stay black');
+
+    // Edge: Full darkening (amount=1) produces black
+    const fullDarkenResult = darkenHexColor('#FF0000', 1).toLowerCase();
+    assert(fullDarkenResult === '#000000', 'Full darkening (amount=1) should produce black');
+
+    console.log('✓ darkenHexColor tests passed');
+}
+
+/**
  * Run all tests
  */
 function runTests() {
@@ -92,6 +190,7 @@ function runTests() {
     testEaseOutCubic();
     testLerpAngle();
     testHaversineDistance();
+    testDarkenHexColor();
 
     console.log('\n✓ All tests passed!');
 }
