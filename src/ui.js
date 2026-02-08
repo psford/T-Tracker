@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { groupAndSortRoutes } from './route-sorter.js';
 
 const STORAGE_KEY = 'ttracker-visible-routes';
+const SERVICE_TOGGLES_KEY = 'ttracker-service-toggles';
 
 // Cache the media query result to avoid recreating the MediaQueryList on every call
 const mobileMediaQuery = window.matchMedia('(max-width: 767px)');
@@ -43,6 +44,62 @@ function writeToStorage(visibleSet) {
 }
 
 /**
+ * Reads service toggles from localStorage.
+ * Returns null if not set, otherwise returns an object with service toggle states.
+ * Validates that parsed JSON is an object.
+ *
+ * @returns {Object | null}
+ */
+function readServiceToggles() {
+    const stored = localStorage.getItem(SERVICE_TOGGLES_KEY);
+    if (!stored) {
+        return null;
+    }
+    try {
+        const obj = JSON.parse(stored);
+        if (typeof obj !== 'object' || obj === null) {
+            return null;
+        }
+        return obj;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Writes service toggles to localStorage as a JSON object.
+ *
+ * @param {Object} toggles — object with service toggle states
+ */
+function writeServiceToggles(toggles) {
+    localStorage.setItem(SERVICE_TOGGLES_KEY, JSON.stringify(toggles));
+}
+
+/**
+ * Maps group names to service toggle keys.
+ */
+const groupToToggleKey = {
+    'Subway': 'subway',
+    'Bus': 'bus',
+    'Commuter Rail': 'commuterRail',
+};
+
+/**
+ * Maps a route to its service type toggle key.
+ * Routes with type 0 (light rail) or 1 (heavy rail) are subway.
+ * Routes with type 2 are commuter rail.
+ * All other types default to bus.
+ *
+ * @param {Object} route — route object with type property
+ * @returns {string} service type key ('subway', 'commuterRail', or 'bus')
+ */
+function getServiceTypeForRoute(route) {
+    if (route.type === 0 || route.type === 1) return 'subway';
+    if (route.type === 2) return 'commuterRail';
+    return 'bus';
+}
+
+/**
  * Detects if the device is mobile (viewport width < 768px).
  * Uses cached CSS media query matching for consistent breakpoint.
  *
@@ -71,22 +128,45 @@ export function initUI(routeMetadata, onVisibilityChange) {
         return;
     }
 
+    // Read service toggles (first visit defaults to Subway on, Bus and Commuter Rail off)
+    let serviceToggles = readServiceToggles();
+    if (serviceToggles === null) {
+        serviceToggles = { subway: true, bus: false, commuterRail: false };
+    }
+
     // Determine initial visible routes
-    let initialVisible = readFromStorage();
-    if (initialVisible === null) {
-        // No localStorage — use config defaults
-        initialVisible = new Set(config.routes.defaultVisible);
+    let storedVisible = readFromStorage();
+    const validRouteIds = new Set(routeMetadata.map((r) => r.id));
+
+    let initialVisible;
+    if (storedVisible === null) {
+        // First visit: visible = all routes in enabled service types
+        initialVisible = new Set();
+        routeMetadata.forEach((route) => {
+            const serviceType = getServiceTypeForRoute(route);
+            if (serviceToggles[serviceType]) {
+                initialVisible.add(route.id);
+            }
+        });
     } else {
-        // Validate that stored route IDs still exist in metadata
-        const validRouteIds = new Set(routeMetadata.map((r) => r.id));
-        const filtered = new Set(
-            Array.from(initialVisible).filter((id) => validRouteIds.has(id))
+        // Returning visit: filter out removed routes, add new routes for enabled services
+        initialVisible = new Set(
+            Array.from(storedVisible).filter((id) => validRouteIds.has(id))
         );
-        initialVisible = filtered;
+        // New routes: in metadata but not in stored state
+        routeMetadata.forEach((route) => {
+            if (!storedVisible.has(route.id)) {
+                const serviceType = getServiceTypeForRoute(route);
+                if (serviceToggles[serviceType]) {
+                    initialVisible.add(route.id);
+                }
+            }
+        });
     }
 
     // Save initial state to storage
     writeToStorage(initialVisible);
+    writeServiceToggles(serviceToggles);
 
     // Build control panel HTML
     const grouped = groupAndSortRoutes(routeMetadata);
@@ -128,7 +208,9 @@ export function initUI(routeMetadata, onVisibilityChange) {
         masterCheckbox.type = 'checkbox';
         masterCheckbox.className = 'service-group__toggle';
         masterCheckbox.dataset.group = group;
-        masterCheckbox.checked = true; // Master is initially checked
+        // Set checked state based on service toggle
+        const toggleKey = groupToToggleKey[group];
+        masterCheckbox.checked = toggleKey ? serviceToggles[toggleKey] : true;
 
         const groupName = document.createElement('span');
         groupName.className = 'service-group__name';
@@ -141,6 +223,10 @@ export function initUI(routeMetadata, onVisibilityChange) {
         // Create children container
         const childrenContainer = document.createElement('div');
         childrenContainer.className = 'service-group__children';
+        // If master is unchecked, start collapsed
+        if (!masterCheckbox.checked) {
+            childrenContainer.classList.add('service-group__children--collapsed');
+        }
 
         // Helper to add a route item
         function addRouteItem(route) {
@@ -203,6 +289,13 @@ export function initUI(routeMetadata, onVisibilityChange) {
                 childrenContainer.classList.remove('service-group__children--collapsed');
             } else {
                 childrenContainer.classList.add('service-group__children--collapsed');
+            }
+
+            // Update service toggle state
+            const toggleKey = groupToToggleKey[group];
+            if (toggleKey) {
+                serviceToggles[toggleKey] = masterCheckbox.checked;
+                writeServiceToggles(serviceToggles);
             }
 
             // Update visibility based on current state
