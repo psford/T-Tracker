@@ -23,6 +23,9 @@ let highlightedRoutes = new Set();
 // Map<routeId, color> — color lookup for vehicle markers (populated by loadRoutes)
 const routeColorMap = new Map();
 
+// Map<routeId, number> — route type lookup for vehicle markers (populated by loadRoutes)
+const routeTypeMap = new Map();
+
 // Map<stopId, {id, name, latitude, longitude}> — caches stop data fetched on startup
 let stopsData = new Map();
 
@@ -68,9 +71,10 @@ export function getMap() {
 
 /**
  * Returns HTML string for vehicle marker icon based on vehicle type.
- * Determines vehicle type from routeId:
- * - "Green-*" → class vehicle-marker--green-line
- * - Otherwise → class vehicle-marker--bus
+ * Determines vehicle type from routeTypeMap (populated from MBTA route metadata):
+ * - Type 0 or 1 (subway) → class vehicle-marker--subway
+ * - Type 2 (commuter rail) → class vehicle-marker--commuter-rail
+ * - Type 3 (bus) or unknown → class vehicle-marker--bus
  *
  * Adds vehicle-marker--highlighted class if the route is currently highlighted.
  * Passes route color as CSS variable for use in drop-shadow filter.
@@ -81,8 +85,15 @@ export function getMap() {
  * @returns {string} — HTML string for marker content
  */
 export function getVehicleIconHtml(vehicle) {
-    const isGreenLine = vehicle.routeId.startsWith('Green-');
-    const markerClass = isGreenLine ? 'vehicle-marker--green-line' : 'vehicle-marker--bus';
+    const routeType = routeTypeMap.get(vehicle.routeId);
+    let markerClass;
+    if (routeType === 0 || routeType === 1) {
+        markerClass = 'vehicle-marker--subway';
+    } else if (routeType === 2) {
+        markerClass = 'vehicle-marker--commuter-rail';
+    } else {
+        markerClass = 'vehicle-marker--bus';
+    }
     const highlightClass = highlightedRoutes.has(vehicle.routeId) ? 'vehicle-marker--highlighted' : '';
     const routeColor = routeColorMap.get(vehicle.routeId) || '#888888';
 
@@ -344,6 +355,9 @@ export async function loadRoutes() {
 
             // Store color in lookup map for vehicle icon generation
             routeColorMap.set(routeId, color);
+
+            // Store type in lookup map for vehicle icon CSS class selection
+            routeTypeMap.set(routeId, type);
 
             // Initialize polylines array for this route
             const polylines = [];
