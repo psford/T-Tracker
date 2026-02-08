@@ -8,7 +8,7 @@ let map = null;
 // Map<vehicleId, L.Marker> — tracks active vehicle markers on the map
 const vehicleMarkers = new Map();
 
-// Map<routeId, L.Polyline[]> — stores polylines for each route (for Phase 6 highlighting)
+// Map<routeId, L.Polyline[]> — stores polylines for each route (for visibility filtering)
 const routePolylines = new Map();
 
 // Array of route metadata [{id, color, shortName, longName, type}] — for Phase 6 UI
@@ -280,7 +280,7 @@ export function syncVehicleMarkers(vehiclesMap) {
  * Fetches routes from MBTA API with the full JSON:API relationship chain
  * (route → route_patterns → representative_trip → shape → polyline).
  * Decodes polylines and creates Leaflet polyline layers.
- * Stores metadata for Phase 6 UI and polylines for Phase 6 highlighting.
+ * Stores metadata for Phase 6 UI and polylines for visibility filtering.
  *
  * Layer ordering: Adds route layer group to map BEFORE vehicle markers
  * so polylines render below markers.
@@ -366,8 +366,8 @@ export async function loadRoutes() {
                 const coords = decodePolyline(encodedPolyline);
                 const polyline = L.polyline(coords, {
                     color,
-                    weight: config.routeStyles.normal.weight,
-                    opacity: config.routeStyles.normal.opacity,
+                    weight: 4,
+                    opacity: 0.9,
                 });
 
                 polyline.addTo(routeLayerGroup);
@@ -449,7 +449,7 @@ export function getRouteMetadata() {
  *
  * Also immediately removes vehicle markers for hidden routes.
  *
- * @param {Array<routeId>} routeIds — array of route IDs that should be visible
+ * @param {Set<string>|Array<string>} routeIds — set or array of route IDs that should be visible
  */
 export function setVisibleRoutes(routeIds) {
     visibleRoutes = new Set(routeIds);
@@ -484,14 +484,15 @@ export function setVisibleRoutes(routeIds) {
         });
     });
 
-    // Remove vehicle markers for hidden routes immediately
+    // Remove vehicle markers for hidden routes immediately (collect-then-delete pattern)
+    const idsToRemove = [];
     vehicleMarkers.forEach((marker, vehicleId) => {
         const vehicle = marker._vehicleData; // stored on marker during creation
         if (vehicle && !visibleRoutes.has(vehicle.routeId)) {
-            map.removeLayer(marker);
-            vehicleMarkers.delete(vehicleId);
+            idsToRemove.push(vehicleId);
         }
     });
+    idsToRemove.forEach((vehicleId) => removeVehicleMarker(vehicleId));
 }
 
 /**
