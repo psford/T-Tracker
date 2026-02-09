@@ -64,6 +64,15 @@ All data flows through dedicated modules with clear responsibilities:
 - Never commit: `config.js` (contains MBTA API key), `.env`
 - CDN dependency: Leaflet loaded via `<script>` tag with SRI hash, not bundled
 
+## Deployment (Cloudflare Pages)
+- **URL**: `https://supertra.in`
+- **Build command**: `node build.js`
+- **Output directory**: `dist`
+- **Environment variable**: `MBTA_API_KEY` (set in Cloudflare dashboard, encrypted)
+- **Trigger**: Auto-deploy on push to `master`
+- **Build script**: `build.js` copies static files to `dist/`, generates `config.js` from `config.example.js` with API key injected
+- **Local dev unchanged**: Copy `config.example.js` to `config.js`, run `python -m http.server 8000`
+
 ## API Rate Limits
 - MBTA allows 1000 req/min with API key
 - SSE connection counts as 1 request (persistent)

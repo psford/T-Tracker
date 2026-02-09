@@ -17,5 +17,11 @@ Thumbs.db
 *.swp
 *.swo
 
+# Build output (Cloudflare Pages)
+dist/
+
+# Windows artifact
+nul
+
 # Claude Code plugins cache
 .ed3d-plugins/
