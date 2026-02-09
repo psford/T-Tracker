@@ -21,13 +21,13 @@ function createVehicleState(vehicle, duration) {
         id: vehicle.id,
         latitude: vehicle.latitude,
         longitude: vehicle.longitude,
-        bearing: vehicle.bearing ?? 0,
+        bearing: vehicle.bearing ?? 90,
         targetLatitude: vehicle.latitude,
         targetLongitude: vehicle.longitude,
-        targetBearing: vehicle.bearing ?? 0,
+        targetBearing: vehicle.bearing ?? 90,
         prevLatitude: vehicle.latitude,
         prevLongitude: vehicle.longitude,
-        prevBearing: vehicle.bearing ?? 0,
+        prevBearing: vehicle.bearing ?? 90,
         animationStart: performance.now(),
         animationDuration: duration,
         routeId: vehicle.routeId,
@@ -85,7 +85,7 @@ function onUpdate(vehicle) {
 
     if (distance > config.animation.snapThreshold) {
         // Snap instantly
-        const bearing = vehicle.bearing ?? 0;
+        const bearing = vehicle.bearing ?? 90;
         existing.latitude = vehicle.latitude;
         existing.longitude = vehicle.longitude;
         existing.bearing = bearing;
@@ -101,7 +101,7 @@ function onUpdate(vehicle) {
         // Set target and animate
         existing.targetLatitude = vehicle.latitude;
         existing.targetLongitude = vehicle.longitude;
-        existing.targetBearing = vehicle.bearing ?? 0;
+        existing.targetBearing = vehicle.bearing ?? 90;
         existing.animationStart = performance.now();
         existing.animationDuration = config.animation.interpolationDuration;
     }

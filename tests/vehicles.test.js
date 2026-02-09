@@ -1,6 +1,6 @@
 // tests/vehicles.test.js — Unit tests for vehicle state management
 import assert from 'assert';
-import { lerp, easeOutCubic, lerpAngle, haversineDistance, darkenHexColor } from '../src/vehicle-math.js';
+import { lerp, easeOutCubic, lerpAngle, haversineDistance, darkenHexColor, bearingToTransform } from '../src/vehicle-math.js';
 
 /**
  * Test lerp function
@@ -181,6 +181,70 @@ function testDarkenHexColor() {
 }
 
 /**
+ * Test bearingToTransform function
+ */
+function testBearingToTransform() {
+    // icons.AC3.2: Bearing 90 (east) → no rotation, no flip (icon default orientation)
+    const result90 = bearingToTransform(90);
+    assert.strictEqual(result90.rotate, 0, 'Bearing 90 should rotate 0°');
+    assert.strictEqual(result90.scaleX, 1, 'Bearing 90 should not flip');
+
+    // icons.AC3.4: Bearing 0 (north) — no flip, rotated up-right
+    const result0 = bearingToTransform(0);
+    assert.strictEqual(result0.rotate, -90, 'Bearing 0 should rotate -90°');
+    assert.strictEqual(result0.scaleX, 1, 'Bearing 0 should not flip');
+
+    // icons.AC3.4: Bearing 45 — right-heading, no flip
+    const result45 = bearingToTransform(45);
+    assert.strictEqual(result45.rotate, -45, 'Bearing 45 should rotate -45°');
+    assert.strictEqual(result45.scaleX, 1, 'Bearing 45 should not flip');
+
+    // icons.AC3.4: Bearing 135 — right-heading, no flip
+    const result135 = bearingToTransform(135);
+    assert.strictEqual(result135.rotate, 45, 'Bearing 135 should rotate 45°');
+    assert.strictEqual(result135.scaleX, 1, 'Bearing 135 should not flip');
+
+    // icons.AC3.7: Bearing 180 — at flip boundary, consistently right-heading
+    const result180 = bearingToTransform(180);
+    assert.strictEqual(result180.rotate, 90, 'Bearing 180 should rotate 90°');
+    assert.strictEqual(result180.scaleX, 1, 'Bearing 180 should not flip');
+
+    // icons.AC3.3: Bearing 270 (west) — flipped, no additional rotation
+    const result270 = bearingToTransform(270);
+    assert.strictEqual(result270.rotate, 0, 'Bearing 270 should rotate 0°');
+    assert.strictEqual(result270.scaleX, -1, 'Bearing 270 should flip');
+
+    // icons.AC3.3: Bearing 225 — left-heading, flipped
+    const result225 = bearingToTransform(225);
+    assert.strictEqual(result225.scaleX, -1, 'Bearing 225 should flip');
+
+    // icons.AC3.3: Bearing 315 — left-heading, flipped
+    const result315 = bearingToTransform(315);
+    assert.strictEqual(result315.scaleX, -1, 'Bearing 315 should flip');
+
+    // icons.AC3.8: null bearing defaults to 90 (facing right, no rotation)
+    const resultNull = bearingToTransform(null);
+    assert.strictEqual(resultNull.rotate, 0, 'Null bearing should rotate 0°');
+    assert.strictEqual(resultNull.scaleX, 1, 'Null bearing should not flip');
+
+    // icons.AC3.8: undefined bearing defaults to 90 (facing right, no rotation)
+    const resultUndefined = bearingToTransform(undefined);
+    assert.strictEqual(resultUndefined.rotate, 0, 'Undefined bearing should rotate 0°');
+    assert.strictEqual(resultUndefined.scaleX, 1, 'Undefined bearing should not flip');
+
+    // Negative bearing normalization: bearing -90 should normalize to 270 → flipped
+    const resultNeg90 = bearingToTransform(-90);
+    assert.strictEqual(resultNeg90.scaleX, -1, 'Bearing -90 should normalize to 270 and flip');
+
+    // Large bearing normalization: bearing 450 should normalize to 90 → no rotation, no flip
+    const result450 = bearingToTransform(450);
+    assert.strictEqual(result450.rotate, 0, 'Bearing 450 should normalize to 90 with rotate 0°');
+    assert.strictEqual(result450.scaleX, 1, 'Bearing 450 should normalize to 90 with no flip');
+
+    console.log('✓ bearingToTransform tests passed');
+}
+
+/**
  * Run all tests
  */
 function runTests() {
@@ -191,6 +255,7 @@ function runTests() {
     testLerpAngle();
     testHaversineDistance();
     testDarkenHexColor();
+    testBearingToTransform();
 
     console.log('\n✓ All tests passed!');
 }

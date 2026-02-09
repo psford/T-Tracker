@@ -2,7 +2,8 @@
 import { config } from '../config.js';
 import { decodePolyline } from './polyline.js';
 import { formatVehiclePopup } from './vehicle-popup.js';
-import { darkenHexColor } from './vehicle-math.js';
+import { darkenHexColor, bearingToTransform } from './vehicle-math.js';
+import { VEHICLE_ICONS, DEFAULT_ICON } from './vehicle-icons.js';
 
 let map = null;
 
@@ -70,6 +71,11 @@ export function getMap() {
     return map;
 }
 
+// Fallback SVG polygon if icon data is missing (icons.AC6.6)
+// Scaled from original arrow (12,2 22,20 12,16 2,20) in 24x24 viewBox
+// to fit 0 0 48 32 viewBox: 2x horizontal, 1.333x vertical
+const ARROW_FALLBACK = '<polygon points="24,3 44,27 24,21 4,27" fill="currentColor" />';
+
 /**
  * Returns HTML string for vehicle marker icon based on vehicle type.
  * Determines vehicle type from routeTypeMap (populated from MBTA route metadata):
@@ -94,12 +100,14 @@ export function getVehicleIconHtml(vehicle) {
     } else {
         markerClass = 'vehicle-marker--bus';
     }
-    const routeColor = routeColorMap.get(vehicle.routeId) || '#888888';
 
-    // Inline SVG with direct fill color
-    return `<div class="vehicle-marker ${markerClass}" style="--route-color: ${routeColor}">
-        <svg class="vehicle-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <polygon points="12,2 22,20 12,16 2,20" fill="${routeColor}" />
+    const routeColor = routeColorMap.get(vehicle.routeId) || '#888888';
+    const iconSvg = VEHICLE_ICONS[routeType] || DEFAULT_ICON || ARROW_FALLBACK;
+
+    // Inline SVG with type-specific icon from vehicle-icons module
+    return `<div class="vehicle-marker ${markerClass}" style="--route-color: ${routeColor}; color: ${routeColor}">
+        <svg class="vehicle-icon" viewBox="0 0 48 32" xmlns="http://www.w3.org/2000/svg">
+            ${iconSvg}
         </svg>
     </div>`;
 }
@@ -119,16 +127,15 @@ function getPopupContent(vehicle) {
 
 /**
  * Helper to create a divIcon for a vehicle.
- * Uses uniform size for all markers (24px).
+ * Uses uniform size for all markers (48x32 rectangular).
  *
  * @param {object} vehicle — vehicle object with routeId
  * @returns {L.DivIcon} — divIcon instance
  */
 function createVehicleDivIcon(vehicle) {
     const iconHtml = getVehicleIconHtml(vehicle);
-    const size = 24;
-    const iconSize = [size, size];
-    const iconAnchor = [size / 2, size / 2];
+    const iconSize = [48, 32];
+    const iconAnchor = [24, 16];
 
     return L.divIcon({
         html: iconHtml,
@@ -175,7 +182,8 @@ export function createVehicleMarker(vehicle) {
     // Apply initial rotation and opacity
     const iconElement = marker.getElement().querySelector('.vehicle-marker');
     if (iconElement) {
-        iconElement.style.transform = `rotate(${vehicle.bearing}deg)`;
+        const { rotate, scaleX } = bearingToTransform(vehicle.bearing);
+        iconElement.style.transform = `scaleX(${scaleX}) rotate(${rotate}deg)`;
         iconElement.style.opacity = vehicle.opacity;
     }
 
@@ -202,7 +210,8 @@ export function updateVehicleMarker(vehicle) {
     // Update rotation and opacity
     const iconElement = marker.getElement().querySelector('.vehicle-marker');
     if (iconElement) {
-        iconElement.style.transform = `rotate(${vehicle.bearing}deg)`;
+        const { rotate, scaleX } = bearingToTransform(vehicle.bearing);
+        iconElement.style.transform = `scaleX(${scaleX}) rotate(${rotate}deg)`;
         iconElement.style.opacity = vehicle.opacity;
     }
 }

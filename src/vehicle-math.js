@@ -72,3 +72,36 @@ export function darkenHexColor(hex, amount) {
     const darken = (c) => Math.round(c * (1 - amount));
     return `#${darken(r).toString(16).padStart(2, '0')}${darken(g).toString(16).padStart(2, '0')}${darken(b).toString(16).padStart(2, '0')}`;
 }
+
+/**
+ * Converts bearing (compass direction) to CSS transform values for vehicle icons.
+ * Icons are drawn facing right (east = 90 degrees).
+ * Vehicles heading left (180-360°) are flipped horizontally so wheels remain on bottom.
+ * @param {number|null|undefined} bearing — bearing in degrees (0=north, 90=east, 180=south, 270=west)
+ * @returns {{ rotate: number, scaleX: number }} — CSS transform values (rotate in degrees, scaleX is 1 or -1)
+ */
+export function bearingToTransform(bearing) {
+    // Default to 90 (facing right/east) if bearing is null or undefined
+    if (bearing === null || bearing === undefined) {
+        return { rotate: 0, scaleX: 1 };
+    }
+
+    // Normalize bearing to [0, 360)
+    let normalizedBearing = ((bearing % 360) + 360) % 360;
+
+    // For bearings 0-180 (heading rightward/upward): rotate only, no flip
+    if (normalizedBearing <= 180) {
+        return {
+            rotate: normalizedBearing - 90,
+            scaleX: 1
+        };
+    }
+
+    // For bearings 180-360 (heading leftward/downward): flip horizontally + adjusted rotation
+    // scaleX = -1 flips the icon, rotate = -(bearing - 270) applies rotation in flipped space
+    // Use || 0 to convert -0 to +0 for consistency
+    return {
+        rotate: -(normalizedBearing - 270) || 0,
+        scaleX: -1
+    };
+}
