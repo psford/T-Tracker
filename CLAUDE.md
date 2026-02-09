@@ -1,6 +1,6 @@
 # T-Tracker -- MBTA Real-Time Transit Tracker
 
-Last verified: 2026-02-07
+Last verified: 2026-02-08
 
 ## Data Flow Architecture
 
@@ -10,14 +10,15 @@ MBTA API (SSE) → api.js (parse + validate) → vehicles.js (interpolate + anim
                                                  vehicle-math.js (pure math)
                                                       ↓
                                               map.js (render + visibility)
-                                                      ↑
-                                                   ui.js (configure)
+                                                ↑               ↑
+                                          ui.js (configure)  vehicle-icons.js (icon data)
 ```
 
 All data flows through dedicated modules with clear responsibilities:
 - `api.js`: JSON:API parsing, null validation, event emission
 - `vehicles.js`: State management, animation loop, viewport culling
-- `vehicle-math.js`: Pure math (lerp, easing, distance, angle interpolation, color manipulation)
+- `vehicle-math.js`: Pure math (lerp, easing, distance, angle interpolation, color manipulation, bearing transform)
+- `vehicle-icons.js`: Pure data module with SVG silhouettes for each MBTA vehicle type
 - `polyline.js`: Pure function for Google polyline decoding
 - `map.js`: Leaflet rendering, marker management, route visibility filtering
 - `ui.js`: Route selection UI, localStorage persistence, grouping/sorting
@@ -31,7 +32,8 @@ All data flows through dedicated modules with clear responsibilities:
 
 ## Commands
 - `python -m http.server 8000` from project root, then open `http://localhost:8000`
-- `node tests/vehicles.test.js` -- run unit tests (math functions)
+- `node tests/vehicles.test.js` -- run vehicle/math unit tests
+- `node tests/vehicle-icons.test.js` -- run vehicle icon tests
 - ES6 modules require HTTP server; `file://` protocol will not work
 
 ## Project Structure
@@ -40,7 +42,7 @@ All data flows through dedicated modules with clear responsibilities:
 - `config.js` -- All configuration (API key, map center, animation timing, route defaults)
 - `config.example.js` -- Template for config.js (committed; config.js is gitignored)
 - `src/` -- Application modules (see `src/CLAUDE.md` for contracts)
-- `tests/` -- Unit tests for pure math functions
+- `tests/` -- Unit tests for pure functions and data modules
 - `docs/` -- Design plans and implementation phase docs
 
 ## Conventions
