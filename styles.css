@@ -55,6 +55,25 @@ html, body {
     font-size: 14px;
 }
 
+/* Pulsing headlight and taillight animation */
+@keyframes pulse-headlight {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+@keyframes pulse-taillight {
+    0%, 100% { opacity: 0.9; }
+    50% { opacity: 0.3; }
+}
+
+.vehicle-headlight {
+    animation: pulse-headlight 1.5s ease-in-out infinite;
+}
+
+.vehicle-taillight {
+    animation: pulse-taillight 1.5s ease-in-out infinite;
+}
+
 /* Vehicle marker styles (AC2) */
 .vehicle-marker {
     width: 48px;

@@ -2,7 +2,7 @@
 import { config } from '../config.js';
 import { decodePolyline } from './polyline.js';
 import { formatVehiclePopup } from './vehicle-popup.js';
-import { darkenHexColor, bearingToTransform } from './vehicle-math.js';
+import { darkenHexColor, bearingToTransform, haversineDistance } from './vehicle-math.js';
 import { VEHICLE_ICONS, DEFAULT_ICON } from './vehicle-icons.js';
 
 let map = null;
@@ -52,16 +52,25 @@ export function initMap(containerId) {
         maxZoom: config.tiles.maxZoom,
     }).addTo(map);
 
-    // AC1.5: Show error message if tiles fail to load
-    tileLayer.on('tileerror', () => {
-        const existing = document.getElementById('tile-error');
-        if (!existing) {
-            const msg = document.createElement('div');
-            msg.id = 'tile-error';
-            msg.className = 'tile-error';
-            msg.textContent = 'Map tiles unavailable — check your connection';
-            document.body.appendChild(msg);
-        }
+    // Silent tile retry on error (exponential backoff: 1s, 2s, 4s, 8s, max 10s)
+    let tileRetryDelay = 1000;
+    const MAX_TILE_RETRY_DELAY = 10000;
+    tileLayer.on('tileerror', (event) => {
+        const tile = event.tile;
+        const url = event.tile.src;
+
+        setTimeout(() => {
+            // Reload the tile by setting src again
+            tile.src = url;
+        }, tileRetryDelay);
+
+        // Exponential backoff
+        tileRetryDelay = Math.min(tileRetryDelay * 2, MAX_TILE_RETRY_DELAY);
+    });
+
+    // Reset retry delay on successful tile load
+    tileLayer.on('tileload', () => {
+        tileRetryDelay = 1000;
     });
 
     return map;
@@ -357,11 +366,17 @@ export async function loadRoutes() {
             routePolylines.set(routeId, polylines);
 
             // Walk the relationship chain: route → route_patterns → representative_trip → shape
+            // Filter to only typical patterns (typicality 1) to exclude detours and variations
             const routePatternsData = route.relationships?.route_patterns?.data || [];
 
             routePatternsData.forEach((patternRef) => {
                 const pattern = includedMap.get(`route_pattern:${patternRef.id}`);
                 if (!pattern) return;
+
+                // Skip atypical patterns (detours, short-turns, special variations)
+                // typicality: 1 = typical, 2 = some diversions, 3+ = highly atypical
+                const typicality = pattern.attributes?.typicality;
+                if (typicality !== 1) return;
 
                 const tripRef = pattern.relationships?.representative_trip?.data;
                 if (!tripRef) return;
@@ -386,9 +401,62 @@ export async function loadRoutes() {
                     opacity: 0.9,
                 });
 
-                polyline.addTo(routeLayerGroup);
+                // Don't add to map yet — setVisibleRoutes() will add visible ones after UI init
                 polylines.push(polyline);
             });
+
+            // Snap nearby endpoints to close gaps at termini
+            // When multiple patterns share a terminus (e.g., inbound/outbound), their endpoints
+            // may differ by a few meters, creating visual discontinuities. Snap endpoints within
+            // 50m to their average position.
+            const SNAP_THRESHOLD_METERS = 50;
+            if (polylines.length > 1) {
+                const endpoints = [];
+                polylines.forEach((polyline) => {
+                    const coords = polyline.getLatLngs();
+                    if (coords.length > 0) {
+                        endpoints.push({ polyline, index: 0, point: coords[0] }); // Start
+                        endpoints.push({ polyline, index: coords.length - 1, point: coords[coords.length - 1] }); // End
+                    }
+                });
+
+                // Group endpoints that are within snap threshold
+                const snapped = new Set();
+                for (let i = 0; i < endpoints.length; i++) {
+                    if (snapped.has(i)) continue;
+
+                    const group = [endpoints[i]];
+                    for (let j = i + 1; j < endpoints.length; j++) {
+                        if (snapped.has(j)) continue;
+
+                        const distance = haversineDistance(
+                            endpoints[i].point.lat,
+                            endpoints[i].point.lng,
+                            endpoints[j].point.lat,
+                            endpoints[j].point.lng
+                        );
+
+                        if (distance <= SNAP_THRESHOLD_METERS) {
+                            group.push(endpoints[j]);
+                            snapped.add(j);
+                        }
+                    }
+
+                    // If group has 2+ endpoints, snap them to average position
+                    if (group.length > 1) {
+                        const avgLat = group.reduce((sum, e) => sum + e.point.lat, 0) / group.length;
+                        const avgLng = group.reduce((sum, e) => sum + e.point.lng, 0) / group.length;
+
+                        group.forEach(({ polyline, index }) => {
+                            const coords = polyline.getLatLngs();
+                            coords[index] = L.latLng(avgLat, avgLng);
+                            polyline.setLatLngs(coords);
+                        });
+                    }
+
+                    snapped.add(i);
+                }
+            }
 
             // Create route name labels along the longest polyline
             let longestCoords = [];
@@ -429,7 +497,8 @@ export async function loadRoutes() {
                         icon,
                         interactive: false,
                         zIndexOffset: -1000,
-                    }).addTo(routeLayerGroup);
+                    });
+                    // Don't add to map yet — setVisibleRoutes() will add visible ones after UI init
 
                     labels.push(marker);
                 }

@@ -1,7 +1,7 @@
 # T-Tracker Technical Specification
 
-**Version:** 1.0
-**Last updated:** 2026-02-09
+**Version:** 1.1
+**Last updated:** 2026-02-11
 
 ## Architecture Overview
 
@@ -237,6 +237,14 @@ Each vehicle transitions through:
 2. **Active** -- full opacity, position interpolation
 3. **Exiting** -- fade out from 1 to 0 opacity over 200ms, then removed
 
+### Directional Indicators
+
+Vehicle icons include pulsing headlights (white, front) and taillights (red, rear) to indicate direction of travel:
+- Implemented via CSS `@keyframes` animations (1.5s cycle, ease-in-out)
+- Headlight pulses between 100% and 40% opacity
+- Taillight pulses between 90% and 30% opacity
+- Class names `vehicle-headlight` and `vehicle-taillight` hook SVG circles to CSS animations
+
 ## Testing
 
 ### Test Framework
@@ -305,3 +313,5 @@ node tests/vehicle-popup.test.js
 | 2026-02-07 | Full network expansion: bus, commuter rail, adaptive polyline weight, route labels |
 | 2026-02-08 | Vehicle type icons: SVG silhouettes for trolley, subway, commuter rail, bus, ferry |
 | 2026-02-09 | Cloudflare Pages deployment with build-time API key injection |
+| 2026-02-11 | Bug fixes: tile retry backoff, route visibility logic, polyline typicality filtering, endpoint snapping, page load flash |
+| 2026-02-11 | Feature: pulsing directional indicators (headlights/taillights) on vehicle icons |

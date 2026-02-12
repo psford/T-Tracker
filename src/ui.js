@@ -139,7 +139,7 @@ export function initUI(routeMetadata, onVisibilityChange) {
 
     let initialVisible;
     if (storedVisible === null) {
-        // First visit: visible = all routes in enabled service types
+        // First visit: only enable Subway routes by default (serviceToggles starts with subway:true, others:false)
         initialVisible = new Set();
         routeMetadata.forEach((route) => {
             const serviceType = getServiceTypeForRoute(route);
@@ -148,15 +148,24 @@ export function initUI(routeMetadata, onVisibilityChange) {
             }
         });
     } else {
-        // Returning visit: filter out removed routes, add new routes for enabled services
+        // Returning visit: restore stored routes, filtering out removed routes
         initialVisible = new Set(
             Array.from(storedVisible).filter((id) => validRouteIds.has(id))
         );
         // New routes: in metadata but not in stored state
+        // Only auto-add if their service type is enabled AND we already have visible routes from that service
+        const visibleServiceTypes = new Set();
+        storedVisible.forEach((routeId) => {
+            const route = routeMetadata.find(r => r.id === routeId);
+            if (route) {
+                visibleServiceTypes.add(getServiceTypeForRoute(route));
+            }
+        });
         routeMetadata.forEach((route) => {
             if (!storedVisible.has(route.id)) {
                 const serviceType = getServiceTypeForRoute(route);
-                if (serviceToggles[serviceType]) {
+                // Only auto-add new routes if we already have visible routes from that service
+                if (serviceToggles[serviceType] && visibleServiceTypes.has(serviceType)) {
                     initialVisible.add(route.id);
                 }
             }

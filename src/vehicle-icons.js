@@ -30,6 +30,12 @@ export const VEHICLE_ICONS = {
     <rect x="28" y="10" width="4" height="3" fill="rgba(255,255,255,0.85)"/>
     <rect x="36" y="10" width="4" height="3" fill="rgba(255,255,255,0.85)"/>
 
+    <!-- Front headlight (right side = front, lower body, pulsing white) -->
+    <circle class="vehicle-headlight" cx="42" cy="20" r="3" fill="rgba(255,255,255,1)"/>
+
+    <!-- Rear taillight (left side = rear, lower body, pulsing red) -->
+    <circle class="vehicle-taillight" cx="6" cy="20" r="3" fill="rgba(255,50,50,1)"/>
+
     <!-- Wheels (2 circles at bottom) -->
     <circle cx="12" cy="27" r="2" fill="#333"/>
     <circle cx="36" cy="27" r="2" fill="#333"/>
@@ -49,6 +55,12 @@ export const VEHICLE_ICONS = {
     <line x1="18" y1="10" x2="18" y2="14" stroke="rgba(255,255,255,0.3)" stroke-width="0.5"/>
     <line x1="30" y1="10" x2="30" y2="14" stroke="rgba(255,255,255,0.3)" stroke-width="0.5"/>
     <line x1="36" y1="10" x2="36" y2="14" stroke="rgba(255,255,255,0.3)" stroke-width="0.5"/>
+
+    <!-- Front headlight (right side = front, lower body, pulsing white) -->
+    <circle class="vehicle-headlight" cx="44" cy="20" r="3" fill="rgba(255,255,255,1)"/>
+
+    <!-- Rear taillight (left side = rear, lower body, pulsing red) -->
+    <circle class="vehicle-taillight" cx="4" cy="20" r="3" fill="rgba(255,50,50,1)"/>
 
     <!-- Wheels (2 circles at bottom) -->
     <circle cx="10" cy="27" r="2" fill="#333"/>
@@ -72,6 +84,12 @@ export const VEHICLE_ICONS = {
     <rect x="16" y="8" width="4" height="3" fill="rgba(255,255,255,0.85)"/>
     <rect x="28" y="8" width="4" height="3" fill="rgba(255,255,255,0.85)"/>
 
+    <!-- Front headlight (right side = front, lower body, pulsing white) -->
+    <circle class="vehicle-headlight" cx="44" cy="19" r="3" fill="rgba(255,255,255,1)"/>
+
+    <!-- Rear taillight (left side = rear, lower body, pulsing red) -->
+    <circle class="vehicle-taillight" cx="4" cy="19" r="3" fill="rgba(255,50,50,1)"/>
+
     <!-- Wheels (2 circles at bottom) -->
     <circle cx="12" cy="28" r="2" fill="#333"/>
     <circle cx="36" cy="28" r="2" fill="#333"/>
@@ -91,6 +109,12 @@ export const VEHICLE_ICONS = {
 
     <!-- Side window -->
     <rect x="10" y="20" width="8" height="4" fill="rgba(255,255,255,0.85)"/>
+
+    <!-- Front headlight (right side = front, lower body, pulsing white) -->
+    <circle class="vehicle-headlight" cx="42" cy="22" r="3" fill="rgba(255,255,255,1)"/>
+
+    <!-- Rear taillight (left side = rear, lower body, pulsing red) -->
+    <circle class="vehicle-taillight" cx="6" cy="22" r="3" fill="rgba(255,50,50,1)"/>
 
     <!-- Visible wheel wells (larger wheel cutouts) -->
     <circle cx="14" cy="27" r="2.5" fill="rgba(255,255,255,0.3)"/>

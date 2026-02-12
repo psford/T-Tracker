@@ -1,7 +1,7 @@
 # T-Tracker Functional Specification
 
-**Version:** 1.0
-**Last updated:** 2026-02-09
+**Version:** 1.1
+**Last updated:** 2026-02-11
 **URL:** https://supertra.in (pending DNS propagation) / https://t-tracker.pages.dev
 
 ## Overview
@@ -26,7 +26,7 @@ The map fills the full browser viewport with a dark-themed basemap (CartoDB Dark
 
 - **Center:** Boston, MA (42.3601, -71.0589)
 - **Zoom range:** 10 (metro area) to 18 (street level), default 12
-- **Tile error handling:** If map tiles fail to load, a centered error message appears: "Map tiles unavailable -- check your connection"
+- **Tile error handling:** If map tiles fail to load, the app silently retries with exponential backoff (1s, 2s, 4s, 8s, max 10s). No error message is shown to avoid cluttering the UI.
 
 ### F2. Live Vehicle Positions
 
@@ -43,6 +43,7 @@ Vehicles appear on the map as type-specific silhouette icons colored to match th
 Vehicle icons:
 - Face the direction of travel (rotate based on bearing)
 - Flip horizontally when heading left so wheels stay on the bottom
+- Show pulsing directional indicators: white headlight at front (1.5s pulse cycle), red taillight at rear
 - Fade in when they first appear on the network
 - Fade out when they leave the network
 - Animate smoothly between position updates (800ms interpolation with ease-out cubic easing)
@@ -51,6 +52,8 @@ Vehicle icons:
 ### F3. Route Lines
 
 Each route's path is drawn on the map as a colored polyline below the vehicle markers. Route name labels appear at intervals along the longest path segment, rotated to follow the line direction.
+
+Route polylines are filtered to show only typical patterns (MBTA typicality=1), excluding detours, short-turns, and special service variations. Nearby route endpoints within 50 meters are snapped together to eliminate visual gaps at termini where inbound/outbound patterns meet.
 
 Polyline thickness adapts to how many routes are visible:
 - 1-4 routes: 5px (thick, for clarity)
@@ -69,7 +72,7 @@ Each group has a master toggle. Unchecking a group hides all its routes and coll
 
 **First visit defaults:** Subway on, Bus off, Commuter Rail off.
 
-**Returning visits:** The app restores the previous selection from localStorage. Removed routes are silently dropped. New routes added by MBTA are automatically visible if their service type toggle is on.
+**Returning visits:** The app restores the previous selection from localStorage. Removed routes are silently dropped. New routes added by MBTA are automatically visible only if (1) their service type toggle is on AND (2) you already have at least one route from that service type visible. This prevents all bus routes from suddenly appearing when you check the Bus toggle for the first time.
 
 **Responsive layout:**
 - Desktop (768px+): Static panel in the top-right corner, max height 60% of viewport, scrollable
