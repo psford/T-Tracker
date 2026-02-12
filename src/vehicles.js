@@ -30,6 +30,7 @@ function createVehicleState(vehicle, duration) {
         prevBearing: vehicle.bearing ?? 90,
         animationStart: performance.now(),
         animationDuration: duration,
+        lastUpdateTime: performance.now(), // Track when API last updated this vehicle
         routeId: vehicle.routeId,
         currentStatus: vehicle.currentStatus,
         stopId: vehicle.stopId,
@@ -95,6 +96,8 @@ function onUpdate(vehicle) {
           )
         : existing.bearing; // Keep previous bearing if stopped/barely moved
 
+    const now = performance.now();
+
     if (distance > config.animation.snapThreshold) {
         // Snap instantly
         existing.latitude = vehicle.latitude;
@@ -106,15 +109,17 @@ function onUpdate(vehicle) {
         existing.prevLatitude = vehicle.latitude;
         existing.prevLongitude = vehicle.longitude;
         existing.prevBearing = bearing;
-        existing.animationStart = performance.now();
+        existing.animationStart = now;
         existing.animationDuration = 0;
+        existing.lastUpdateTime = now;
     } else {
         // Set target and animate
         existing.targetLatitude = vehicle.latitude;
         existing.targetLongitude = vehicle.longitude;
         existing.targetBearing = bearing;
-        existing.animationStart = performance.now();
+        existing.animationStart = now;
         existing.animationDuration = config.animation.interpolationDuration;
+        existing.lastUpdateTime = now;
     }
 
     // Update metadata
@@ -171,6 +176,41 @@ function isWithinBounds(vehicle, bounds) {
 }
 
 /**
+ * Extrapolate position along a bearing for a given distance
+ * @param {number} lat - Starting latitude
+ * @param {number} lon - Starting longitude
+ * @param {number} bearing - Bearing in degrees (0=north, 90=east)
+ * @param {number} distanceMeters - Distance to travel in meters
+ * @returns {{latitude: number, longitude: number}} - New position
+ */
+function extrapolatePosition(lat, lon, bearing, distanceMeters) {
+    const R = 6371000; // Earth radius in meters
+    const toRad = Math.PI / 180;
+    const toDeg = 180 / Math.PI;
+
+    const lat1Rad = lat * toRad;
+    const lon1Rad = lon * toRad;
+    const bearingRad = bearing * toRad;
+    const d = distanceMeters;
+
+    // Calculate new position using spherical geometry
+    const lat2Rad = Math.asin(
+        Math.sin(lat1Rad) * Math.cos(d / R) +
+        Math.cos(lat1Rad) * Math.sin(d / R) * Math.cos(bearingRad)
+    );
+
+    const lon2Rad = lon1Rad + Math.atan2(
+        Math.sin(bearingRad) * Math.sin(d / R) * Math.cos(lat1Rad),
+        Math.cos(d / R) - Math.sin(lat1Rad) * Math.sin(lat2Rad)
+    );
+
+    return {
+        latitude: lat2Rad * toDeg,
+        longitude: lon2Rad * toDeg
+    };
+}
+
+/**
  * requestAnimationFrame loop — interpolates all vehicles
  */
 function animate(timestamp) {
@@ -221,9 +261,46 @@ function animate(timestamp) {
         const prevLon = vehicle.prevLongitude;
         const prevBearing = vehicle.prevBearing;
 
-        vehicle.latitude = lerp(prevLat, vehicle.targetLatitude, eased);
-        vehicle.longitude = lerp(prevLon, vehicle.targetLongitude, eased);
-        vehicle.bearing = lerpAngle(prevBearing, vehicle.targetBearing, eased);
+        if (t < 1.0) {
+            // Still interpolating to target
+            // Use linear interpolation for position (not eased) for seamless transition to extrapolation
+            vehicle.latitude = lerp(prevLat, vehicle.targetLatitude, t);
+            vehicle.longitude = lerp(prevLon, vehicle.targetLongitude, t);
+            // Keep easing for bearing rotation (looks better)
+            vehicle.bearing = lerpAngle(prevBearing, vehicle.targetBearing, eased);
+        } else {
+            // Interpolation complete - extrapolate based on speed
+            // Only extrapolate if: (1) vehicle is active, (2) has valid speed, (3) not stopped
+            const MAX_EXTRAPOLATION_TIME = 30000; // Cap at 30 seconds to prevent runaway
+            const timeSinceUpdate = timestamp - vehicle.lastUpdateTime;
+
+            if (vehicle.state === 'active' &&
+                vehicle.speed != null &&
+                vehicle.speed > 0.5 && // Ignore very slow speeds (< 1 mph)
+                timeSinceUpdate < MAX_EXTRAPOLATION_TIME) {
+
+                // Calculate distance to travel: speed (m/s) * time (ms → s)
+                const distanceMeters = vehicle.speed * (timeSinceUpdate / 1000);
+
+                // Extrapolate from target position (not prev) along bearing
+                const newPos = extrapolatePosition(
+                    vehicle.targetLatitude,
+                    vehicle.targetLongitude,
+                    vehicle.targetBearing,
+                    distanceMeters
+                );
+
+                vehicle.latitude = newPos.latitude;
+                vehicle.longitude = newPos.longitude;
+                // Bearing stays constant during extrapolation
+                vehicle.bearing = vehicle.targetBearing;
+            } else {
+                // No extrapolation - stay at target
+                vehicle.latitude = vehicle.targetLatitude;
+                vehicle.longitude = vehicle.targetLongitude;
+                vehicle.bearing = vehicle.targetBearing;
+            }
+        }
     }
 
     // Call registered callbacks with FULL vehicles map (not filtered)

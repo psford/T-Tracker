@@ -28,10 +28,10 @@
 
     <!-- App entry point (ES6 module) -->
     <script type="module">
-        import { initMap, loadRoutes, loadStops, syncVehicleMarkers, getRouteMetadata, setVisibleRoutes } from './src/map.js?v=7';
-        import { connect, apiEvents } from './src/api.js?v=7';
-        import { initVehicles, onVehicleUpdate } from './src/vehicles.js?v=7';
-        import { initUI } from './src/ui.js?v=7';
+        import { initMap, loadRoutes, loadStops, syncVehicleMarkers, getRouteMetadata, setVisibleRoutes } from './src/map.js?v=9';
+        import { connect, apiEvents } from './src/api.js?v=9';
+        import { initVehicles, onVehicleUpdate } from './src/vehicles.js?v=9';
+        import { initUI } from './src/ui.js?v=9';
 
         const map = initMap('map');
         initVehicles(apiEvents, () => map.getBounds());
