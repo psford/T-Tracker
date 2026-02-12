@@ -1,6 +1,6 @@
 // src/vehicles.js — Vehicle state management and animation loop
 import { config } from '../config.js';
-import { lerp, easeOutCubic, lerpAngle, haversineDistance } from './vehicle-math.js';
+import { lerp, easeOutCubic, lerpAngle, haversineDistance, calculateBearing } from './vehicle-math.js';
 
 // Map<vehicleId, VehicleState>
 const vehicles = new Map();
@@ -83,9 +83,20 @@ function onUpdate(vehicle) {
         vehicle.longitude
     );
 
+    // Calculate bearing from current position to new position (movement direction)
+    // Only calculate if vehicle has moved at least 1 meter (stopped vehicles keep previous bearing)
+    const MINIMUM_MOVEMENT_FOR_BEARING = 1; // meters
+    const bearing = distance >= MINIMUM_MOVEMENT_FOR_BEARING
+        ? calculateBearing(
+            existing.latitude,
+            existing.longitude,
+            vehicle.latitude,
+            vehicle.longitude
+          )
+        : existing.bearing; // Keep previous bearing if stopped/barely moved
+
     if (distance > config.animation.snapThreshold) {
         // Snap instantly
-        const bearing = vehicle.bearing ?? 90;
         existing.latitude = vehicle.latitude;
         existing.longitude = vehicle.longitude;
         existing.bearing = bearing;
@@ -101,7 +112,7 @@ function onUpdate(vehicle) {
         // Set target and animate
         existing.targetLatitude = vehicle.latitude;
         existing.targetLongitude = vehicle.longitude;
-        existing.targetBearing = vehicle.bearing ?? 90;
+        existing.targetBearing = bearing;
         existing.animationStart = performance.now();
         existing.animationDuration = config.animation.interpolationDuration;
     }

@@ -60,6 +60,32 @@ export function haversineDistance(lat1, lon1, lat2, lon2) {
 }
 
 /**
+ * Calculates the compass bearing (0-360 degrees) from one lat/lng point to another.
+ * Returns the direction of travel along the great circle route.
+ * @param {number} lat1 — starting latitude
+ * @param {number} lon1 — starting longitude
+ * @param {number} lat2 — ending latitude
+ * @param {number} lon2 — ending longitude
+ * @returns {number} — bearing in degrees (0=north, 90=east, 180=south, 270=west)
+ */
+export function calculateBearing(lat1, lon1, lat2, lon2) {
+    const toRad = Math.PI / 180;
+    const toDeg = 180 / Math.PI;
+
+    const dLon = (lon2 - lon1) * toRad;
+    const lat1Rad = lat1 * toRad;
+    const lat2Rad = lat2 * toRad;
+
+    const y = Math.sin(dLon) * Math.cos(lat2Rad);
+    const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+              Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+
+    const bearing = Math.atan2(y, x) * toDeg;
+    // Normalize to 0-360
+    return (bearing + 360) % 360;
+}
+
+/**
  * Darkens a hex color by reducing each RGB channel.
  * @param {string} hex — hex color string (e.g., '#DA291C')
  * @param {number} amount — darkening factor (0-1, where 0.15 = 15% darker)
