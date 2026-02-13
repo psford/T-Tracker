@@ -7,44 +7,20 @@ const stopMarkers = new Map();
 // L.LayerGroup for stop markers — organized as layer for batch show/hide
 let stopLayerGroup = null;
 
-// Reference to the Leaflet map instance
-let mapInstance = null;
-
-// Current set of visible route IDs
-let currentVisibleRoutes = new Set();
-
 /**
- * Initialize stop markers module.
- * Creates layer group and prepares for rendering markers on visible routes.
+ * Pure logic: Compute visible stops and their colors based on visible routes.
+ * Extracted for testability (AC1.1, AC1.5).
  *
- * @param {L.Map} map — Leaflet map instance
+ * @param {Set<string>|Array<string>} visibleRouteIds — route IDs that should be visible
+ * @param {Map<string, Set<string>>} routeStopsMap — route ID to set of stop IDs
+ * @param {Map<string, string>} routeColorMap — route ID to hex color string
+ * @returns {Object} — {visibleStopIds: Set<string>, stopColorMap: Map<string, string>}
  */
-export function initStopMarkers(map) {
-    mapInstance = map;
-    stopLayerGroup = L.layerGroup().addTo(map);
-}
-
-/**
- * Update stop marker visibility based on currently visible routes.
- * Creates markers for newly visible stops, removes markers for hidden stops.
- * Follows the deduplication pattern from AC1.5: same physical stop on multiple routes
- * gets one marker with the color of the first visible route claiming it.
- *
- * @param {Set<string>|Array<string>} routeIds — route IDs that should be visible
- */
-export function updateVisibleStops(routeIds) {
-    currentVisibleRoutes = new Set(routeIds);
-
-    const stopsData = getStopData();
-    const routeStopsMap = getRouteStopsMap();
-    const routeColorMap = getRouteColorMap();
-
-    // Collect all stop IDs that should be visible (union of stops across visible routes)
+export function computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap) {
     const visibleStopIds = new Set();
-    // Track which route "owns" each stop (first visible route wins, for coloring — AC1.5)
     const stopColorMap = new Map();
 
-    currentVisibleRoutes.forEach((routeId) => {
+    new Set(visibleRouteIds).forEach((routeId) => {
         const stopIds = routeStopsMap.get(routeId);
         if (stopIds) {
             stopIds.forEach((stopId) => {
@@ -57,12 +33,47 @@ export function updateVisibleStops(routeIds) {
         }
     });
 
-    // Remove markers for stops no longer visible
+    return { visibleStopIds, stopColorMap };
+}
+
+/**
+ * Initialize stop markers module.
+ * Creates layer group and prepares for rendering markers on visible routes.
+ *
+ * @param {L.Map} map — Leaflet map instance
+ */
+export function initStopMarkers(map) {
+    stopLayerGroup = L.layerGroup().addTo(map);
+}
+
+/**
+ * Update stop marker visibility based on currently visible routes.
+ * Creates markers for newly visible stops, removes markers for hidden stops.
+ * Follows the deduplication pattern from AC1.5: same physical stop on multiple routes
+ * gets one marker with the color of the first visible route claiming it.
+ *
+ * @param {Set<string>|Array<string>} routeIds — route IDs that should be visible
+ */
+export function updateVisibleStops(routeIds) {
+    const stopsData = getStopData();
+    const routeStopsMap = getRouteStopsMap();
+    const routeColorMap = getRouteColorMap();
+
+    const { visibleStopIds, stopColorMap } = computeVisibleStops(routeIds, routeStopsMap, routeColorMap);
+
+    // Collect stops to remove (avoid modifying Map during iteration)
+    const stopsToRemove = [];
     stopMarkers.forEach((marker, stopId) => {
         if (!visibleStopIds.has(stopId)) {
-            stopLayerGroup.removeLayer(marker);
-            stopMarkers.delete(stopId);
+            stopsToRemove.push(stopId);
         }
+    });
+
+    // Remove markers for stops no longer visible
+    stopsToRemove.forEach((stopId) => {
+        const marker = stopMarkers.get(stopId);
+        stopLayerGroup.removeLayer(marker);
+        stopMarkers.delete(stopId);
     });
 
     // Add markers for newly visible stops

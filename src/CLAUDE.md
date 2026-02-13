@@ -1,10 +1,10 @@
 # T-Tracker Source Modules
 
-Last verified: 2026-02-08
+Last verified: 2026-02-13
 
 ## Purpose
-Nine ES6 modules that separate data acquisition (SSE), state management (interpolation),
-rendering (Leaflet markers/polylines), user controls (route filtering), polyline decoding,
+Ten ES6 modules that separate data acquisition (SSE), state management (interpolation),
+rendering (Leaflet markers/polylines/stop markers), user controls (route filtering), polyline decoding,
 route organization, popup content formatting, and vehicle icon data.
 
 ## Data Flow
@@ -12,9 +12,10 @@ route organization, popup content formatting, and vehicle icon data.
 MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
                                           ^                           ^
                                        ui.js (configure)      polyline.js (decode)
-                                          ^                      route-sorter.js
+                                          ^                      stop-markers.js (render stops)
                                           (organize routes)   vehicle-popup.js (format)
                                                               vehicle-icons.js (icon data)
+                                                              route-sorter.js
 ```
 
 ## Contracts
@@ -47,7 +48,17 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Route colors from MBTA API applied to polylines. Vehicle popups bound to markers on creation.
   Desktop: hover opens, mouseout closes. Mobile: tap opens.
   Popup content refreshes when popup is open and vehicle data changes (throttled by updatedAt comparison).
+  `buildRouteStopsMapping()` limits concurrency to 3 simultaneous requests to avoid browser connection limits and rate limiting.
 - **Expects**: Leaflet `L` global available. `config.map.*`, `config.tiles.*` set.
+
+### stop-markers.js -- Stop Marker Rendering
+- **Exposes**: `initStopMarkers(map)`, `updateVisibleStops(routeIds)`, `computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap)`
+- **Guarantees**: Renders lightweight SVG circle markers for stops on visible routes (AC1.1).
+  Creates one marker per unique stop (deduplication for stops on multiple routes, AC1.5).
+  First visible route to claim a stop sets its color (no visual stacking).
+  Only creates/removes markers on route visibility changes, not on every update (AC1.4 performance).
+  `computeVisibleStops()` is a pure function for testability.
+- **Expects**: Leaflet `L` global available. `map.js` exports for stop data, route-stop mapping, and route colors.
 
 ### vehicle-math.js -- Pure Math
 - **Exposes**: `lerp(a, b, t)`, `easeOutCubic(t)`, `lerpAngle(a, b, t)`, `haversineDistance(lat1, lon1, lat2, lon2)`, `darkenHexColor(hex, amount)`, `bearingToTransform(bearing)`

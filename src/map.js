@@ -674,9 +674,19 @@ export function getRouteColorMap() {
 export async function buildRouteStopsMapping() {
     const routeIds = routeMetadata.map(r => r.id);
 
-    // Fetch stops per route to build association mapping
-    // Each route query implicitly associates returned stops with that route
-    const fetchPromises = routeIds.map(async (routeId) => {
+    // CRITICAL FIX: Limit concurrent requests to avoid rate limiting and browser connection limits.
+    // Browser allows ~6 concurrent requests per hostname. MBTA API rate limit is 1000 req/min.
+    // Solution: Queue requests with limited concurrency (max 3 concurrent), not unlimited Promise.all().
+
+    const MAX_CONCURRENT = 3;
+    const activeFetches = [];
+    let routeIndex = 0;
+
+    /**
+     * Fetch stops for a single route and add to routeStopsMap.
+     * Manages concurrency by removing itself from activeFetches when done.
+     */
+    const fetchRouteStops = async (routeId) => {
         const routeUrl = new URL(`${config.api.baseUrl}/stops`);
         routeUrl.searchParams.append('filter[route]', routeId);
         routeUrl.searchParams.append('fields[stop]', 'name,latitude,longitude');
@@ -706,10 +716,32 @@ export async function buildRouteStopsMapping() {
         } catch (error) {
             console.error(`Failed to load stops for route ${routeId}:`, error.message);
         }
-    });
+    };
 
-    // Run all route-stop fetches in parallel for performance
-    await Promise.all(fetchPromises);
+    /**
+     * Manage request queue: start next request when one completes.
+     */
+    const startNextRequest = async () => {
+        if (routeIndex >= routeIds.length) return; // All routes queued
+
+        const currentRouteId = routeIds[routeIndex++];
+        const fetchPromise = fetchRouteStops(currentRouteId);
+
+        // Remove from activeFetches when done, then start next
+        activeFetches.push(fetchPromise);
+        await fetchPromise;
+        activeFetches.splice(activeFetches.indexOf(fetchPromise), 1);
+        await startNextRequest();
+    };
+
+    // Start MAX_CONCURRENT requests in parallel
+    const queueManagers = [];
+    for (let i = 0; i < Math.min(MAX_CONCURRENT, routeIds.length); i++) {
+        queueManagers.push(startNextRequest());
+    }
+
+    // Wait for all queue managers to complete (which waits for all requests)
+    await Promise.all(queueManagers);
     console.log(`Built route-stop mapping for ${routeStopsMap.size} routes`);
 }
 
