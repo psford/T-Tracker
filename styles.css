@@ -358,6 +358,21 @@ html, body {
     background: rgba(255, 107, 107, 0.2);
 }
 
+/* Notification pause/resume toggle button */
+.notification-status__toggle {
+    background: none;
+    border: 1px solid currentColor;
+    color: inherit;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.notification-status__toggle:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
 /* Vehicle popup styles (hover cards) */
 .vehicle-popup-container .leaflet-popup-content-wrapper {
     background: rgba(22, 33, 62, 0.95);
