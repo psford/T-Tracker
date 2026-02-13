@@ -16,6 +16,9 @@
 <body>
     <div id="map"></div>
     <div id="controls"></div>
+    <div id="notification-status" class="notification-status notification-status--hidden">
+        <span class="notification-status__text"></span>
+    </div>
     <div id="status" class="connection-status">
         <span class="status-dot"></span>
         <span class="status-text">Connecting...</span>
@@ -34,6 +37,7 @@
         import { initUI } from './src/ui.js?v=11';
         import { initStopMarkers, updateVisibleStops } from './src/stop-markers.js?v=11';
         import { initNotifications } from './src/notifications.js?v=11';
+        import { initNotificationUI, updateStatus as updateNotificationStatus } from './src/notification-ui.js?v=11';
 
         const map = initMap('map');
         initVehicles(apiEvents, () => map.getBounds());
@@ -52,6 +56,9 @@
                 });
                 // Initialize notification system with loaded stops data
                 initNotifications(apiEvents, getStopData());
+                // Initialize notification UI status indicator
+                const notificationStatusEl = document.getElementById('notification-status');
+                initNotificationUI(notificationStatusEl);
             });
 
         // Wire connection status indicator
