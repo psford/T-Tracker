@@ -1,5 +1,5 @@
 // src/notification-ui.js — Notification status UI management
-import { getNotificationPairs, getPermissionState, requestPermission } from './notifications.js';
+import { getNotificationPairs, getPermissionState, requestPermission, isPaused, togglePause } from './notifications.js';
 
 let statusEl = null;
 
@@ -30,7 +30,8 @@ export function initNotificationUI(statusElement) {
  * AC9.3: Warning banner shown when permission denied
  * AC9.4: Enable button triggers permission request
  * AC9.5: Status updates after permission change
- * AC6.2: Paused state (stub for Phase 6)
+ * AC5.4: Paused state shows "Paused — Resume" button (amber)
+ * AC6.2: Status shows "Paused" when manually paused
  *
  * Call this after any config change or permission change.
  */
@@ -54,23 +55,40 @@ export function updateStatus() {
         // AC6.3 + AC9.3: Blocked state with enable button
         statusEl.classList.add('notification-status--blocked');
         textEl.innerHTML = `Notifications blocked &mdash; <button class="notification-status__enable">Enable</button>`;
-
-        // AC9.4: Enable button triggers permission request
-        const enableBtn = textEl.querySelector('.notification-status__enable');
-        if (enableBtn) {
-            enableBtn.addEventListener('click', async () => {
-                await requestPermission();
-                // AC9.5: Refresh after permission change
-                updateStatus();
-            });
-        }
+        bindEnableButton(textEl);
+    } else if (isPaused()) {
+        // AC5.4 + AC6.2: Paused state
+        statusEl.classList.add('notification-status--paused');
+        textEl.innerHTML = `Paused &mdash; <button class="notification-status__toggle">Resume</button>`;
+        bindToggleButton(textEl);
     } else if (permission === 'default') {
         // Permission not yet requested
         statusEl.classList.add('notification-status--default');
         textEl.textContent = `${pairs.length} alert${pairs.length !== 1 ? 's' : ''} configured`;
     } else {
-        // AC6.1: Active state — permission granted
+        // AC6.1: Active state — permission granted, with pause button
         statusEl.classList.add('notification-status--active');
-        textEl.textContent = `Active: ${pairs.length} alert${pairs.length !== 1 ? 's' : ''} monitored`;
+        textEl.innerHTML = `Active: ${pairs.length} alert${pairs.length !== 1 ? 's' : ''} &mdash; <button class="notification-status__toggle">Pause</button>`;
+        bindToggleButton(textEl);
+    }
+}
+
+function bindToggleButton(container) {
+    const btn = container.querySelector('.notification-status__toggle');
+    if (btn) {
+        btn.addEventListener('click', () => {
+            togglePause();
+            updateStatus();
+        });
+    }
+}
+
+function bindEnableButton(container) {
+    const btn = container.querySelector('.notification-status__enable');
+    if (btn) {
+        btn.addEventListener('click', async () => {
+            await requestPermission();
+            updateStatus();
+        });
     }
 }
