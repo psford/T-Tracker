@@ -3,9 +3,10 @@
 Last verified: 2026-02-13
 
 ## Purpose
-Twelve ES6 modules that separate data acquisition (SSE), state management (interpolation),
+Thirteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
 rendering (Leaflet markers/polylines/stop markers), user controls (route filtering), polyline decoding,
-route organization, popup content formatting, vehicle icon data, stop popup formatting, and notification engine.
+route organization, popup content formatting, vehicle icon data, stop popup formatting, notification engine,
+and notification UI management.
 
 ## Data Flow
 ```
@@ -19,6 +20,8 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
                       |                                      route-sorter.js
                       |
                       +-> notifications.js (monitor & fire)
+                            |
+                            +-> notification-ui.js (status & panel)
 ```
 
 ## Contracts
@@ -131,8 +134,9 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Guarantees**: Max 5 notification pairs enforced. Same checkpoint+destination rejected. Config persists to localStorage (key: `ttracker-notifications-config`). Duplicate prevention: same vehicle+pair only notifies once per session. Direction detection: first vehicle at checkpoint sets learned direction; opposite-direction vehicles filtered. Graceful degradation: if Notification API unavailable, config still works. Pairs with invalid stop IDs filtered on init. Storage quota exceeded handled gracefully without crashing. `addNotificationPair()` is async: requests permission on first configuration (AC9.1), returns with permissionState. `requestPermission()` must be called from user gesture context. `getPermissionState()` queries current permission without prompting. Pause state persists to localStorage (key: `ttracker-notifications-paused`). `pauseNotifications()` and `resumeNotifications()` only modify paused flag — pairs array never modified (AC5.5). Paused state skips checkAllPairs processing — notifications do not fire when paused (AC5.1). Paused state restored on `initNotifications()` from localStorage (AC5.3).
 - **Expects**: `apiEvents` EventTarget emitting `vehicles:update` and `vehicles:add` with vehicle detail objects. `stopsData` Map from `map.js` for stop name lookups and AC8.5 validation. Vehicle object must have {id, stopId, routeId, directionId, label} properties.
 
-### notification-ui.js -- Notification Status UI
-- **Exposes**: `initNotificationUI(statusElement)`, `updateStatus()`
+### notification-ui.js -- Notification Status and Panel UI
+- **Exposes**: `initNotificationUI(statusElement)`, `updateStatus()`,
+  `initNotificationPanel(panelElement, toggleButton)`, `renderPanel()`
 - **Guarantees**: Status indicator shows current state: active (green), blocked (red), default (gray), paused (amber), or hidden.
   Updates immediately on config or permission changes.
   "Enable" button triggers permission request from user gesture context.
@@ -145,7 +149,14 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   AC9.5: Status updates after permission change.
   AC5.4: Paused state shows amber "Paused — Resume" button with pause/resume toggle.
   AC6.5: Updates immediately when permission state changes.
-- **Expects**: `#notification-status` element in DOM. `notifications.js` functions for state queries (`getNotificationPairs()`, `getPermissionState()`, `requestPermission()`, `isPaused()`, `togglePause()`).
+  Panel lists all pairs with readable stop/route names (AC10.1).
+  Delete button removes individual pairs (AC10.2).
+  Counter shows "X/5 pairs configured" (AC10.3).
+  Toggle button shown/hidden based on pair count (AC10.4).
+  Empty state shows "No notifications configured" (AC10.5).
+- **Expects**: `#notification-status` and `#notification-panel` elements in DOM.
+  `notifications.js` functions for state queries (`getNotificationPairs()`, `getPermissionState()`, `requestPermission()`, `isPaused()`, `togglePause()`, `removeNotificationPair()`).
+  `getStopData()` and `getRouteMetadata()` from `map.js` for name resolution.
 
 ## Key Decisions
 - Event-driven (CustomEvent/EventTarget) over direct function calls: enables multiple subscribers
