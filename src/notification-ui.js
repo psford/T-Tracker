@@ -1,7 +1,11 @@
 // src/notification-ui.js — Notification status UI management
-import { getNotificationPairs, getPermissionState, requestPermission, isPaused, togglePause } from './notifications.js';
+import { getNotificationPairs, getPermissionState, requestPermission, isPaused, togglePause, removeNotificationPair } from './notifications.js';
+import { escapeHtml } from './stop-popup.js';
+import { getStopData, getRouteMetadata } from './map.js';
 
 let statusEl = null;
+let panelEl = null;
+let toggleBtn = null;
 
 /**
  * Initialize notification UI.
@@ -21,6 +25,35 @@ export function initNotificationUI(statusElement) {
             updateStatus();
         }
     });
+}
+
+/**
+ * Initialize notification panel.
+ * AC10.4: Toggle panel visibility on button click
+ *
+ * @param {HTMLElement} panelElement — #notification-panel
+ * @param {HTMLElement} toggleButton — #notification-panel-toggle
+ */
+export function initNotificationPanel(panelElement, toggleButton) {
+    panelEl = panelElement;
+    toggleBtn = toggleButton;
+
+    // AC10.4: Toggle panel visibility on button click
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+            panelEl.classList.toggle('notification-panel--hidden');
+        });
+    }
+
+    // Close button
+    const closeBtn = panelEl.querySelector('.notification-panel__close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            panelEl.classList.add('notification-panel--hidden');
+        });
+    }
+
+    renderPanel();
 }
 
 /**
@@ -91,4 +124,74 @@ function bindEnableButton(container) {
             updateStatus();
         });
     }
+}
+
+/**
+ * Render the panel list with current notification pairs.
+ * AC10.1: Lists all pairs with readable checkpoint→destination names and route names
+ * AC10.2: Delete buttons call removeNotificationPair()
+ * AC10.3: Counter shows "X/5 pairs configured"
+ * AC10.4: Toggle button shown/hidden based on pair count
+ * AC10.5: Empty state shows "No notifications configured"
+ *
+ * Call after any config change.
+ */
+export function renderPanel() {
+    if (!panelEl) return;
+
+    const pairs = getNotificationPairs();
+    const stopsData = getStopData();
+    const metadata = getRouteMetadata();
+
+    const listEl = panelEl.querySelector('.notification-panel__list');
+    const emptyEl = panelEl.querySelector('.notification-panel__empty');
+    const countEl = panelEl.querySelector('.notification-panel__count');
+
+    // AC10.4: Show/hide toggle button based on pair count
+    if (toggleBtn) {
+        toggleBtn.style.display = pairs.length > 0 ? 'block' : 'none';
+    }
+
+    // AC10.5: Empty state
+    if (pairs.length === 0) {
+        listEl.innerHTML = '';
+        emptyEl.style.display = 'block';
+        countEl.textContent = '';
+        return;
+    }
+
+    emptyEl.style.display = 'none';
+
+    // AC10.3: Count display
+    countEl.textContent = `${pairs.length}/5 pairs configured`;
+
+    // AC10.1: Render each pair with readable names
+    listEl.innerHTML = pairs.map(pair => {
+        const checkpointName = stopsData.get(pair.checkpointStopId)?.name || pair.checkpointStopId;
+        const destName = stopsData.get(pair.myStopId)?.name || pair.myStopId;
+        const routeMeta = metadata.find(r => r.id === pair.routeId);
+        const routeName = routeMeta
+            ? (routeMeta.type === 2 ? routeMeta.longName : routeMeta.shortName)
+            : pair.routeId;
+
+        return `
+            <div class="notification-pair" data-pair-id="${escapeHtml(pair.id)}">
+                <div>
+                    <div class="notification-pair__info">${escapeHtml(checkpointName)} &rarr; ${escapeHtml(destName)}</div>
+                    <div class="notification-pair__route">${escapeHtml(routeName)}</div>
+                </div>
+                <button class="notification-pair__delete" data-pair-id="${escapeHtml(pair.id)}">Delete</button>
+            </div>
+        `;
+    }).join('');
+
+    // AC10.2: Bind delete buttons
+    listEl.querySelectorAll('.notification-pair__delete').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const pairId = btn.dataset.pairId;
+            removeNotificationPair(pairId);
+            updateStatus();   // Update status indicator (separate from panel)
+            renderPanel();    // Re-render panel (separate from status)
+        });
+    });
 }
