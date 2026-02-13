@@ -31,6 +31,9 @@ const routeTypeMap = new Map();
 // Map<stopId, {id, name, latitude, longitude}> — caches stop data fetched on startup
 let stopsData = new Map();
 
+// Map<routeId, Set<stopId>> — tracks which stops belong to which routes
+const routeStopsMap = new Map();
+
 // Map<routeId, L.Marker[]> — route name labels placed along polylines
 const routeLabels = new Map();
 
@@ -654,4 +657,68 @@ export function getStopData() {
  */
 export function getRouteColorMap() {
     return routeColorMap;
+}
+
+/**
+ * Builds the route-to-stops mapping by fetching stops per visible route.
+ * This function requires routeMetadata from loadRoutes() to be available.
+ * Called after both loadRoutes() and loadStops() complete.
+ *
+ * For each route in routeMetadata, fetches /stops?filter[route]=ROUTE_ID to
+ * establish the implicit association: all returned stops belong to that route.
+ * Runs all route-stop fetches in parallel for performance.
+ * Logs result on completion.
+ *
+ * Graceful degradation: if a route fetch fails, skips that route and continues.
+ */
+export async function buildRouteStopsMapping() {
+    const routeIds = routeMetadata.map(r => r.id);
+
+    // Fetch stops per route to build association mapping
+    // Each route query implicitly associates returned stops with that route
+    const fetchPromises = routeIds.map(async (routeId) => {
+        const routeUrl = new URL(`${config.api.baseUrl}/stops`);
+        routeUrl.searchParams.append('filter[route]', routeId);
+        routeUrl.searchParams.append('fields[stop]', 'name,latitude,longitude');
+        routeUrl.searchParams.append('api_key', config.api.key);
+
+        try {
+            const response = await fetch(routeUrl.toString());
+            if (!response.ok) return;
+            const json = await response.json();
+            const stops = json.data || [];
+
+            const stopIds = new Set();
+            stops.forEach((stop) => {
+                stopIds.add(stop.id);
+                // Also update stopsData if not already present
+                if (!stopsData.has(stop.id)) {
+                    stopsData.set(stop.id, {
+                        id: stop.id,
+                        name: stop.attributes?.name || '',
+                        latitude: stop.attributes?.latitude || 0,
+                        longitude: stop.attributes?.longitude || 0,
+                    });
+                }
+            });
+
+            routeStopsMap.set(routeId, stopIds);
+        } catch (error) {
+            console.error(`Failed to load stops for route ${routeId}:`, error.message);
+        }
+    });
+
+    // Run all route-stop fetches in parallel for performance
+    await Promise.all(fetchPromises);
+    console.log(`Built route-stop mapping for ${routeStopsMap.size} routes`);
+}
+
+/**
+ * Returns the route-to-stops mapping.
+ * Key: route ID (string), Value: Set of stop IDs
+ *
+ * @returns {Map<string, Set<string>>} — routeStopsMap
+ */
+export function getRouteStopsMap() {
+    return routeStopsMap;
 }

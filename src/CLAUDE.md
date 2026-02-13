@@ -39,8 +39,8 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 
 ### map.js -- Leaflet Rendering
 - **Exposes**: `initMap(containerId)`, `loadRoutes()`, `loadStops()`,
-  `syncVehicleMarkers(vehiclesMap)`, `getRouteMetadata()`, `setVisibleRoutes(routeIds)`,
-  `getStopData()`, `getRouteColorMap()`
+  `buildRouteStopsMapping()`, `syncVehicleMarkers(vehiclesMap)`, `getRouteMetadata()`,
+  `setVisibleRoutes(routeIds)`, `getStopData()`, `getRouteColorMap()`, `getRouteStopsMap()`
 - **Guarantees**: Route polylines render below vehicle markers (layer ordering).
   Visible routes render polylines and 48x32 vehicle icon markers with type-specific SVG silhouettes.
   Hidden routes have no polylines or markers on map. Icons filled with route color, accented with fixed contrast details.
