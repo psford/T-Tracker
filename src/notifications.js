@@ -3,7 +3,9 @@
 export const MAX_PAIRS = 5;
 
 const CONFIG_KEY = 'ttracker-notifications-config';
+const PAUSED_KEY = 'ttracker-notifications-paused';
 let pairs = []; // In-memory cache, synced with localStorage
+let paused = false; // In-memory pause state, synced with localStorage
 
 /**
  * Reads notification config from localStorage.
@@ -153,6 +155,43 @@ export function getNotificationPairs() {
 
 
 /**
+ * Pause notifications. Config preserved, notifications stop firing.
+ * AC5.1: Paused stops notifications from firing.
+ */
+export function pauseNotifications() {
+    paused = true;
+    localStorage.setItem(PAUSED_KEY, 'true');
+}
+
+/**
+ * Resume notifications. Re-enables notification firing.
+ * AC5.2: Resume re-enables notifications.
+ */
+export function resumeNotifications() {
+    paused = false;
+    localStorage.setItem(PAUSED_KEY, 'false');
+}
+
+/**
+ * Toggle pause state.
+ */
+export function togglePause() {
+    if (paused) {
+        resumeNotifications();
+    } else {
+        pauseNotifications();
+    }
+}
+
+/**
+ * Check if notifications are paused.
+ * @returns {boolean}
+ */
+export function isPaused() {
+    return paused;
+}
+
+/**
  * Check if vehicle is at checkpoint heading toward destination.
  * Uses directionId learning: first vehicle at checkpoint sets the expected direction.
  * AC7.1: Direction detected from live vehicle data (directionId).
@@ -230,11 +269,13 @@ const notifiedVehicles = new Set();
  * Check all pairs against a vehicle update. Fire notifications as needed.
  * AC4.6: Multiple trains in sequence each trigger separate notifications.
  * AC4.7: Every crossing notifies (keyed by vehicle.id + pair.id, so different vehicles all trigger).
+ * AC5.1: Skips checking when paused (notifications disabled but config preserved).
  *
  * @param {Object} vehicle — vehicle state
  * @param {Map<string, Object>} stopsData — stop ID → stop object mapping
  */
 function checkAllPairs(vehicle, stopsData) {
+    if (paused) return; // AC5.1: Paused — don't check or notify
     for (const pair of pairs) {
         if (shouldNotify(vehicle, pair, notifiedVehicles)) {
             fireNotification(vehicle, pair, stopsData);
@@ -247,6 +288,7 @@ function checkAllPairs(vehicle, stopsData) {
  * Initialize notification monitoring.
  * Loads config from localStorage, subscribes to vehicle updates.
  * AC8.5: Filters out pairs with invalid stop IDs.
+ * AC5.3: Restores paused state from localStorage.
  *
  * @param {EventTarget} apiEventsTarget — EventTarget emitting vehicles:update and vehicles:add
  * @param {Map<string, Object>} stopsData — stop ID → stop object mapping (from map.js)
@@ -254,6 +296,9 @@ function checkAllPairs(vehicle, stopsData) {
 export function initNotifications(apiEventsTarget, stopsData) {
     // Load config from localStorage
     pairs = readConfig();
+
+    // AC5.3: Restore paused state from localStorage
+    paused = localStorage.getItem(PAUSED_KEY) === 'true';
 
     // AC8.5: Filter out pairs with invalid stop IDs (stops no longer in loaded data)
     if (stopsData && stopsData.size > 0) {
