@@ -645,3 +645,13 @@ export async function loadStops() {
 export function getStopData() {
     return stopsData;
 }
+
+/**
+ * Returns the route color lookup Map.
+ * Key: route ID (string), Value: hex color string (e.g., "#DA291C")
+ *
+ * @returns {Map<string, string>} — routeColorMap
+ */
+export function getRouteColorMap() {
+    return routeColorMap;
+}
