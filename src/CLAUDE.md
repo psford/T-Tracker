@@ -130,12 +130,12 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Expects**: Stop object with {id, name, latitude, longitude}. Route infos as Array<{id, shortName, longName, color, type}> or null. Optional configState object with shape {isCheckpoint, isDestination, pairCount, pendingCheckpoint, pendingCheckpointName, maxPairs}.
 
 ### notifications.js -- Notification Engine
-- **Exposes**: `initNotifications(apiEvents, stopsData)`, `addNotificationPair(checkpointStopId, myStopId, routeId)`, `removeNotificationPair(pairId)`, `getNotificationPairs()`, `validatePair(checkpointStopId, myStopId, existingPairs)`, `shouldNotify(vehicle, pair, notifiedSet)`, `requestPermission()`, `getPermissionState()`, `pauseNotifications()`, `resumeNotifications()`, `togglePause()`, `isPaused()`
+- **Exposes**: `MAX_PAIRS` (constant: 5), `initNotifications(apiEvents, stopsData)`, `addNotificationPair(checkpointStopId, myStopId, routeId)`, `removeNotificationPair(pairId)`, `getNotificationPairs()`, `validatePair(checkpointStopId, myStopId, existingPairs)`, `shouldNotify(vehicle, pair, notifiedSet)`, `requestPermission()`, `getPermissionState()`, `pauseNotifications()`, `resumeNotifications()`, `togglePause()`, `isPaused()`
 - **Guarantees**: Max 5 notification pairs enforced. Same checkpoint+destination rejected. Config persists to localStorage (key: `ttracker-notifications-config`). Duplicate prevention: same vehicle+pair only notifies once per session. Direction detection: first vehicle at checkpoint sets learned direction; opposite-direction vehicles filtered. Graceful degradation: if Notification API unavailable, config still works. Pairs with invalid stop IDs filtered on init. Storage quota exceeded handled gracefully without crashing. `addNotificationPair()` is async: requests permission on first configuration (AC9.1), returns with permissionState. `requestPermission()` must be called from user gesture context. `getPermissionState()` queries current permission without prompting. Pause state persists to localStorage (key: `ttracker-notifications-paused`). `pauseNotifications()` and `resumeNotifications()` only modify paused flag — pairs array never modified (AC5.5). Paused state skips checkAllPairs processing — notifications do not fire when paused (AC5.1). Paused state restored on `initNotifications()` from localStorage (AC5.3).
 - **Expects**: `apiEvents` EventTarget emitting `vehicles:update` and `vehicles:add` with vehicle detail objects. `stopsData` Map from `map.js` for stop name lookups and AC8.5 validation. Vehicle object must have {id, stopId, routeId, directionId, label} properties.
 
 ### notification-ui.js -- Notification Status and Panel UI
-- **Exposes**: `initNotificationUI(statusElement)`, `updateStatus()`,
+- **Exposes**: `formatPairForDisplay(pair, stopsData, routeMetadata)`, `initNotificationUI(statusElement)`, `updateStatus()`,
   `initNotificationPanel(panelElement, toggleButton)`, `renderPanel()`
 - **Guarantees**: Status indicator shows current state: active (green), blocked (red), default (gray), paused (amber), or hidden.
   Updates immediately on config or permission changes.
@@ -162,9 +162,15 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - Event-driven (CustomEvent/EventTarget) over direct function calls: enables multiple subscribers
 - requestAnimationFrame loop in vehicles.js, not map.js: separates state from rendering
 - Vehicle data includes topological fields (stopId, currentStopSequence): enables future non-map renderers
+- Two-click notification config via map stop popups (not a separate settings page): keeps spatial context
+- notifications.js listens to apiEvents directly (not via vehicles.js): avoids coupling notification timing to animation frames
+- Pure formatting modules (stop-popup.js, notification-ui.js) export display helpers separately from init: enables isolated unit testing
 
 ## Invariants
-- api.js is the only module that talks to MBTA API
+- api.js is the only module that talks to MBTA API (exception: map.js fetches route shapes and stop data at startup)
 - All MBTA JSON:API parsing happens at the api.js boundary (downstream modules receive flat objects)
 - vehicles.js owns the canonical vehicle state Map; map.js only renders from it
 - config.js is the single source for all tunable parameters (exception: default visibility is derived from service type in ui.js, not config)
+- notifications.js owns all notification pair state; stop-markers.js and notification-ui.js query it but never modify pairs directly
+- MAX_PAIRS constant lives in notifications.js and is imported by stop-markers.js; never duplicated as a local constant
+- All user-facing strings in stop popups are HTML-escaped via stop-popup.js `escapeHtml()` before DOM insertion
