@@ -1,11 +1,37 @@
 // src/stop-markers.js — Renders stop markers on map for visible routes
-import { getStopData, getRouteStopsMap, getRouteColorMap } from './map.js';
+import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata } from './map.js';
+import { formatStopPopup } from './stop-popup.js';
 
 // Map<stopId, L.CircleMarker> — tracks active stop markers on the map
 const stopMarkers = new Map();
 
 // L.LayerGroup for stop markers — organized as layer for batch show/hide
 let stopLayerGroup = null;
+
+// Map<stopId, Array<routeId>> — cache of which routes serve each stop
+// Computed lazily on first popup open, invalidated on route visibility change
+let stopRoutesMap = null;
+
+/**
+ * Build reverse mapping: stopId → Array<routeId>
+ * Computed from routeStopsMap (routeId → Set<stopId>)
+ * Used by stop popup to display which routes serve a stop.
+ *
+ * @returns {Map<string, Array<string>>}
+ */
+function buildStopRoutesMap() {
+    const stopRoutesMapResult = new Map();
+    const routeStopsMap = getRouteStopsMap();
+    routeStopsMap.forEach((stopIds, routeId) => {
+        stopIds.forEach((stopId) => {
+            if (!stopRoutesMapResult.has(stopId)) {
+                stopRoutesMapResult.set(stopId, []);
+            }
+            stopRoutesMapResult.get(stopId).push(routeId);
+        });
+    });
+    return stopRoutesMapResult;
+}
 
 /**
  * Pure logic: Compute visible stops and their colors based on visible routes.
@@ -76,6 +102,9 @@ export function updateVisibleStops(routeIds) {
         stopMarkers.delete(stopId);
     });
 
+    // Invalidate stopRoutesMap cache on route visibility change
+    stopRoutesMap = null;
+
     // Add markers for newly visible stops
     visibleStopIds.forEach((stopId) => {
         if (!stopMarkers.has(stopId)) {
@@ -92,6 +121,25 @@ export function updateVisibleStops(routeIds) {
                 weight: 1,
                 opacity: 0.8,
                 pane: 'overlayPane',
+            });
+
+            // Build popup content with stop name and routes
+            // Compute stopRoutesMap lazily on first use
+            if (!stopRoutesMap) {
+                stopRoutesMap = buildStopRoutesMap();
+            }
+
+            const routeIds = stopRoutesMap.get(stopId) || [];
+            const routeMetadata = getRouteMetadata();
+            const routeInfos = routeIds
+                .map(rid => routeMetadata.find(m => m.id === rid))
+                .filter(Boolean);
+
+            const popupContent = formatStopPopup(stop, routeInfos);
+            marker.bindPopup(popupContent, {
+                className: 'stop-popup-container',
+                closeButton: true,    // Stop popups use click, need close button
+                autoPan: true,        // Pan to show full popup (unlike vehicle popups which use false)
             });
 
             stopMarkers.set(stopId, marker);
