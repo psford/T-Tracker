@@ -68,18 +68,48 @@ export function validatePair(checkpointStopId, myStopId, existingPairs) {
 }
 
 /**
+ * Request notification permission. Must be called from user gesture (click handler).
+ * AC9.1: Requests permission on first configuration.
+ *
+ * @returns {Promise<string>} — 'granted', 'denied', or 'default'
+ */
+export async function requestPermission() {
+    if (typeof Notification === 'undefined') return 'denied';
+    const result = await Notification.requestPermission();
+    return result;
+}
+
+/**
+ * Get current permission state without prompting user.
+ * AC9.6: Detects if previously granted permission was revoked.
+ *
+ * @returns {string} — 'granted', 'denied', 'default', or 'unavailable'
+ */
+export function getPermissionState() {
+    if (typeof Notification === 'undefined') return 'unavailable';
+    return Notification.permission;
+}
+
+/**
  * Adds a new notification pair.
  * Validates, enforces max 5, saves with learnedDirectionId: null.
+ * AC9.1: Requests permission on first configuration.
+ * AC9.2: Saves config even if permission denied.
  *
  * @param {string} checkpointStopId — checkpoint stop ID
  * @param {string} myStopId — destination stop ID
  * @param {string} routeId — route ID (e.g., "Red", "Green-D", "39")
- * @returns {Object} — { pair: {...} } or { error: string }
+ * @returns {Promise<Object>} — { pair: {...}, permissionState: string } or { error: string }
  */
-export function addNotificationPair(checkpointStopId, myStopId, routeId) {
+export async function addNotificationPair(checkpointStopId, myStopId, routeId) {
     const validation = validatePair(checkpointStopId, myStopId, pairs);
     if (validation.error) {
         return { error: validation.error };
+    }
+
+    // AC9.1: Request permission on first config
+    if (pairs.length === 0) {
+        await requestPermission();
     }
 
     const newPair = {
@@ -91,8 +121,9 @@ export function addNotificationPair(checkpointStopId, myStopId, routeId) {
     };
 
     pairs.push(newPair);
-    writeConfig(pairs);
-    return { pair: newPair };
+    writeConfig(pairs); // AC9.2: Save even if permission denied
+
+    return { pair: newPair, permissionState: getPermissionState() };
 }
 
 /**
@@ -170,13 +201,18 @@ export function shouldNotify(vehicle, pair, notifiedSet) {
 
 /**
  * Fire a browser notification for a vehicle at checkpoint.
+ * AC9.6: Check permission state before each notification attempt.
  *
  * @param {Object} vehicle — vehicle state
  * @param {Object} pair — notification pair config
  * @param {Map<string, Object>} stopsData — stop ID → stop object mapping
  */
 function fireNotification(vehicle, pair, stopsData) {
-    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    const permission = getPermissionState();
+    if (permission !== 'granted') {
+        // Permission was revoked or never granted
+        return;
+    }
 
     const checkpointName = stopsData.get(pair.checkpointStopId)?.name || pair.checkpointStopId;
     const destName = stopsData.get(pair.myStopId)?.name || pair.myStopId;

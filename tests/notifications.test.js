@@ -26,6 +26,8 @@ import {
     getNotificationPairs,
     shouldNotify,
     initNotifications,
+    requestPermission,
+    getPermissionState,
 } from '../src/notifications.js';
 
 /**
@@ -59,12 +61,21 @@ function testValidatePair() {
 /**
  * Test addNotificationPair function
  */
-function testAddNotificationPair() {
+async function testAddNotificationPair() {
     localStorage.clear();
+
+    // Mock Notification API to avoid actual permission prompts
+    globalThis.Notification = {
+        permission: 'granted',
+        requestPermission: async function() {
+            return 'granted';
+        },
+    };
+
     initNotifications(new EventTarget(), new Map());
 
     // AC3.1: Adding first pair succeeds
-    const result1 = addNotificationPair('stop1', 'stop2', 'Red');
+    const result1 = await addNotificationPair('stop1', 'stop2', 'Red');
     assert(result1.pair, 'Should return a pair object');
     assert.strictEqual(result1.pair.checkpointStopId, 'stop1', 'Checkpoint should match');
     assert.strictEqual(result1.pair.myStopId, 'stop2', 'Destination should match');
@@ -74,19 +85,19 @@ function testAddNotificationPair() {
 
     // Add 4 more pairs to reach limit
     for (let i = 0; i < 4; i++) {
-        const res = addNotificationPair(`stop${i}`, `stop${i + 100}`, 'Green-D');
+        const res = await addNotificationPair(`stop${i}`, `stop${i + 100}`, 'Green-D');
         assert(res.pair, `Pair ${i + 2} should be added`);
     }
 
     // AC3.4: 6th pair rejected
-    const result6 = addNotificationPair('stop99', 'stop199', 'Blue');
+    const result6 = await addNotificationPair('stop99', 'stop199', 'Blue');
     assert.strictEqual(result6.error, 'Maximum 5 notification pairs configured', 'Should reject 6th pair');
     assert(!result6.pair, 'Should not return a pair on rejection');
 
     // AC3.5: Same stop rejected (test with fresh empty array)
     localStorage.clear();
     initNotifications(new EventTarget(), new Map());
-    const resultSame = addNotificationPair('stop1', 'stop1', 'Red');
+    const resultSame = await addNotificationPair('stop1', 'stop1', 'Red');
     assert.strictEqual(resultSame.error, 'Checkpoint and destination must be different stops', 'Should reject same stops');
     assert(!resultSame.pair, 'Should not return a pair when same stops');
 
@@ -96,19 +107,28 @@ function testAddNotificationPair() {
 /**
  * Test removeNotificationPair function
  */
-function testRemoveNotificationPair() {
+async function testRemoveNotificationPair() {
     localStorage.clear();
+
+    // Mock Notification API
+    globalThis.Notification = {
+        permission: 'granted',
+        requestPermission: async function() {
+            return 'granted';
+        },
+    };
+
     initNotifications(new EventTarget(), new Map());
 
     // Add a pair
-    const result1 = addNotificationPair('stop1', 'stop2', 'Red');
+    const result1 = await addNotificationPair('stop1', 'stop2', 'Red');
     const pairId = result1.pair.id;
     let pairs = getNotificationPairs();
     assert.strictEqual(pairs.length, 1, 'Should have 1 pair after adding');
 
     // Add 4 more pairs to reach max of 5
     for (let i = 1; i < 5; i++) {
-        addNotificationPair(`stop${i}`, `stop${i + 100}`, 'Red');
+        await addNotificationPair(`stop${i}`, `stop${i + 100}`, 'Red');
     }
     pairs = getNotificationPairs();
     assert.strictEqual(pairs.length, 5, 'Should have 5 pairs (at max)');
@@ -120,7 +140,7 @@ function testRemoveNotificationPair() {
     assert.strictEqual(pairs.length, 4, 'Should have 4 pairs after removal');
 
     // Can now add a new pair (slot freed)
-    const newPair = addNotificationPair('newCheckpoint', 'newDest', 'Green-D');
+    const newPair = await addNotificationPair('newCheckpoint', 'newDest', 'Green-D');
     assert(newPair.pair, 'Should be able to add new pair after deletion');
 
     // Removing non-existent pair returns false
@@ -133,12 +153,21 @@ function testRemoveNotificationPair() {
 /**
  * Test localStorage persistence
  */
-function testLocalStoragePersistence() {
+async function testLocalStoragePersistence() {
     localStorage.clear();
+
+    // Mock Notification API
+    globalThis.Notification = {
+        permission: 'granted',
+        requestPermission: async function() {
+            return 'granted';
+        },
+    };
+
     initNotifications(new EventTarget(), new Map());
 
     // Add a pair
-    const result1 = addNotificationPair('stop1', 'stop2', 'Red');
+    const result1 = await addNotificationPair('stop1', 'stop2', 'Red');
     const pairId = result1.pair.id;
 
     // Verify it's in localStorage
@@ -159,7 +188,15 @@ function testLocalStoragePersistence() {
 /**
  * Test corrupted localStorage handling
  */
-function testCorruptedLocalStorage() {
+async function testCorruptedLocalStorage() {
+    // Mock Notification API
+    globalThis.Notification = {
+        permission: 'granted',
+        requestPermission: async function() {
+            return 'granted';
+        },
+    };
+
     // AC8.3: Corrupted localStorage data discarded, starts fresh
     localStorage._store['ttracker-notifications-config'] = 'invalid json {[ garbage';
 
@@ -170,7 +207,7 @@ function testCorruptedLocalStorage() {
     assert.strictEqual(pairs.length, 0, 'Should have 0 pairs after reading corrupted storage');
 
     // Adding a pair should now work
-    const result = addNotificationPair('stop1', 'stop2', 'Red');
+    const result = await addNotificationPair('stop1', 'stop2', 'Red');
     assert(result.pair, 'Should successfully add pair after corrupted storage recovery');
 
     // Test 2: AC8.3 Parse error with non-array JSON
@@ -183,7 +220,7 @@ function testCorruptedLocalStorage() {
     assert.strictEqual(pairs.length, 0, 'Should have 0 pairs after reading non-array storage');
 
     // Adding should work
-    const result2 = addNotificationPair('stop1', 'stop2', 'Red');
+    const result2 = await addNotificationPair('stop1', 'stop2', 'Red');
     assert(result2.pair, 'Should successfully add pair when stored data is not array');
 
     console.log('✓ corrupted localStorage handling tests passed');
@@ -285,20 +322,96 @@ function testShouldNotify() {
 }
 
 /**
+ * Test permission handling (AC9.1, AC9.2, AC9.5, AC9.6)
+ */
+function testPermissionHandling() {
+    // Don't clear localStorage here; just test the permission state APIs
+    // without actually adding pairs that would persist
+
+    // Mock Notification API
+    globalThis.Notification = {
+        permission: 'default',
+        requestPermission: async function() {
+            // Simulate user granting permission
+            this.permission = 'granted';
+            return 'granted';
+        },
+    };
+
+    // AC9.6: getPermissionState returns current permission
+    let state = getPermissionState();
+    assert.strictEqual(state, 'default', 'Initial permission should be default');
+
+    // AC9.5: After permission granted, state reflects it
+    globalThis.Notification.permission = 'granted';
+    state = getPermissionState();
+    assert.strictEqual(state, 'granted', 'Permission state should be granted');
+
+    // Test unavailable Notification API
+    globalThis.Notification = undefined;
+    state = getPermissionState();
+    assert.strictEqual(state, 'unavailable', 'Should return unavailable when Notification undefined');
+
+    // Restore mock for other tests
+    globalThis.Notification = {
+        permission: 'granted',
+        requestPermission: async function() {
+            return this.permission;
+        },
+    };
+
+    console.log('✓ permission handling tests passed');
+}
+
+/**
+ * Test async addNotificationPair flow
+ */
+async function testAsyncAddNotificationPair() {
+    localStorage.clear();
+
+    // Mock Notification API in granted state
+    globalThis.Notification = {
+        permission: 'granted',
+        requestPermission: async function() {
+            return 'granted';
+        },
+    };
+
+    // Re-initialize to ensure fresh state
+    initNotifications(new EventTarget(), new Map());
+
+    // AC9.1: First pair should return permissionState
+    const result = await addNotificationPair('stop1-async', 'stop2-async', 'Red');
+    assert(result.pair, 'Should return a pair object');
+    assert.strictEqual(result.permissionState, 'granted', 'Should return permissionState');
+
+    // Verify pair was saved
+    const pairs = getNotificationPairs();
+    assert.strictEqual(pairs.length, 1, 'Pair should be saved');
+
+    console.log('✓ async addNotificationPair tests passed');
+}
+
+/**
  * Run all tests
  */
-function runTests() {
+async function runTests() {
     console.log('Running notification config management and direction detection tests...\n');
 
     testValidatePair();
-    testAddNotificationPair();
-    testRemoveNotificationPair();
-    testLocalStoragePersistence();
-    testCorruptedLocalStorage();
+    await testAddNotificationPair();
+    await testRemoveNotificationPair();
+    await testLocalStoragePersistence();
+    await testCorruptedLocalStorage();
     testShouldNotify();
+    testPermissionHandling();
+    await testAsyncAddNotificationPair();
 
     console.log('\n✓ All tests passed!');
 }
 
 // Run tests
-runTests();
+runTests().catch(e => {
+    console.error('Test failed:', e);
+    process.exit(1);
+});

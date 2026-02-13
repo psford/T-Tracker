@@ -2,6 +2,7 @@
 import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata } from './map.js';
 import { formatStopPopup, escapeHtml } from './stop-popup.js';
 import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';
+import { updateStatus as updateNotificationStatus } from './notification-ui.js';
 
 // Map<stopId, L.CircleMarker> — tracks active stop markers on the map
 const stopMarkers = new Map();
@@ -161,14 +162,14 @@ export function initStopMarkers(map) {
         }
 
         if (destBtn) {
-            destBtn.addEventListener('click', () => {
+            destBtn.addEventListener('click', async () => {
                 const destStopId = destBtn.dataset.stopId;
                 if (!pendingCheckpointStopId) {
                     // No checkpoint selected yet — set this as destination directly
                     // (user needs to click checkpoint first)
                     return;
                 }
-                const result = addNotificationPair(
+                const result = await addNotificationPair(
                     pendingCheckpointStopId, destStopId, pendingRouteId
                 );
                 if (result.error) {
@@ -183,6 +184,8 @@ export function initStopMarkers(map) {
                     highlightConfiguredStop(destStopId);
                     pendingCheckpointStopId = null;
                     pendingRouteId = null;
+                    // AC6.5: Update status indicator to show new pair count
+                    updateNotificationStatus();
                     mapInstance.closePopup();
                 }
             });
