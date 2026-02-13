@@ -3,20 +3,22 @@
 Last verified: 2026-02-13
 
 ## Purpose
-Eleven ES6 modules that separate data acquisition (SSE), state management (interpolation),
+Twelve ES6 modules that separate data acquisition (SSE), state management (interpolation),
 rendering (Leaflet markers/polylines/stop markers), user controls (route filtering), polyline decoding,
-route organization, popup content formatting, vehicle icon data, and stop popup formatting.
+route organization, popup content formatting, vehicle icon data, stop popup formatting, and notification engine.
 
 ## Data Flow
 ```
 MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
-                                          ^                           ^
-                                       ui.js (configure)      polyline.js (decode)
-                                          ^                      stop-markers.js (render stops)
-                                          (organize routes)   vehicle-popup.js (format)
-                                                              stop-popup.js (format)
-                                                              vehicle-icons.js (icon data)
-                                                              route-sorter.js
+                      |                  ^                           ^
+                      |               ui.js (configure)      polyline.js (decode)
+                      |                  ^                      stop-markers.js (render stops)
+                      |                  (organize routes)   vehicle-popup.js (format)
+                      |                                      stop-popup.js (format)
+                      |                                      vehicle-icons.js (icon data)
+                      |                                      route-sorter.js
+                      |
+                      +-> notifications.js (monitor & fire)
 ```
 
 ## Contracts
@@ -115,6 +117,11 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Exposes**: `formatStopPopup(stop, routeInfos)`, `escapeHtml(str)`
 - **Guarantees**: Pure functions, no side effects. Returns HTML strings. Gracefully handles null/missing data (omits sections rather than showing empty/broken content). HTML-escapes all user strings to prevent injection. Commuter rail (type 2) uses longName; subway and bus use shortName. Empty `.stop-popup__actions` div reserved for Phase 4 notification config buttons.
 - **Expects**: Stop object with {id, name, latitude, longitude}. Route infos as Array<{id, shortName, longName, color, type}> or null.
+
+### notifications.js -- Notification Engine
+- **Exposes**: `initNotifications(apiEvents, stopsData)`, `addNotificationPair(checkpointStopId, myStopId, routeId)`, `removeNotificationPair(pairId)`, `getNotificationPairs()`, `validatePair(checkpointStopId, myStopId, existingPairs)`, `shouldNotify(vehicle, pair, notifiedSet)`
+- **Guarantees**: Max 5 notification pairs enforced. Same checkpoint+destination rejected. Config persists to localStorage (key: `ttracker-notifications-config`). Duplicate prevention: same vehicle+pair only notifies once per session. Direction detection: first vehicle at checkpoint sets learned direction; opposite-direction vehicles filtered. Graceful degradation: if Notification API unavailable, config still works. Pairs with invalid stop IDs filtered on init. Storage quota exceeded handled gracefully without crashing.
+- **Expects**: `apiEvents` EventTarget emitting `vehicles:update` and `vehicles:add` with vehicle detail objects. `stopsData` Map from `map.js` for stop name lookups and AC8.5 validation. Vehicle object must have {id, stopId, routeId, directionId, label} properties.
 
 ## Key Decisions
 - Event-driven (CustomEvent/EventTarget) over direct function calls: enables multiple subscribers
