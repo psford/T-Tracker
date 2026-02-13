@@ -1,6 +1,7 @@
 // src/stop-markers.js — Renders stop markers on map for visible routes
 import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata } from './map.js';
 import { formatStopPopup } from './stop-popup.js';
+import { addNotificationPair, getNotificationPairs } from './notifications.js';
 
 // Map<stopId, L.CircleMarker> — tracks active stop markers on the map
 const stopMarkers = new Map();
@@ -11,6 +12,15 @@ let stopLayerGroup = null;
 // Map<stopId, Array<routeId>> — cache of which routes serve each stop
 // Computed lazily on first popup open, invalidated on route visibility change
 let stopRoutesMap = null;
+
+// Leaflet map instance — stored for popup event delegation and popup close/open
+let mapInstance = null;
+
+// Two-click workflow state: checkpoint stop ID selected first
+let pendingCheckpointStopId = null;
+
+// Two-click workflow state: route ID for the pending checkpoint
+let pendingRouteId = null;
 
 /**
  * Build reverse mapping: stopId → Array<routeId>
@@ -63,13 +73,116 @@ export function computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMa
 }
 
 /**
+ * Compute config state for a stop based on notification pairs and pending checkpoint.
+ * Used to pass dynamic state to formatStopPopup on each popup open.
+ *
+ * @param {string} stopId — stop ID
+ * @returns {Object} — {isCheckpoint, isDestination, pairCount, pendingCheckpoint, maxPairs}
+ */
+function getStopConfigState(stopId) {
+    const pairs = getNotificationPairs();
+    return {
+        isCheckpoint: pairs.some(p => p.checkpointStopId === stopId),
+        isDestination: pairs.some(p => p.myStopId === stopId),
+        pairCount: pairs.length,
+        pendingCheckpoint: pendingCheckpointStopId,
+        maxPairs: 5,
+    };
+}
+
+/**
+ * Highlight a configured stop by increasing marker size and opacity.
+ * Called after successful notification pair creation to visually distinguish
+ * stops that are part of configured pairs.
+ *
+ * @param {string} stopId — stop ID to highlight
+ */
+function highlightConfiguredStop(stopId) {
+    const marker = stopMarkers.get(stopId);
+    if (marker) {
+        marker.setStyle({
+            radius: 5,           // Larger than default 3
+            fillOpacity: 1.0,    // Full opacity vs default 0.6
+            weight: 2,           // Thicker border
+        });
+    }
+}
+
+/**
+ * Restore visual highlights for all stops that are part of configured pairs.
+ * Called on initStopMarkers to restore highlights after page reload.
+ */
+function restoreConfiguredHighlights() {
+    const pairs = getNotificationPairs();
+    for (const pair of pairs) {
+        highlightConfiguredStop(pair.checkpointStopId);
+        highlightConfiguredStop(pair.myStopId);
+    }
+}
+
+/**
  * Initialize stop markers module.
- * Creates layer group and prepares for rendering markers on visible routes.
+ * Creates layer group, stores map instance for event delegation, and sets up popup event handling.
  *
  * @param {L.Map} map — Leaflet map instance
  */
 export function initStopMarkers(map) {
+    mapInstance = map;
     stopLayerGroup = L.layerGroup().addTo(map);
+
+    // Set up popup event delegation for config button clicks
+    mapInstance.on('popupopen', (e) => {
+        const container = e.popup.getElement();
+        if (!container) return;
+
+        // Only handle stop popups (check for stop-popup class)
+        if (!container.querySelector('.stop-popup')) return;
+
+        const checkpointBtn = container.querySelector('[data-action="set-checkpoint"]');
+        const destBtn = container.querySelector('[data-action="set-destination"]');
+
+        if (checkpointBtn) {
+            checkpointBtn.addEventListener('click', () => {
+                const stopId = checkpointBtn.dataset.stopId;
+                const routeIds = checkpointBtn.dataset.routeIds;
+                pendingCheckpointStopId = stopId;
+                pendingRouteId = routeIds ? routeIds.split(',')[0] : null;
+                // Close popup so user can click destination stop
+                mapInstance.closePopup();
+            });
+        }
+
+        if (destBtn) {
+            destBtn.addEventListener('click', () => {
+                const destStopId = destBtn.dataset.stopId;
+                if (!pendingCheckpointStopId) {
+                    // No checkpoint selected yet — set this as destination directly
+                    // (user needs to click checkpoint first)
+                    return;
+                }
+                const result = addNotificationPair(
+                    pendingCheckpointStopId, destStopId, pendingRouteId
+                );
+                if (result.error) {
+                    // Show error in popup (replace actions content)
+                    const actionsDiv = container.querySelector('.stop-popup__actions');
+                    if (actionsDiv) {
+                        actionsDiv.innerHTML = `<div class="stop-popup__configured" style="color: #ff6b6b">${result.error}</div>`;
+                    }
+                } else {
+                    // Success — highlight configured stops, clear pending state
+                    highlightConfiguredStop(pendingCheckpointStopId);
+                    highlightConfiguredStop(destStopId);
+                    pendingCheckpointStopId = null;
+                    pendingRouteId = null;
+                    mapInstance.closePopup();
+                }
+            });
+        }
+    });
+
+    // Restore highlights for any already-configured stops from localStorage
+    restoreConfiguredHighlights();
 }
 
 /**
@@ -123,20 +236,25 @@ export function updateVisibleStops(routeIds) {
                 pane: 'overlayPane',
             });
 
-            // Build popup content with stop name and routes
-            // Compute stopRoutesMap lazily on first use
-            if (!stopRoutesMap) {
-                stopRoutesMap = buildStopRoutesMap();
-            }
+            // Build popup content dynamically on each popup open
+            // This ensures config state (pending checkpoint, pair count, etc.) is always fresh
+            const popupFunction = () => {
+                // Compute stopRoutesMap lazily on first use
+                if (!stopRoutesMap) {
+                    stopRoutesMap = buildStopRoutesMap();
+                }
 
-            const stopRouteIds = stopRoutesMap.get(stopId) || [];
-            const routeMetadata = getRouteMetadata();
-            const routeInfos = stopRouteIds
-                .map(rid => routeMetadata.find(m => m.id === rid))
-                .filter(Boolean);
+                const stopRouteIds = stopRoutesMap.get(stopId) || [];
+                const routeMetadata = getRouteMetadata();
+                const routeInfos = stopRouteIds
+                    .map(rid => routeMetadata.find(m => m.id === rid))
+                    .filter(Boolean);
 
-            const popupContent = formatStopPopup(stop, routeInfos);
-            marker.bindPopup(popupContent, {
+                const configState = getStopConfigState(stopId);
+                return formatStopPopup(stop, routeInfos, configState);
+            };
+
+            marker.bindPopup(popupFunction, {
                 className: 'stop-popup-container',
                 closeButton: true,    // Stop popups use click, need close button
                 autoPan: true,        // Pan to show full popup (unlike vehicle popups which use false)
