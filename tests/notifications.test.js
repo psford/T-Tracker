@@ -25,14 +25,16 @@ import {
     removeNotificationPair,
     getNotificationPairs,
     shouldNotify,
-    _resetForTesting,
+    initNotifications,
 } from '../src/notifications.js';
 
 /**
  * Test validatePair pure validation function
  */
 function testValidatePair() {
-    _resetForTesting();
+    // Reset for clean state
+    localStorage.clear();
+    initNotifications(new EventTarget(), new Map());
     // AC3.1: Valid pair returns no error
     const result = validatePair('stop1', 'stop2', []);
     assert.strictEqual(result.error, undefined, 'Valid pair should have no error');
@@ -58,7 +60,8 @@ function testValidatePair() {
  * Test addNotificationPair function
  */
 function testAddNotificationPair() {
-    _resetForTesting();
+    localStorage.clear();
+    initNotifications(new EventTarget(), new Map());
 
     // AC3.1: Adding first pair succeeds
     const result1 = addNotificationPair('stop1', 'stop2', 'Red');
@@ -81,7 +84,8 @@ function testAddNotificationPair() {
     assert(!result6.pair, 'Should not return a pair on rejection');
 
     // AC3.5: Same stop rejected (test with fresh empty array)
-    _resetForTesting();
+    localStorage.clear();
+    initNotifications(new EventTarget(), new Map());
     const resultSame = addNotificationPair('stop1', 'stop1', 'Red');
     assert.strictEqual(resultSame.error, 'Checkpoint and destination must be different stops', 'Should reject same stops');
     assert(!resultSame.pair, 'Should not return a pair when same stops');
@@ -93,7 +97,8 @@ function testAddNotificationPair() {
  * Test removeNotificationPair function
  */
 function testRemoveNotificationPair() {
-    _resetForTesting();
+    localStorage.clear();
+    initNotifications(new EventTarget(), new Map());
 
     // Add a pair
     const result1 = addNotificationPair('stop1', 'stop2', 'Red');
@@ -129,7 +134,8 @@ function testRemoveNotificationPair() {
  * Test localStorage persistence
  */
 function testLocalStoragePersistence() {
-    _resetForTesting();
+    localStorage.clear();
+    initNotifications(new EventTarget(), new Map());
 
     // Add a pair
     const result1 = addNotificationPair('stop1', 'stop2', 'Red');
@@ -154,20 +160,28 @@ function testLocalStoragePersistence() {
  * Test corrupted localStorage handling
  */
 function testCorruptedLocalStorage() {
-    _resetForTesting();
     // AC8.3: Corrupted localStorage data discarded, starts fresh
     localStorage._store['ttracker-notifications-config'] = 'invalid json {[ garbage';
 
-    // Adding a pair should work (starts fresh, ignores corrupted data)
-    const result = addNotificationPair('stop1', 'stop2', 'Red');
-    assert(result.pair, 'Should successfully add pair even with corrupted storage');
+    // Call initNotifications to trigger readConfig() which encounters the corrupted JSON
+    initNotifications(new EventTarget(), new Map());
+    // Verify pairs array is now empty (readConfig returned [])
+    let pairs = getNotificationPairs();
+    assert.strictEqual(pairs.length, 0, 'Should have 0 pairs after reading corrupted storage');
 
-    // AC8.3: Parse error logged and empty array returned
+    // Adding a pair should now work
+    const result = addNotificationPair('stop1', 'stop2', 'Red');
+    assert(result.pair, 'Should successfully add pair after corrupted storage recovery');
+
+    // Test 2: AC8.3 Parse error with non-array JSON
     localStorage.clear();
     localStorage._store['ttracker-notifications-config'] = 'not an array';
 
-    // Reset for this test case
-    _resetForTesting();
+    // Call initNotifications to trigger the non-array validation path
+    initNotifications(new EventTarget(), new Map());
+    pairs = getNotificationPairs();
+    assert.strictEqual(pairs.length, 0, 'Should have 0 pairs after reading non-array storage');
+
     // Adding should work
     const result2 = addNotificationPair('stop1', 'stop2', 'Red');
     assert(result2.pair, 'Should successfully add pair when stored data is not array');
@@ -179,7 +193,8 @@ function testCorruptedLocalStorage() {
  * Test shouldNotify pure logic function
  */
 function testShouldNotify() {
-    _resetForTesting();
+    localStorage.clear();
+    initNotifications(new EventTarget(), new Map());
 
     // AC4.1: Vehicle at checkpoint on correct route → notify (direction learning)
     const pair1 = {

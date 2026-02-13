@@ -81,7 +81,7 @@ export function addNotificationPair(checkpointStopId, myStopId, routeId) {
     }
 
     const newPair = {
-        id: Date.now().toString(36),
+        id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
         checkpointStopId,
         myStopId,
         routeId,
@@ -118,14 +118,6 @@ export function getNotificationPairs() {
     return pairs;
 }
 
-/**
- * Test-only function to reset in-memory pairs and localStorage.
- * @private — for testing only
- */
-export function _resetForTesting() {
-    pairs = [];
-    localStorage.removeItem(CONFIG_KEY);
-}
 
 /**
  * Check if vehicle is at checkpoint heading toward destination.
@@ -134,6 +126,10 @@ export function _resetForTesting() {
  * AC7.2: No route database needed — uses real-time vehicle directionId.
  * AC7.3: If directionId unavailable, falls back to "at checkpoint on correct route".
  * AC4.4: Opposite direction vehicles filtered out after direction is learned.
+ *
+ * NOTE: This function has side effects:
+ * - Mutates pair.learnedDirectionId on first direction observation (sets to vehicle.directionId)
+ * - Calls writeConfig(pairs) to persist the learned direction to localStorage
  *
  * @param {Object} vehicle — vehicle state from vehicles.js
  * @param {Object} pair — {checkpointStopId, myStopId, routeId, learnedDirectionId}
