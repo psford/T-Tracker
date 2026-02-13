@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>T-Tracker Stream Deck Display V2</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 800px;
+            height: 100px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        /* E Line Section (U-shape rotated horizontal) */
+        .e-line-section {
+            height: 60px;
+            background: #222;
+            border-bottom: 1px solid #333;
+            position: relative;
+        }
+
+        /* SVG for U-shaped track */
+        .track-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .stop-marker {
+            position: absolute;
+            transform: translate(-50%, -50%);
+        }
+
+        .stop-dot {
+            width: 8px;
+            height: 8px;
+            background: #00843D;
+            border: 2px solid #1a1a1a;
+            border-radius: 50%;
+            margin: 0 auto 1px;
+        }
+
+        .stop-label {
+            font-size: 7px;
+            white-space: nowrap;
+            color: #aaa;
+            text-align: center;
+        }
+
+        .vehicle-marker {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            width: 10px;
+            height: 10px;
+            background: #00843D;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 4px rgba(0, 132, 61, 0.8);
+            z-index: 10;
+        }
+
+        .direction-label {
+            position: absolute;
+            font-size: 8px;
+            color: #666;
+            text-transform: uppercase;
+        }
+
+        /* Bus Section (Linear) */
+        .bus-section {
+            height: 40px;
+            background: #1a1a1a;
+            position: relative;
+            padding: 0 20px;
+        }
+
+        .bus-track {
+            position: absolute;
+            top: 12px;
+            left: 20px;
+            right: 20px;
+            height: 3px;
+            background: #FFC72C;
+            border-radius: 2px;
+        }
+
+        .bus-stop {
+            position: absolute;
+            top: 6px;
+            transform: translateX(-50%);
+        }
+
+        .bus-dot {
+            width: 6px;
+            height: 6px;
+            background: #FFC72C;
+            border: 2px solid #1a1a1a;
+            border-radius: 50%;
+            margin: 0 auto 1px;
+        }
+
+        .bus-label {
+            font-size: 7px;
+            color: #999;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .bus-vehicle {
+            position: absolute;
+            top: 8px;
+            transform: translateX(-50%);
+            width: 8px;
+            height: 8px;
+            background: #FFC72C;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 4px rgba(255, 199, 44, 0.8);
+            z-index: 10;
+        }
+
+        .eta-display {
+            position: absolute;
+            top: 2px;
+            right: 20px;
+            font-size: 9px;
+            color: #e0e0e0;
+            background: #333;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .connection-status {
+            position: absolute;
+            bottom: 2px;
+            left: 4px;
+            font-size: 7px;
+            color: #666;
+        }
+
+        .connection-status.connected {
+            color: #00843D;
+        }
+    </style>
+</head>
+<body>
+    <!-- E Line U-shaped section (horizontal) -->
+    <div class="e-line-section">
+        <svg class="track-svg" viewBox="0 0 800 60" preserveAspectRatio="none">
+            <!-- Horizontal U-shaped track: outbound (top right->left) -> turnaround (left) -> inbound (bottom left->right) -->
+            <path d="M 780 15 L 50 15 Q 45 15, 45 20 L 45 40 Q 45 45, 50 45 L 780 45"
+                  stroke="#00843D" stroke-width="3" fill="none" stroke-linecap="round"/>
+        </svg>
+
+        <!-- Stops on outbound (top, right to left) -->
+        <div class="stop-marker" id="e-out-mission" style="left: 780px; top: 15px;">
+            <div class="stop-dot"></div>
+            <div class="stop-label">Mission</div>
+        </div>
+        <div class="stop-marker" id="e-out-riverway" style="left: 540px; top: 15px;">
+            <div class="stop-dot"></div>
+            <div class="stop-label">Riverway</div>
+        </div>
+        <div class="stop-marker" id="e-out-backofhill" style="left: 300px; top: 15px;">
+            <div class="stop-dot"></div>
+            <div class="stop-label">Back/Hill</div>
+        </div>
+        <!-- Heath St terminus at turnaround curve -->
+        <div class="stop-marker" id="e-heath" style="left: 50px; top: 30px;">
+            <div class="stop-dot"></div>
+            <div class="stop-label">Heath</div>
+        </div>
+        <div class="stop-marker" id="e-in-backofhill" style="left: 300px; top: 45px;">
+            <div class="stop-dot"></div>
+            <div class="stop-label">Back/Hill</div>
+        </div>
+        <div class="stop-marker" id="e-in-riverway" style="left: 540px; top: 45px;">
+            <div class="stop-dot"></div>
+            <div class="stop-label">Riverway</div>
+        </div>
+        <div class="stop-marker" id="e-in-mission" style="left: 780px; top: 45px;">
+            <div class="stop-dot"></div>
+            <div class="stop-label">Mission</div>
+        </div>
+
+        <!-- Vehicles container for E line -->
+        <div id="e-vehicles-container"></div>
+
+        <!-- Next train ETA -->
+        <div class="eta-display" id="e-eta">Next: --</div>
+    </div>
+
+    <!-- 39 Bus linear section -->
+    <div class="bus-section">
+        <div class="bus-track"></div>
+
+        <!-- 5 stops on S Huntington Ave inbound -->
+        <div class="bus-stop" style="left: 20%;">
+            <div class="bus-dot"></div>
+            <div class="bus-label">Perkins</div>
+        </div>
+        <div class="bus-stop" style="left: 35%;">
+            <div class="bus-dot"></div>
+            <div class="bus-label">Bynner</div>
+        </div>
+        <div class="bus-stop" style="left: 50%;">
+            <div class="bus-dot"></div>
+            <div class="bus-label">VA Hosp</div>
+        </div>
+        <div class="bus-stop" style="left: 65%;">
+            <div class="bus-dot"></div>
+            <div class="bus-label">105 SH</div>
+        </div>
+        <div class="bus-stop" style="left: 80%;">
+            <div class="bus-dot"></div>
+            <div class="bus-label">@ Hunt</div>
+        </div>
+
+        <!-- Buses container -->
+        <div id="bus-vehicles-container"></div>
+
+        <!-- Next bus ETA -->
+        <div class="eta-display" id="bus-eta" style="right: auto; left: 20px;">39: --</div>
+    </div>
+
+    <div class="connection-status" id="status">Connecting...</div>
+
+    <script type="module">
+        import { config } from './config.js';
+
+        const STOP_IDS = {
+            heath: 'place-hsmnl',
+            backofhill: 'place-bcnfd',
+            riverway: 'place-rvrwy',
+            mission: 'place-mispk'
+        };
+
+        let vehicles = new Map();
+        let stops = new Map();
+        let eventSource = null;
+
+        const statusEl = document.getElementById('status');
+        function setStatus(text, connected = false) {
+            statusEl.textContent = text;
+            statusEl.className = `connection-status ${connected ? 'connected' : ''}`;
+        }
+
+        // Fetch stop data
+        async function fetchStops() {
+            const stopIds = Object.values(STOP_IDS).join(',');
+            const url = `${config.api.baseUrl}/stops?filter[id]=${stopIds}&api_key=${config.api.key}`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                data.data.forEach(stop => {
+                    stops.set(stop.id, {
+                        id: stop.id,
+                        name: stop.attributes.name,
+                        lat: stop.attributes.latitude,
+                        lon: stop.attributes.longitude
+                    });
+                });
+            } catch (error) {
+                console.error('Failed to fetch stops:', error);
+            }
+        }
+
+        // Connect to vehicle SSE stream
+        function connect() {
+            const url = `${config.api.baseUrl}/vehicles?filter[route]=Green-E,39&api_key=${config.api.key}`;
+            eventSource = new EventSource(url);
+
+            eventSource.addEventListener('reset', (e) => {
+                const data = JSON.parse(e.data);
+                vehicles.clear();
+                processVehicles(data);
+                setStatus('Connected', true);
+            });
+
+            eventSource.addEventListener('add', (e) => {
+                const data = JSON.parse(e.data);
+                processVehicles([data]);
+            });
+
+            eventSource.addEventListener('update', (e) => {
+                const data = JSON.parse(e.data);
+                processVehicles([data]);
+            });
+
+            eventSource.addEventListener('remove', (e) => {
+                const data = JSON.parse(e.data);
+                vehicles.delete(data.id);
+                render();
+            });
+
+            eventSource.onerror = () => {
+                setStatus('Disconnected');
+                setTimeout(() => {
+                    eventSource.close();
+                    connect();
+                }, 5000);
+            };
+        }
+
+        // Process vehicle data
+        function processVehicles(data) {
+            data.forEach(item => {
+                const attrs = item.attributes;
+                const rels = item.relationships;
+                const routeId = rels?.route?.data?.id;
+                if (!routeId) return;
+
+                vehicles.set(item.id, {
+                    id: item.id,
+                    routeId: routeId,
+                    lat: attrs.latitude,
+                    lon: attrs.longitude,
+                    directionId: attrs.direction_id,
+                    currentStatus: attrs.current_status,
+                    stopId: rels?.stop?.data?.id,
+                    updatedAt: attrs.updated_at
+                });
+            });
+
+            render();
+        }
+
+        // Calculate distance
+        function distance(lat1, lon1, lat2, lon2) {
+            const R = 6371000;
+            const toRad = Math.PI / 180;
+            const dLat = (lat2 - lat1) * toRad;
+            const dLon = (lon2 - lon1) * toRad;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) *
+                    Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // Estimate arrival time
+        function estimateArrival(distMeters) {
+            const avgSpeed = 5.56; // m/s
+            const timeSeconds = distMeters / avgSpeed;
+            if (timeSeconds < 60) return '< 1 min';
+            const minutes = Math.round(timeSeconds / 60);
+            return `${minutes} min`;
+        }
+
+        // Render vehicles
+        function render() {
+            const greenEVehicles = Array.from(vehicles.values())
+                .filter(v => v.routeId === 'Green-E');
+            const buses = Array.from(vehicles.values())
+                .filter(v => v.routeId === '39' && v.directionId === 0); // inbound only
+
+            // Render E line vehicles
+            const eContainer = document.getElementById('e-vehicles-container');
+            eContainer.innerHTML = '';
+
+            // Find next inbound train
+            const riverwayStop = stops.get(STOP_IDS.riverway);
+            if (riverwayStop) {
+                const inboundTrains = greenEVehicles
+                    .filter(v => v.directionId === 0) // inbound
+                    .map(v => ({
+                        ...v,
+                        dist: distance(v.lat, v.lon, riverwayStop.lat, riverwayStop.lon)
+                    }))
+                    .filter(v => v.dist < 3000)
+                    .sort((a, b) => a.dist - b.dist);
+
+                if (inboundTrains.length > 0) {
+                    const next = inboundTrains[0];
+                    document.getElementById('e-eta').textContent =
+                        `Next: ${estimateArrival(next.dist)}`;
+                } else {
+                    document.getElementById('e-eta').textContent = 'Next: --';
+                }
+            }
+
+            // Render bus vehicles
+            const busContainer = document.getElementById('bus-vehicles-container');
+            busContainer.innerHTML = '';
+
+            if (buses.length > 0 && riverwayStop) {
+                const approaching = buses
+                    .map(v => ({
+                        ...v,
+                        dist: distance(v.lat, v.lon, riverwayStop.lat, riverwayStop.lon)
+                    }))
+                    .filter(v => v.dist < 5000)
+                    .sort((a, b) => a.dist - b.dist);
+
+                if (approaching.length > 0) {
+                    const next = approaching[0];
+                    document.getElementById('bus-eta').textContent =
+                        `39: ${estimateArrival(next.dist)}`;
+                } else {
+                    document.getElementById('bus-eta').textContent = '39: --';
+                }
+            }
+        }
+
+        // Initialize
+        async function init() {
+            setStatus('Loading...');
+            await fetchStops();
+            connect();
+            setInterval(render, 1000); // Update every second
+        }
+
+        init();
+    </script>
+</body>
+</html>
