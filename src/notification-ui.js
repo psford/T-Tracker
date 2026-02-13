@@ -8,6 +8,27 @@ let panelEl = null;
 let toggleBtn = null;
 
 /**
+ * Pure function to format a notification pair for display.
+ * Resolves stop and route names from raw pair data.
+ * Exported for testing purposes.
+ *
+ * @param {Object} pair — {id, checkpointStopId, myStopId, routeId}
+ * @param {Map} stopsData — Map of stop ID → {id, name}
+ * @param {Array} routeMetadata — Array of {id, shortName, longName, type}
+ * @returns {Object} — {checkpointName, destName, routeName}
+ */
+export function formatPairForDisplay(pair, stopsData, routeMetadata) {
+    const checkpointName = stopsData.get(pair.checkpointStopId)?.name || pair.checkpointStopId;
+    const destName = stopsData.get(pair.myStopId)?.name || pair.myStopId;
+    const routeMeta = routeMetadata.find(r => r.id === pair.routeId);
+    const routeName = routeMeta
+        ? (routeMeta.type === 2 ? routeMeta.longName : routeMeta.shortName)
+        : pair.routeId;
+
+    return { checkpointName, destName, routeName };
+}
+
+/**
  * Initialize notification UI.
  * AC6.5: Sets up visibilitychange listener to detect permission revocation when tab regains focus.
  * AC6.1: Shows status indicator with pair count.
@@ -167,12 +188,7 @@ export function renderPanel() {
 
     // AC10.1: Render each pair with readable names
     listEl.innerHTML = pairs.map(pair => {
-        const checkpointName = stopsData.get(pair.checkpointStopId)?.name || pair.checkpointStopId;
-        const destName = stopsData.get(pair.myStopId)?.name || pair.myStopId;
-        const routeMeta = metadata.find(r => r.id === pair.routeId);
-        const routeName = routeMeta
-            ? (routeMeta.type === 2 ? routeMeta.longName : routeMeta.shortName)
-            : pair.routeId;
+        const { checkpointName, destName, routeName } = formatPairForDisplay(pair, stopsData, metadata);
 
         return `
             <div class="notification-pair" data-pair-id="${escapeHtml(pair.id)}">

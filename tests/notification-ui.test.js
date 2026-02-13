@@ -1,5 +1,6 @@
-// tests/notification-ui.test.js — Unit tests for notification UI panel rendering
+// tests/notification-ui.test.js — Unit tests for notification UI pure functions
 import assert from 'assert';
+import { formatPairForDisplay } from '../src/notification-ui.js';
 
 /**
  * Mock data for testing
@@ -13,125 +14,110 @@ const mockStops = new Map([
 const mockRouteMetadata = [
     { id: 'Red', shortName: 'Red', longName: 'Red Line', type: 0 },
     { id: '39', shortName: '39', longName: 'Route 39', type: 3 },
+    { id: 'Green', shortName: 'Green', longName: 'Green Line', type: 2 },
 ];
 
 const mockPairs = [
     { id: 'pair1', checkpointStopId: 'stop1', myStopId: 'stop2', routeId: 'Red' },
     { id: 'pair2', checkpointStopId: 'stop1', myStopId: 'stop3', routeId: '39' },
+    { id: 'pair3', checkpointStopId: 'stop2', myStopId: 'stop1', routeId: 'Green' },
 ];
 
 /**
- * Test: renderPanel creates HTML with pair info
+ * Test: formatPairForDisplay resolves stop names correctly
  */
-function testRenderPanelCreatesHtml() {
-    // This test will verify that renderPanel() creates the correct HTML structure
-    // Simulate what renderPanel should do
+function testFormatPairResolvesStopNames() {
+    const result = formatPairForDisplay(mockPairs[0], mockStops, mockRouteMetadata);
 
-    const pairs = mockPairs;
-    const stopsData = mockStops;
-    const metadata = mockRouteMetadata;
+    assert.strictEqual(result.checkpointName, 'Downtown Station', 'Should resolve checkpoint name');
+    assert.strictEqual(result.destName, 'Airport Terminal', 'Should resolve destination name');
 
-    // Simulate what renderPanel should do
-    const html = pairs.map(pair => {
-        const checkpointName = stopsData.get(pair.checkpointStopId)?.name || pair.checkpointStopId;
-        const destName = stopsData.get(pair.myStopId)?.name || pair.myStopId;
-        const routeMeta = metadata.find(r => r.id === pair.routeId);
-        const routeName = routeMeta
-            ? (routeMeta.type === 2 ? routeMeta.longName : routeMeta.shortName)
-            : pair.routeId;
-
-        return {
-            checkpointName,
-            destName,
-            routeName,
-        };
-    });
-
-    // Verify checkpoint and destination names are resolved
-    assert.strictEqual(html[0].checkpointName, 'Downtown Station', 'Should resolve checkpoint name');
-    assert.strictEqual(html[0].destName, 'Airport Terminal', 'Should resolve destination name');
-    assert.strictEqual(html[0].routeName, 'Red', 'Should resolve route name');
-
-    // Verify second pair
-    assert.strictEqual(html[1].checkpointName, 'Downtown Station', 'Should resolve second checkpoint name');
-    assert.strictEqual(html[1].destName, 'Main Street', 'Should resolve second destination name');
-    assert.strictEqual(html[1].routeName, '39', 'Should resolve bus route name');
-
-    console.log('✓ renderPanel creates HTML with pair info');
+    console.log('✓ formatPairForDisplay resolves stop names correctly');
 }
 
 /**
- * Test: renderPanel shows empty state when no pairs
+ * Test: formatPairForDisplay uses shortName for non-rail types
  */
-function testRenderPanelEmptyState() {
-    const pairs = [];
+function testFormatPairUsesShortNameForBus() {
+    const result = formatPairForDisplay(mockPairs[1], mockStops, mockRouteMetadata);
 
-    // When pairs is empty, should show empty state
-    assert.strictEqual(pairs.length, 0, 'No pairs configured');
+    assert.strictEqual(result.routeName, '39', 'Should use shortName for bus route (type 3)');
 
-    console.log('✓ renderPanel shows empty state when no pairs');
+    console.log('✓ formatPairForDisplay uses shortName for bus routes');
 }
 
 /**
- * Test: renderPanel count display
+ * Test: formatPairForDisplay uses longName for rail (type 2)
  */
-function testRenderPanelCountDisplay() {
-    const pairs = mockPairs;
-    const count = `${pairs.length}/5 pairs configured`;
+function testFormatPairUsesLongNameForRail() {
+    const result = formatPairForDisplay(mockPairs[2], mockStops, mockRouteMetadata);
 
-    assert.strictEqual(count, '2/5 pairs configured', 'Should display correct pair count');
+    assert.strictEqual(result.routeName, 'Green Line', 'Should use longName for rail route (type 2)');
 
-    console.log('✓ renderPanel count display');
+    console.log('✓ formatPairForDisplay uses longName for rail routes');
 }
 
 /**
- * Test: renderPanel toggle button visibility
+ * Test: formatPairForDisplay falls back to routeId if route not found
  */
-function testRenderPanelToggleButtonVisibility() {
-    // When pairs.length > 0, toggle button should be visible
-    assert.ok(mockPairs.length > 0, 'Should have pairs');
-    assert.strictEqual(mockPairs.length > 0 ? 'block' : 'none', 'block', 'Toggle button should be visible');
+function testFormatPairFallsBackToRouteId() {
+    const result = formatPairForDisplay(
+        { id: 'pair4', checkpointStopId: 'stop1', myStopId: 'stop2', routeId: 'UnknownRoute' },
+        mockStops,
+        mockRouteMetadata
+    );
 
-    // When pairs.length === 0, toggle button should be hidden
-    const emptyPairs = [];
-    assert.strictEqual(emptyPairs.length > 0 ? 'block' : 'none', 'none', 'Toggle button should be hidden when no pairs');
+    assert.strictEqual(result.routeName, 'UnknownRoute', 'Should fall back to routeId');
 
-    console.log('✓ renderPanel toggle button visibility');
+    console.log('✓ formatPairForDisplay falls back to routeId when route not found');
 }
 
 /**
- * Test: escapeHtml is imported correctly
+ * Test: formatPairForDisplay falls back to stopId if stop not found
  */
-function testEscapeHtmlImport() {
-    // This is a marker test showing we need escapeHtml from stop-popup.js
-    // The actual escapeHtml test is in stop-popup.test.js
+function testFormatPairFallsBackToStopId() {
+    const result = formatPairForDisplay(
+        { id: 'pair5', checkpointStopId: 'unknown1', myStopId: 'unknown2', routeId: 'Red' },
+        mockStops,
+        mockRouteMetadata
+    );
 
-    console.log('✓ escapeHtml should be imported from stop-popup.js');
+    assert.strictEqual(result.checkpointName, 'unknown1', 'Should fall back to checkpoint stopId');
+    assert.strictEqual(result.destName, 'unknown2', 'Should fall back to destination stopId');
+
+    console.log('✓ formatPairForDisplay falls back to stopIds when stops not found');
 }
 
 /**
- * Test: Delete button data attribute
+ * Test: formatPairForDisplay handles empty maps and arrays
  */
-function testDeleteButtonDataAttribute() {
-    const pair = mockPairs[0];
-    const pairId = pair.id;
+function testFormatPairWithEmptyMaps() {
+    const emptyStops = new Map();
+    const emptyMetadata = [];
 
-    // Verify pair ID can be extracted from button data attribute
-    assert.strictEqual(pairId, 'pair1', 'Should have valid pair ID');
+    const result = formatPairForDisplay(
+        mockPairs[0],
+        emptyStops,
+        emptyMetadata
+    );
 
-    console.log('✓ Delete button data attribute');
+    assert.strictEqual(result.checkpointName, 'stop1', 'Should fall back to stopId when no stops data');
+    assert.strictEqual(result.destName, 'stop2', 'Should fall back to stopId when no stops data');
+    assert.strictEqual(result.routeName, 'Red', 'Should fall back to routeId when no metadata');
+
+    console.log('✓ formatPairForDisplay handles empty maps and arrays');
 }
 
 /**
  * Run all tests
  */
 try {
-    testRenderPanelCreatesHtml();
-    testRenderPanelEmptyState();
-    testRenderPanelCountDisplay();
-    testRenderPanelToggleButtonVisibility();
-    testEscapeHtmlImport();
-    testDeleteButtonDataAttribute();
+    testFormatPairResolvesStopNames();
+    testFormatPairUsesShortNameForBus();
+    testFormatPairUsesLongNameForRail();
+    testFormatPairFallsBackToRouteId();
+    testFormatPairFallsBackToStopId();
+    testFormatPairWithEmptyMaps();
 
     console.log('\n✓✓✓ All notification-ui tests passed ✓✓✓');
 } catch (error) {
