@@ -2,6 +2,7 @@
 import { getNotificationPairs, getPermissionState, requestPermission, isPaused, togglePause, removeNotificationPair } from './notifications.js';
 import { escapeHtml } from './stop-popup.js';
 import { getStopData, getRouteMetadata } from './map.js';
+import { refreshAllHighlights } from './stop-markers.js';
 
 let statusEl = null;
 let panelEl = null;
@@ -206,6 +207,7 @@ export function renderPanel() {
         btn.addEventListener('click', () => {
             const pairId = btn.dataset.pairId;
             removeNotificationPair(pairId);
+            refreshAllHighlights();   // Reset and re-apply stop marker highlights
             updateStatus();   // Update status indicator (separate from panel)
             renderPanel();    // Re-render panel (separate from status)
         });

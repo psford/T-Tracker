@@ -18,6 +18,19 @@ function escapeHtml(str) {
 }
 
 /**
+ * Validate and sanitize hex color value for use in inline style attribute
+ * @param {string} color - Color string to validate
+ * @returns {string} Valid hex color or safe fallback '#888888'
+ * @private
+ */
+function validateHexColor(color) {
+    if (/^#[0-9a-fA-F]{6}$/.test(color)) {
+        return color;
+    }
+    return '#888888';
+}
+
+/**
  * Format complete stop popup HTML
  * @param {Object} stop - Stop object with {id, name, latitude, longitude}
  * @param {Array<Object>} routeInfos - Array of route metadata {id, shortName, longName, color, type}
@@ -40,7 +53,7 @@ export function formatStopPopup(stop, routeInfos, configState = {}) {
         } else {
             routeName = escapeHtml(routeInfo?.shortName || routeInfo?.id);
         }
-        const color = routeInfo?.color || '#888888';
+        const color = validateHexColor(routeInfo?.color);
 
         return `<div class="stop-popup__route">
             <span class="stop-popup__swatch" style="background: ${color}"></span>

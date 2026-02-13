@@ -401,6 +401,47 @@ async function testAsyncAddNotificationPair() {
 }
 
 /**
+ * Test localStorage quota exceeded handling (AC8.4)
+ */
+async function testWriteConfigQuotaError() {
+    localStorage.clear();
+
+    // Mock Notification API
+    globalThis.Notification = {
+        permission: 'granted',
+        requestPermission: async function() {
+            return 'granted';
+        },
+    };
+
+    // Initialize with fresh state
+    initNotifications(new EventTarget(), new Map());
+
+    // AC8.4: Test that quota exceeded error doesn't propagate
+    // Save the original setItem
+    const originalSetItem = localStorage.setItem;
+
+    // Replace setItem with one that throws QuotaExceededError
+    localStorage.setItem = function(key, value) {
+        const error = new Error('QuotaExceededError');
+        error.name = 'QuotaExceededError';
+        throw error;
+    };
+
+    try {
+        // Try to add a pair (which calls writeConfig internally)
+        const result = await addNotificationPair('stop1', 'stop2', 'Red');
+        // Should return a pair (no exception thrown)
+        assert(result.pair, 'Should return a pair despite quota error');
+        console.log('✓ writeConfigQuotaError test passed (no exception thrown)');
+    } finally {
+        // Restore original setItem
+        localStorage.setItem = originalSetItem;
+        localStorage.clear();
+    }
+}
+
+/**
  * Test pause/resume notification controls
  */
 function testPauseResume() {
@@ -480,9 +521,10 @@ async function runTests() {
     await testLocalStoragePersistence();
     await testCorruptedLocalStorage();
     testShouldNotify();
-    testPermissionHandling();
+    await testPermissionHandling();
     await testAsyncAddNotificationPair();
     testPauseResume();
+    await testWriteConfigQuotaError();
 
     console.log('\n✓ All tests passed!');
 }

@@ -130,6 +130,32 @@ function restoreConfiguredHighlights() {
 }
 
 /**
+ * Reset all stop markers to default style and re-apply highlights for current pairs.
+ * Called when a notification pair is deleted to remove stale visual highlights.
+ * This is simpler than tracking individual stop→pair associations.
+ *
+ * Resets: radius → 3, fillOpacity → 0.6, weight → 1
+ * Then re-applies highlights (radius → 5, fillOpacity → 1.0, weight → 2) for stops in current pairs.
+ */
+export function refreshAllHighlights() {
+    // First reset all markers to default style
+    stopMarkers.forEach((marker) => {
+        marker.setStyle({
+            radius: 3,
+            fillOpacity: 0.6,
+            weight: 1,
+        });
+    });
+
+    // Then re-apply highlights for stops in current pairs
+    const pairs = getNotificationPairs();
+    for (const pair of pairs) {
+        highlightConfiguredStop(pair.checkpointStopId);
+        highlightConfiguredStop(pair.myStopId);
+    }
+}
+
+/**
  * Initialize stop markers module.
  * Creates layer group, stores map instance for event delegation, and sets up popup event handling.
  *

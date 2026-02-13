@@ -146,11 +146,12 @@ export function removeNotificationPair(pairId) {
 
 /**
  * Returns current notification pairs (in-memory cache).
+ * Returns a shallow copy to prevent external mutations of internal state.
  *
- * @returns {Array<Object>} — array of notification pair objects
+ * @returns {Array<Object>} — shallow copy of notification pair objects
  */
 export function getNotificationPairs() {
-    return pairs;
+    return [...pairs];
 }
 
 
