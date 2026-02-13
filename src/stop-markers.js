@@ -129,9 +129,9 @@ export function updateVisibleStops(routeIds) {
                 stopRoutesMap = buildStopRoutesMap();
             }
 
-            const routeIds = stopRoutesMap.get(stopId) || [];
+            const stopRouteIds = stopRoutesMap.get(stopId) || [];
             const routeMetadata = getRouteMetadata();
-            const routeInfos = routeIds
+            const routeInfos = stopRouteIds
                 .map(rid => routeMetadata.find(m => m.id === rid))
                 .filter(Boolean);
 

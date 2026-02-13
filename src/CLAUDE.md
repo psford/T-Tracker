@@ -3,9 +3,9 @@
 Last verified: 2026-02-13
 
 ## Purpose
-Ten ES6 modules that separate data acquisition (SSE), state management (interpolation),
+Eleven ES6 modules that separate data acquisition (SSE), state management (interpolation),
 rendering (Leaflet markers/polylines/stop markers), user controls (route filtering), polyline decoding,
-route organization, popup content formatting, and vehicle icon data.
+route organization, popup content formatting, vehicle icon data, and stop popup formatting.
 
 ## Data Flow
 ```
@@ -14,6 +14,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
                                        ui.js (configure)      polyline.js (decode)
                                           ^                      stop-markers.js (render stops)
                                           (organize routes)   vehicle-popup.js (format)
+                                                              stop-popup.js (format)
                                                               vehicle-icons.js (icon data)
                                                               route-sorter.js
 ```
@@ -57,8 +58,10 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Creates one marker per unique stop (deduplication for stops on multiple routes, AC1.5).
   First visible route to claim a stop sets its color (no visual stacking).
   Only creates/removes markers on route visibility changes, not on every update (AC1.4 performance).
+  Binds click popups to markers with stop name and routes serving that stop (via `formatStopPopup()`).
+  Popups are click-activated and include close button; autoPan ensures full visibility.
   `computeVisibleStops()` is a pure function for testability.
-- **Expects**: Leaflet `L` global available. `map.js` exports for stop data, route-stop mapping, and route colors.
+- **Expects**: Leaflet `L` global available. `map.js` exports for stop data, route-stop mapping, and route colors. `stop-popup.js` for popup content formatting.
 
 ### vehicle-math.js -- Pure Math
 - **Exposes**: `lerp(a, b, t)`, `easeOutCubic(t)`, `lerpAngle(a, b, t)`, `haversineDistance(lat1, lon1, lat2, lon2)`, `darkenHexColor(hex, amount)`, `bearingToTransform(bearing)`
@@ -107,6 +110,11 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Exposes**: `formatVehiclePopup(vehicle, stopName, routeMeta)`, `formatStatus(currentStatus, stopName)`, `formatSpeed(speedMs)`, `formatTimeAgo(updatedAt)`
 - **Guarantees**: Pure functions, no side effects. Returns HTML strings. Gracefully handles null/missing data (omits sections rather than showing empty/broken content). Speed converted from m/s to mph. Commuter rail (type 2) displays longName for context; subway and bus display shortName for conciseness.
 - **Expects**: Vehicle object with {label, routeId, currentStatus, directionId, speed, updatedAt}. Stop name as string or null. Route metadata as {type, shortName, longName, color} or null.
+
+### stop-popup.js -- Stop Popup Content Formatting
+- **Exposes**: `formatStopPopup(stop, routeInfos)`, `escapeHtml(str)`
+- **Guarantees**: Pure functions, no side effects. Returns HTML strings. Gracefully handles null/missing data (omits sections rather than showing empty/broken content). HTML-escapes all user strings to prevent injection. Commuter rail (type 2) uses longName; subway and bus use shortName. Empty `.stop-popup__actions` div reserved for Phase 4 notification config buttons.
+- **Expects**: Stop object with {id, name, latitude, longitude}. Route infos as Array<{id, shortName, longName, color, type}> or null.
 
 ## Key Decisions
 - Event-driven (CustomEvent/EventTarget) over direct function calls: enables multiple subscribers

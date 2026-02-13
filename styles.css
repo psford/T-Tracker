@@ -438,6 +438,14 @@ html, body {
     display: inline-block;
 }
 
+.stop-popup-container .leaflet-popup-close-btn {
+    color: #8888aa;
+}
+
+.stop-popup-container .leaflet-popup-close-btn:hover {
+    color: #e0e0e0;
+}
+
 .stop-popup__actions {
     /* Empty for Phase 2 — Phase 4 adds notification config buttons here */
 }
