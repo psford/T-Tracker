@@ -424,10 +424,13 @@ function testPauseResume() {
     assert.strictEqual(isPaused(), false, 'isPaused() should return false after resumeNotifications()');
 
     // AC5.5: Pairs unchanged after pause/resume cycle
+    // Pre-populate localStorage with a known config array
+    localStorage.clear();
+    localStorage.setItem('ttracker-notifications-config', JSON.stringify([
+        { id: 'p1', checkpointStopId: 's1', myStopId: 's2', routeId: 'Red', learnedDirectionId: null }
+    ]));
     initNotifications(new EventTarget(), new Map());
-    // Add a pair to have something to preserve
-    // (In practice, this is async, so we'll test the in-memory preservation)
-    const beforeCount = getNotificationPairs().length;
+    const beforeCount = getNotificationPairs().length; // 1, not 0
     pauseNotifications();
     resumeNotifications();
     assert.strictEqual(getNotificationPairs().length, beforeCount, 'Pause/resume should not modify pairs');

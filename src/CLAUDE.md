@@ -127,23 +127,25 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Expects**: Stop object with {id, name, latitude, longitude}. Route infos as Array<{id, shortName, longName, color, type}> or null. Optional configState object with shape {isCheckpoint, isDestination, pairCount, pendingCheckpoint, pendingCheckpointName, maxPairs}.
 
 ### notifications.js -- Notification Engine
-- **Exposes**: `initNotifications(apiEvents, stopsData)`, `addNotificationPair(checkpointStopId, myStopId, routeId)`, `removeNotificationPair(pairId)`, `getNotificationPairs()`, `validatePair(checkpointStopId, myStopId, existingPairs)`, `shouldNotify(vehicle, pair, notifiedSet)`, `requestPermission()`, `getPermissionState()`
-- **Guarantees**: Max 5 notification pairs enforced. Same checkpoint+destination rejected. Config persists to localStorage (key: `ttracker-notifications-config`). Duplicate prevention: same vehicle+pair only notifies once per session. Direction detection: first vehicle at checkpoint sets learned direction; opposite-direction vehicles filtered. Graceful degradation: if Notification API unavailable, config still works. Pairs with invalid stop IDs filtered on init. Storage quota exceeded handled gracefully without crashing. `addNotificationPair()` is async: requests permission on first configuration (AC9.1), returns with permissionState. `requestPermission()` must be called from user gesture context. `getPermissionState()` queries current permission without prompting.
+- **Exposes**: `initNotifications(apiEvents, stopsData)`, `addNotificationPair(checkpointStopId, myStopId, routeId)`, `removeNotificationPair(pairId)`, `getNotificationPairs()`, `validatePair(checkpointStopId, myStopId, existingPairs)`, `shouldNotify(vehicle, pair, notifiedSet)`, `requestPermission()`, `getPermissionState()`, `pauseNotifications()`, `resumeNotifications()`, `togglePause()`, `isPaused()`
+- **Guarantees**: Max 5 notification pairs enforced. Same checkpoint+destination rejected. Config persists to localStorage (key: `ttracker-notifications-config`). Duplicate prevention: same vehicle+pair only notifies once per session. Direction detection: first vehicle at checkpoint sets learned direction; opposite-direction vehicles filtered. Graceful degradation: if Notification API unavailable, config still works. Pairs with invalid stop IDs filtered on init. Storage quota exceeded handled gracefully without crashing. `addNotificationPair()` is async: requests permission on first configuration (AC9.1), returns with permissionState. `requestPermission()` must be called from user gesture context. `getPermissionState()` queries current permission without prompting. Pause state persists to localStorage (key: `ttracker-notifications-paused`). `pauseNotifications()` and `resumeNotifications()` only modify paused flag — pairs array never modified (AC5.5). Paused state skips checkAllPairs processing — notifications do not fire when paused (AC5.1). Paused state restored on `initNotifications()` from localStorage (AC5.3).
 - **Expects**: `apiEvents` EventTarget emitting `vehicles:update` and `vehicles:add` with vehicle detail objects. `stopsData` Map from `map.js` for stop name lookups and AC8.5 validation. Vehicle object must have {id, stopId, routeId, directionId, label} properties.
 
 ### notification-ui.js -- Notification Status UI
 - **Exposes**: `initNotificationUI(statusElement)`, `updateStatus()`
-- **Guarantees**: Status indicator shows current state: active (green), blocked (red), default (gray), or hidden.
+- **Guarantees**: Status indicator shows current state: active (green), blocked (red), default (gray), paused (amber), or hidden.
   Updates immediately on config or permission changes.
   "Enable" button triggers permission request from user gesture context.
   Detects permission revocation on tab focus via visibilitychange event.
-  AC6.1: Shows "Active: X alerts monitored" when permission granted and pairs configured.
+  AC6.1: Shows "Active: N alerts — Pause" when permission granted and pairs configured.
+  AC6.2: Shows "Paused — Resume" when manually paused (AC5.4).
   AC6.3: Shows "Notifications blocked — Enable" button when permission denied.
   AC9.3: Warning banner shown when permission denied.
   AC9.4: Enable button triggers permission request again.
   AC9.5: Status updates after permission change.
+  AC5.4: Paused state shows amber "Paused — Resume" button with pause/resume toggle.
   AC6.5: Updates immediately when permission state changes.
-- **Expects**: `#notification-status` element in DOM. `notifications.js` functions for state queries (`getNotificationPairs()`, `getPermissionState()`, `requestPermission()`).
+- **Expects**: `#notification-status` element in DOM. `notifications.js` functions for state queries (`getNotificationPairs()`, `getPermissionState()`, `requestPermission()`, `isPaused()`, `togglePause()`).
 
 ## Key Decisions
 - Event-driven (CustomEvent/EventTarget) over direct function calls: enables multiple subscribers

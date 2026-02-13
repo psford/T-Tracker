@@ -25,7 +25,7 @@ export function initNotificationUI(statusElement) {
 
 /**
  * Update the status indicator based on current notification and permission state.
- * AC6.1: Active state shows "Active: X alerts monitored" (green)
+ * AC6.1: Active state shows "Active: N alerts — Pause" (green)
  * AC6.3: Blocked state shows "Notifications blocked — Enable" button (red)
  * AC9.3: Warning banner shown when permission denied
  * AC9.4: Enable button triggers permission request

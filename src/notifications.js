@@ -160,7 +160,11 @@ export function getNotificationPairs() {
  */
 export function pauseNotifications() {
     paused = true;
-    localStorage.setItem(PAUSED_KEY, 'true');
+    try {
+        localStorage.setItem(PAUSED_KEY, 'true');
+    } catch (error) {
+        console.error('Failed to save pause state to localStorage:', error.message);
+    }
 }
 
 /**
@@ -169,7 +173,11 @@ export function pauseNotifications() {
  */
 export function resumeNotifications() {
     paused = false;
-    localStorage.setItem(PAUSED_KEY, 'false');
+    try {
+        localStorage.setItem(PAUSED_KEY, 'false');
+    } catch (error) {
+        console.error('Failed to save pause state to localStorage:', error.message);
+    }
 }
 
 /**
