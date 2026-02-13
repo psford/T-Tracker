@@ -52,6 +52,33 @@ All data flows through dedicated modules with clear responsibilities:
 - camelCase for JS, kebab-case for CSS classes (BEM-lite: `block--modifier`)
 - All API data flattened from JSON:API format at the api.js boundary
 
+## Development Workflow (SDLC)
+**NEVER create throwaway prototype files** (e.g., `index-new.html`, `test-feature.html`)
+**ALWAYS work on production files in feature branches**
+
+### Branching Strategy
+- `master` - production branch (auto-deploys to supertra.in)
+- `feature/*` - new features (e.g., `feature/map-notifications`)
+- `dev/*` - experiments or multi-feature work
+- Commit to feature branch, test locally, then merge to master
+
+### Adding New Features
+1. **Create feature branch**: `git checkout -b feature/descriptive-name`
+2. **Modify production files**: Edit `index.html`, `src/*.js`, etc. directly
+3. **Test locally**: Run `python -m http.server 8000`
+4. **Commit incrementally**: Save work as you go
+5. **Merge when complete**: Merge to master, triggers auto-deploy
+
+### What NOT to Do
+- ❌ Don't create `index-v2.html`, `map-enhanced.html`, or similar duplicates
+- ❌ Don't build features in separate throwaway files
+- ❌ Don't prototype outside the production file structure
+- ✅ DO work on actual production files in branches
+- ✅ DO commit frequently to save progress
+- ✅ DO use feature branches to isolate work
+
+**Rationale**: Throwaway files create technical debt, confusion, and merge conflicts. Feature branches provide isolation without duplication.
+
 ## Configuration
 - `config.js` holds API key, map settings, animation timing, route defaults
 - Gitignored (contains API key); copy `config.example.js` to create
