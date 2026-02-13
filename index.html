@@ -19,6 +19,23 @@
     <div id="notification-status" class="notification-status notification-status--hidden">
         <span class="notification-status__text"></span>
     </div>
+
+    <!-- Notification config panel toggle button -->
+    <button id="notification-panel-toggle" class="notification-panel-toggle" title="Notification settings" style="display: none;">
+        Alerts
+    </button>
+
+    <!-- Notification configuration panel -->
+    <div id="notification-panel" class="notification-panel notification-panel--hidden">
+        <div class="notification-panel__header">
+            <span class="notification-panel__title">Notification Alerts</span>
+            <button class="notification-panel__close">&times;</button>
+        </div>
+        <div class="notification-panel__list"></div>
+        <div class="notification-panel__empty">No notifications configured</div>
+        <div class="notification-panel__count"></div>
+    </div>
+
     <div id="status" class="connection-status">
         <span class="status-dot"></span>
         <span class="status-text">Connecting...</span>
