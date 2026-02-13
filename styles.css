@@ -384,3 +384,60 @@ html, body {
     line-height: 1.4;
     display: inline-block;
 }
+
+/* Stop popup styles (click cards for stop info and notification config) */
+.stop-popup-container .leaflet-popup-content-wrapper {
+    background: rgba(22, 33, 62, 0.95);
+    border: 1px solid #0f3460;
+    border-radius: 8px;
+    color: #e0e0e0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.stop-popup-container .leaflet-popup-tip {
+    background: rgba(22, 33, 62, 0.95);
+    border: 1px solid #0f3460;
+    box-shadow: none;
+}
+
+.stop-popup-container .leaflet-popup-content {
+    margin: 8px 10px;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.stop-popup__header {
+    margin-bottom: 6px;
+}
+
+.stop-popup__name {
+    font-weight: 600;
+    color: #e0e0e0;
+    font-size: 14px;
+}
+
+.stop-popup__routes {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.stop-popup__route {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #c0c0d0;
+}
+
+.stop-popup__swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+}
+
+.stop-popup__actions {
+    /* Empty for Phase 2 — Phase 4 adds notification config buttons here */
+}
