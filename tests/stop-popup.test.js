@@ -310,6 +310,18 @@ function testConfigButtons() {
     assert.ok(legacyHtml.includes('0/5 pairs configured'), 'Should use default pair count of 0');
     console.log('✓ Backward compatibility maintained');
 
+    // Edge case: pendingCheckpoint === stop.id (user reopens checkpoint stop's popup)
+    const selfPendingHtml = formatStopPopup(stop, routes, {
+        pairCount: 1,
+        maxPairs: 5,
+        pendingCheckpoint: '70019',  // Same as stop.id
+    });
+    // Should show default state (both buttons), not pending state
+    assert.ok(selfPendingHtml.includes('data-action="set-checkpoint"'), 'Should show checkpoint button for self-pending stop');
+    assert.ok(selfPendingHtml.includes('data-action="set-destination"'), 'Should show destination button for self-pending stop');
+    assert.ok(!selfPendingHtml.includes('stop-popup__pending'), 'Should not show pending message for self-pending stop');
+    console.log('✓ Self-pending stop shows default state with both buttons');
+
     console.log('✓ config button tests passed');
 }
 

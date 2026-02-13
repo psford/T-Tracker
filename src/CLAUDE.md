@@ -54,16 +54,24 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   `buildRouteStopsMapping()` limits concurrency to 3 simultaneous requests to avoid browser connection limits and rate limiting.
 - **Expects**: Leaflet `L` global available. `config.map.*`, `config.tiles.*` set.
 
-### stop-markers.js -- Stop Marker Rendering
+### stop-markers.js -- Stop Marker Rendering & Notification Config
 - **Exposes**: `initStopMarkers(map)`, `updateVisibleStops(routeIds)`, `computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap)`
 - **Guarantees**: Renders lightweight SVG circle markers for stops on visible routes (AC1.1).
   Creates one marker per unique stop (deduplication for stops on multiple routes, AC1.5).
   First visible route to claim a stop sets its color (no visual stacking).
   Only creates/removes markers on route visibility changes, not on every update (AC1.4 performance).
-  Binds click popups to markers with stop name and routes serving that stop (via `formatStopPopup()`).
+  Binds click popups to markers with stop name and routes serving that stop (via `formatStopPopup(configState)`).
   Popups are click-activated and include close button; autoPan ensures full visibility.
   `computeVisibleStops()` is a pure function for testability.
-- **Expects**: Leaflet `L` global available. `map.js` exports for stop data, route-stop mapping, and route colors. `stop-popup.js` for popup content formatting.
+  Implements Phase 4 two-click notification config workflow: User clicks "Set as Checkpoint" on stop A, then "Set as My Stop" on stop B to create pair.
+  Maintains module-level state for pending checkpoint (stopId + routeId) during workflow.
+  Delegates config button clicks via Leaflet `popupopen` event listener on map instance.
+  On successful pair creation, calls `highlightConfiguredStop()` to visually enlarge configured stop markers.
+  On page load, restores highlights for all previously-configured stops from localStorage.
+  Computes fresh `configState` on each popup open, resolving `pendingCheckpoint` stopId to human-readable `pendingCheckpointName` from stop data (ensures dynamic state like pending checkpoint and pair count are always current, and pending checkpoint displays as "Checkpoint: Park Street" not raw ID).
+  Imports `MAX_PAIRS` constant from `notifications.js` for consistent limits across all modules.
+  Sanitizes error messages with `escapeHtml()` before rendering to DOM (defense-in-depth for unsanitized API strings).
+- **Expects**: Leaflet `L` global available. `map.js` exports for stop data, route-stop mapping, and route colors. `stop-popup.js` for popup content formatting (`formatStopPopup`) and HTML escaping (`escapeHtml`). `notifications.js` for pair management (`addNotificationPair`, `getNotificationPairs`), MAX_PAIRS constant.
 
 ### vehicle-math.js -- Pure Math
 - **Exposes**: `lerp(a, b, t)`, `easeOutCubic(t)`, `lerpAngle(a, b, t)`, `haversineDistance(lat1, lon1, lat2, lon2)`, `darkenHexColor(hex, amount)`, `bearingToTransform(bearing)`
@@ -114,9 +122,9 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Expects**: Vehicle object with {label, routeId, currentStatus, directionId, speed, updatedAt}. Stop name as string or null. Route metadata as {type, shortName, longName, color} or null.
 
 ### stop-popup.js -- Stop Popup Content Formatting
-- **Exposes**: `formatStopPopup(stop, routeInfos)`, `escapeHtml(str)`
-- **Guarantees**: Pure functions, no side effects. Returns HTML strings. Gracefully handles null/missing data (omits sections rather than showing empty/broken content). HTML-escapes all user strings to prevent injection. Commuter rail (type 2) uses longName; subway and bus use shortName. Empty `.stop-popup__actions` div reserved for Phase 4 notification config buttons.
-- **Expects**: Stop object with {id, name, latitude, longitude}. Route infos as Array<{id, shortName, longName, color, type}> or null.
+- **Exposes**: `formatStopPopup(stop, routeInfos, configState = {})`, `escapeHtml(str)`
+- **Guarantees**: Pure functions, no side effects. Returns HTML strings. Gracefully handles null/missing data (omits sections rather than showing empty/broken content). HTML-escapes all user strings to prevent injection. Commuter rail (type 2) uses longName; subway and bus use shortName. Generates 5 popup states based on configState: (1) Default — both "Set as Checkpoint" and "Set as My Stop" buttons, (2) Pending checkpoint selected — shows pending checkpoint's human-readable name via `pendingCheckpointName`, only "Set as My Stop" button (active style), (3) Already configured as checkpoint — shows "Checkpoint for [route]" indicator, no buttons, (4) Already configured as destination — shows "Destination for [route]" indicator, no buttons, (5) Max pairs reached — shows "X/X pairs configured (maximum reached)" message, no buttons. All buttons include `data-stop-id` and `data-route-ids` attributes. Counter shows `pairCount/maxPairs` in default and pending states.
+- **Expects**: Stop object with {id, name, latitude, longitude}. Route infos as Array<{id, shortName, longName, color, type}> or null. Optional configState object with shape {isCheckpoint, isDestination, pairCount, pendingCheckpoint, pendingCheckpointName, maxPairs}.
 
 ### notifications.js -- Notification Engine
 - **Exposes**: `initNotifications(apiEvents, stopsData)`, `addNotificationPair(checkpointStopId, myStopId, routeId)`, `removeNotificationPair(pairId)`, `getNotificationPairs()`, `validatePair(checkpointStopId, myStopId, existingPairs)`, `shouldNotify(vehicle, pair, notifiedSet)`

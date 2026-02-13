@@ -1,5 +1,7 @@
 // src/notifications.js — Notification engine with config management and persistence
 
+export const MAX_PAIRS = 5;
+
 const CONFIG_KEY = 'ttracker-notifications-config';
 let pairs = []; // In-memory cache, synced with localStorage
 
@@ -52,9 +54,9 @@ function writeConfig(config) {
  * @returns {Object} — { error?: string } if invalid, {} if valid
  */
 export function validatePair(checkpointStopId, myStopId, existingPairs) {
-    // AC3.4: Enforce max 5 pairs
-    if (existingPairs.length >= 5) {
-        return { error: 'Maximum 5 notification pairs configured' };
+    // AC3.4: Enforce max pairs
+    if (existingPairs.length >= MAX_PAIRS) {
+        return { error: `Maximum ${MAX_PAIRS} notification pairs configured` };
     }
 
     // AC3.5: Checkpoint and destination must be different

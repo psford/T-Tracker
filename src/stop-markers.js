@@ -1,7 +1,7 @@
 // src/stop-markers.js — Renders stop markers on map for visible routes
 import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata } from './map.js';
-import { formatStopPopup } from './stop-popup.js';
-import { addNotificationPair, getNotificationPairs } from './notifications.js';
+import { formatStopPopup, escapeHtml } from './stop-popup.js';
+import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';
 
 // Map<stopId, L.CircleMarker> — tracks active stop markers on the map
 const stopMarkers = new Map();
@@ -77,16 +77,24 @@ export function computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMa
  * Used to pass dynamic state to formatStopPopup on each popup open.
  *
  * @param {string} stopId — stop ID
- * @returns {Object} — {isCheckpoint, isDestination, pairCount, pendingCheckpoint, maxPairs}
+ * @returns {Object} — {isCheckpoint, isDestination, pairCount, pendingCheckpoint, pendingCheckpointName, maxPairs}
  */
 function getStopConfigState(stopId) {
     const pairs = getNotificationPairs();
+    const stopsData = getStopData();
+
+    // Resolve pending checkpoint stop ID to human-readable name
+    const pendingName = pendingCheckpointStopId
+        ? (stopsData.get(pendingCheckpointStopId)?.name || pendingCheckpointStopId)
+        : null;
+
     return {
         isCheckpoint: pairs.some(p => p.checkpointStopId === stopId),
         isDestination: pairs.some(p => p.myStopId === stopId),
         pairCount: pairs.length,
         pendingCheckpoint: pendingCheckpointStopId,
-        maxPairs: 5,
+        pendingCheckpointName: pendingName,
+        maxPairs: MAX_PAIRS,
     };
 }
 
@@ -167,7 +175,7 @@ export function initStopMarkers(map) {
                     // Show error in popup (replace actions content)
                     const actionsDiv = container.querySelector('.stop-popup__actions');
                     if (actionsDiv) {
-                        actionsDiv.innerHTML = `<div class="stop-popup__configured" style="color: #ff6b6b">${result.error}</div>`;
+                        actionsDiv.innerHTML = `<div class="stop-popup__configured" style="color: #ff6b6b">${escapeHtml(result.error)}</div>`;
                     }
                 } else {
                     // Success — highlight configured stops, clear pending state

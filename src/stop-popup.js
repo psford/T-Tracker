@@ -68,6 +68,7 @@ function buildActionsHtml(stop, routeInfos, configState) {
         isDestination = false,
         pairCount = 0,
         pendingCheckpoint = null,
+        pendingCheckpointName = null,
         maxPairs = 5,
     } = configState;
 
@@ -92,8 +93,9 @@ function buildActionsHtml(stop, routeInfos, configState) {
 
     // If pending checkpoint is selected (another stop is waiting for destination)
     if (pendingCheckpoint !== null && pendingCheckpoint !== stop.id) {
+        const displayName = pendingCheckpointName || pendingCheckpoint;
         return `<div class="stop-popup__actions">
-            <div class="stop-popup__pending">Checkpoint: ${escapeHtml(pendingCheckpoint)}</div>
+            <div class="stop-popup__pending">Checkpoint: ${escapeHtml(displayName)}</div>
             <button class="stop-popup__btn stop-popup__btn--active" data-action="set-destination" data-stop-id="${escapeHtml(stop.id)}" data-route-ids="${escapeHtml(routeIds)}">
                 Set as My Stop
             </button>
