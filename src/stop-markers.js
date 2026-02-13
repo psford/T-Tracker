@@ -2,7 +2,7 @@
 import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata } from './map.js';
 import { formatStopPopup, escapeHtml } from './stop-popup.js';
 import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';
-import { updateStatus as updateNotificationStatus } from './notification-ui.js';
+import { updateStatus as updateNotificationStatus, renderPanel } from './notification-ui.js';
 
 // Map<stopId, L.CircleMarker> — tracks active stop markers on the map
 const stopMarkers = new Map();
@@ -186,6 +186,8 @@ export function initStopMarkers(map) {
                     pendingRouteId = null;
                     // AC6.5: Update status indicator to show new pair count
                     updateNotificationStatus();
+                    // AC10: Update panel to show new pair in list
+                    renderPanel();
                     mapInstance.closePopup();
                 }
             });

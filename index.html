@@ -54,7 +54,7 @@
         import { initUI } from './src/ui.js?v=11';
         import { initStopMarkers, updateVisibleStops } from './src/stop-markers.js?v=11';
         import { initNotifications } from './src/notifications.js?v=11';
-        import { initNotificationUI, updateStatus as updateNotificationStatus } from './src/notification-ui.js?v=11';
+        import { initNotificationUI, updateStatus as updateNotificationStatus, initNotificationPanel, renderPanel } from './src/notification-ui.js?v=11';
 
         const map = initMap('map');
         initVehicles(apiEvents, () => map.getBounds());
@@ -76,6 +76,10 @@
                 // Initialize notification UI status indicator
                 const notificationStatusEl = document.getElementById('notification-status');
                 initNotificationUI(notificationStatusEl);
+                // Initialize notification panel
+                const notificationPanelEl = document.getElementById('notification-panel');
+                const notificationToggleBtn = document.getElementById('notification-panel-toggle');
+                initNotificationPanel(notificationPanelEl, notificationToggleBtn);
             });
 
         // Wire connection status indicator
