@@ -324,7 +324,7 @@ function testShouldNotify() {
 /**
  * Test permission handling (AC9.1, AC9.2, AC9.5, AC9.6)
  */
-function testPermissionHandling() {
+async function testPermissionHandling() {
     // Don't clear localStorage here; just test the permission state APIs
     // without actually adding pairs that would persist
 
@@ -351,6 +351,10 @@ function testPermissionHandling() {
     globalThis.Notification = undefined;
     state = getPermissionState();
     assert.strictEqual(state, 'unavailable', 'Should return unavailable when Notification undefined');
+
+    // Test requestPermission when Notification API is undefined
+    const result = await requestPermission();
+    assert.strictEqual(result, 'denied', 'requestPermission should return denied when Notification undefined');
 
     // Restore mock for other tests
     globalThis.Notification = {

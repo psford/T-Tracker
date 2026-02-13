@@ -59,7 +59,7 @@ export function updateStatus() {
         const enableBtn = textEl.querySelector('.notification-status__enable');
         if (enableBtn) {
             enableBtn.addEventListener('click', async () => {
-                const result = await requestPermission();
+                await requestPermission();
                 // AC9.5: Refresh after permission change
                 updateStatus();
             });
