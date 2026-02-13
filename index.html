@@ -28,20 +28,28 @@
 
     <!-- App entry point (ES6 module) -->
     <script type="module">
-        import { initMap, loadRoutes, loadStops, syncVehicleMarkers, getRouteMetadata, setVisibleRoutes } from './src/map.js?v=10';
-        import { connect, apiEvents } from './src/api.js?v=10';
-        import { initVehicles, onVehicleUpdate } from './src/vehicles.js?v=10';
-        import { initUI } from './src/ui.js?v=10';
+        import { initMap, loadRoutes, loadStops, buildRouteStopsMapping, syncVehicleMarkers, getRouteMetadata, setVisibleRoutes } from './src/map.js?v=11';
+        import { connect, apiEvents } from './src/api.js?v=11';
+        import { initVehicles, onVehicleUpdate } from './src/vehicles.js?v=11';
+        import { initUI } from './src/ui.js?v=11';
+        import { initStopMarkers, updateVisibleStops } from './src/stop-markers.js?v=11';
 
         const map = initMap('map');
         initVehicles(apiEvents, () => map.getBounds());
         onVehicleUpdate(syncVehicleMarkers);
 
-        // Load routes and stops in parallel on startup
-        Promise.all([loadRoutes(), loadStops()]).then(() => {
-            const metadata = getRouteMetadata();
-            initUI(metadata, setVisibleRoutes);
-        });
+        // Load routes + stops in parallel (bulk fetches are independent)
+        // Then build route-stop mapping (needs routeMetadata from loadRoutes)
+        Promise.all([loadRoutes(), loadStops()])
+            .then(() => buildRouteStopsMapping())
+            .then(() => {
+                const metadata = getRouteMetadata();
+                initStopMarkers(map);
+                initUI(metadata, (routeIds) => {
+                    setVisibleRoutes(routeIds);
+                    updateVisibleStops(routeIds);
+                });
+            });
 
         // Wire connection status indicator
         const statusEl = document.getElementById('status');
