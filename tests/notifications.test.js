@@ -28,6 +28,10 @@ import {
     initNotifications,
     requestPermission,
     getPermissionState,
+    pauseNotifications,
+    resumeNotifications,
+    togglePause,
+    isPaused,
 } from '../src/notifications.js';
 
 /**
@@ -397,6 +401,71 @@ async function testAsyncAddNotificationPair() {
 }
 
 /**
+ * Test pause/resume notification controls
+ */
+function testPauseResume() {
+    // Setup: clear state
+    localStorage.clear();
+
+    // Mock Notification API
+    globalThis.Notification = {
+        permission: 'granted',
+        requestPermission: async function() {
+            return 'granted';
+        },
+    };
+
+    // AC5.1: Paused stops notifications
+    pauseNotifications();
+    assert.strictEqual(isPaused(), true, 'isPaused() should return true after pauseNotifications()');
+
+    // AC5.2: Resume re-enables
+    resumeNotifications();
+    assert.strictEqual(isPaused(), false, 'isPaused() should return false after resumeNotifications()');
+
+    // AC5.5: Pairs unchanged after pause/resume cycle
+    initNotifications(new EventTarget(), new Map());
+    // Add a pair to have something to preserve
+    // (In practice, this is async, so we'll test the in-memory preservation)
+    const beforeCount = getNotificationPairs().length;
+    pauseNotifications();
+    resumeNotifications();
+    assert.strictEqual(getNotificationPairs().length, beforeCount, 'Pause/resume should not modify pairs');
+
+    // AC5.3 + AC8.2: Persist across simulated reload
+    pauseNotifications();
+    assert.strictEqual(localStorage.getItem('ttracker-notifications-paused'), 'true', 'localStorage should have true after pause');
+    resumeNotifications();
+    assert.strictEqual(localStorage.getItem('ttracker-notifications-paused'), 'false', 'localStorage should have false after resume');
+
+    // AC5.3: Test state persists after simulated reinit
+    localStorage.clear();
+    pauseNotifications();
+    // Simulate page reload by reinit
+    const stopsData = new Map();
+    initNotifications(new EventTarget(), stopsData);
+    assert.strictEqual(isPaused(), true, 'Paused state should persist after reinit when localStorage has true');
+
+    // Test resume persistence
+    resumeNotifications();
+    localStorage.clear();
+    resumeNotifications(); // Set to false
+    initNotifications(new EventTarget(), stopsData);
+    assert.strictEqual(isPaused(), false, 'Resumed state should persist after reinit when localStorage has false');
+
+    // Test toggle
+    localStorage.clear();
+    initNotifications(new EventTarget(), new Map());
+    assert.strictEqual(isPaused(), false, 'Should start not paused');
+    togglePause();
+    assert.strictEqual(isPaused(), true, 'togglePause should pause when not paused');
+    togglePause();
+    assert.strictEqual(isPaused(), false, 'togglePause should resume when paused');
+
+    console.log('✓ pause/resume tests passed');
+}
+
+/**
  * Run all tests
  */
 async function runTests() {
@@ -410,6 +479,7 @@ async function runTests() {
     testShouldNotify();
     testPermissionHandling();
     await testAsyncAddNotificationPair();
+    testPauseResume();
 
     console.log('\n✓ All tests passed!');
 }
