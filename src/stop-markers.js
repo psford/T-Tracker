@@ -1,5 +1,5 @@
 // src/stop-markers.js — Renders stop markers on map for visible routes
-import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata } from './map.js';
+import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, snapToRoutePolyline } from './map.js';
 import { formatStopPopup, escapeHtml } from './stop-popup.js';
 import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';
 import { updateStatus as updateNotificationStatus, renderPanel } from './notification-ui.js';
@@ -51,26 +51,28 @@ function buildStopRoutesMap() {
  * @param {Set<string>|Array<string>} visibleRouteIds — route IDs that should be visible
  * @param {Map<string, Set<string>>} routeStopsMap — route ID to set of stop IDs
  * @param {Map<string, string>} routeColorMap — route ID to hex color string
- * @returns {Object} — {visibleStopIds: Set<string>, stopColorMap: Map<string, string>}
+ * @returns {Object} — {visibleStopIds: Set<string>, stopColorMap: Map<string, string>, stopRouteMap: Map<string, string>}
  */
 export function computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap) {
     const visibleStopIds = new Set();
     const stopColorMap = new Map();
+    const stopRouteMap = new Map();
 
     new Set(visibleRouteIds).forEach((routeId) => {
         const stopIds = routeStopsMap.get(routeId);
         if (stopIds) {
             stopIds.forEach((stopId) => {
                 visibleStopIds.add(stopId);
-                // First route to claim this stop sets its color (AC1.5: no stacking)
+                // First route to claim this stop sets its color and route (AC1.5: no stacking)
                 if (!stopColorMap.has(stopId)) {
                     stopColorMap.set(stopId, routeColorMap.get(routeId) || '#888888');
+                    stopRouteMap.set(stopId, routeId);
                 }
             });
         }
     });
 
-    return { visibleStopIds, stopColorMap };
+    return { visibleStopIds, stopColorMap, stopRouteMap };
 }
 
 /**
@@ -110,7 +112,7 @@ function highlightConfiguredStop(stopId) {
     const marker = stopMarkers.get(stopId);
     if (marker) {
         marker.setStyle({
-            radius: 5,           // Larger than default 3
+            radius: 8,           // Larger than default 6
             fillOpacity: 1.0,    // Full opacity vs default 0.6
             weight: 2,           // Thicker border
         });
@@ -134,14 +136,14 @@ function restoreConfiguredHighlights() {
  * Called when a notification pair is deleted to remove stale visual highlights.
  * This is simpler than tracking individual stop→pair associations.
  *
- * Resets: radius → 3, fillOpacity → 0.6, weight → 1
- * Then re-applies highlights (radius → 5, fillOpacity → 1.0, weight → 2) for stops in current pairs.
+ * Resets: radius → 6, fillOpacity → 0.6, weight → 1
+ * Then re-applies highlights (radius → 8, fillOpacity → 1.0, weight → 2) for stops in current pairs.
  */
 export function refreshAllHighlights() {
     // First reset all markers to default style
     stopMarkers.forEach((marker) => {
         marker.setStyle({
-            radius: 3,
+            radius: 6,
             fillOpacity: 0.6,
             weight: 1,
         });
@@ -165,13 +167,27 @@ export function initStopMarkers(map) {
     mapInstance = map;
     stopLayerGroup = L.layerGroup().addTo(map);
 
-    // Set up popup event delegation for config button clicks
+    // Set up popup event delegation for config button clicks and hover persistence
     mapInstance.on('popupopen', (e) => {
         const container = e.popup.getElement();
         if (!container) return;
 
         // Only handle stop popups (check for stop-popup class)
         if (!container.querySelector('.stop-popup')) return;
+
+        // Keep popup open when mouse enters popup area (cancel marker's mouseout timer)
+        const sourceMarker = e.popup._source;
+        if (sourceMarker) {
+            container.addEventListener('mouseenter', () => {
+                if (sourceMarker._hoverCloseTimer) {
+                    clearTimeout(sourceMarker._hoverCloseTimer);
+                    sourceMarker._hoverCloseTimer = null;
+                }
+            });
+            container.addEventListener('mouseleave', () => {
+                mapInstance.closePopup();
+            });
+        }
 
         const checkpointBtn = container.querySelector('[data-action="set-checkpoint"]');
         const destBtn = container.querySelector('[data-action="set-destination"]');
@@ -237,7 +253,10 @@ export function updateVisibleStops(routeIds) {
     const routeStopsMap = getRouteStopsMap();
     const routeColorMap = getRouteColorMap();
 
-    const { visibleStopIds, stopColorMap } = computeVisibleStops(routeIds, routeStopsMap, routeColorMap);
+    const { visibleStopIds, stopColorMap, stopRouteMap } = computeVisibleStops(routeIds, routeStopsMap, routeColorMap);
+
+    // Detect hover support (desktop vs touch)
+    const hasHover = window.matchMedia('(hover: hover)').matches;
 
     // Collect stops to remove (avoid modifying Map during iteration)
     const stopsToRemove = [];
@@ -264,9 +283,15 @@ export function updateVisibleStops(routeIds) {
             // Skip stops without coordinates
             if (!stop || !stop.latitude || !stop.longitude) return;
 
+            // Snap stop position to nearest point on its route's polyline
+            const ownerRouteId = stopRouteMap.get(stopId);
+            const snapped = ownerRouteId
+                ? snapToRoutePolyline(stop.latitude, stop.longitude, ownerRouteId)
+                : { lat: stop.latitude, lng: stop.longitude };
+
             const color = stopColorMap.get(stopId) || '#888888';
-            const marker = L.circleMarker([stop.latitude, stop.longitude], {
-                radius: 3,
+            const marker = L.circleMarker([snapped.lat, snapped.lng], {
+                radius: 6,
                 color: color,
                 fillColor: color,
                 fillOpacity: 0.6,
@@ -295,9 +320,27 @@ export function updateVisibleStops(routeIds) {
 
             marker.bindPopup(popupFunction, {
                 className: 'stop-popup-container',
-                closeButton: true,    // Stop popups use click, need close button
-                autoPan: true,        // Pan to show full popup (unlike vehicle popups which use false)
+                closeButton: true,
+                autoPan: false,
             });
+
+            // Desktop: hover to show popup with delayed close for button interaction
+            if (hasHover) {
+                marker.on('mouseover', function () {
+                    if (this._hoverCloseTimer) {
+                        clearTimeout(this._hoverCloseTimer);
+                        this._hoverCloseTimer = null;
+                    }
+                    this.openPopup();
+                });
+                marker.on('mouseout', function () {
+                    const self = this;
+                    self._hoverCloseTimer = setTimeout(() => {
+                        self.closePopup();
+                        self._hoverCloseTimer = null;
+                    }, 300);
+                });
+            }
 
             stopMarkers.set(stopId, marker);
             stopLayerGroup.addLayer(marker);

@@ -215,14 +215,24 @@ export function isPaused() {
  * @param {Object} vehicle — vehicle state from vehicles.js
  * @param {Object} pair — {checkpointStopId, myStopId, routeId, learnedDirectionId}
  * @param {Set<string>} notifiedSet — already-notified vehicle+pair keys
+ * @param {Map<string, Object>} [stopsData] — optional stop data for parent station resolution
  * @returns {boolean}
  */
-export function shouldNotify(vehicle, pair, notifiedSet) {
+export function shouldNotify(vehicle, pair, notifiedSet, stopsData = null) {
     // AC4.5: Route must match
     if (vehicle.routeId !== pair.routeId) return false;
 
     // Vehicle must be at the checkpoint stop
-    if (vehicle.stopId !== pair.checkpointStopId) return false;
+    // MBTA SSE reports child/platform stop IDs (e.g., "70064") but notification pairs
+    // may store parent station IDs (e.g., "place-davis"). Resolve through parent relationship.
+    let atCheckpoint = vehicle.stopId === pair.checkpointStopId;
+    if (!atCheckpoint && stopsData && vehicle.stopId) {
+        const vehicleStop = stopsData.get(vehicle.stopId);
+        if (vehicleStop?.parentStopId === pair.checkpointStopId) {
+            atCheckpoint = true;
+        }
+    }
+    if (!atCheckpoint) return false;
 
     // AC4.3: Duplicate prevention (per vehicle + pair)
     const notifyKey = `${vehicle.id}:${pair.id}`;
@@ -286,7 +296,8 @@ const notifiedVehicles = new Set();
 function checkAllPairs(vehicle, stopsData) {
     if (paused) return; // AC5.1: Paused — don't check or notify
     for (const pair of pairs) {
-        if (shouldNotify(vehicle, pair, notifiedVehicles)) {
+        if (shouldNotify(vehicle, pair, notifiedVehicles, stopsData)) {
+            console.log(`[Notify] Vehicle ${vehicle.label || vehicle.id} at stop ${vehicle.stopId} matched checkpoint ${pair.checkpointStopId}`);
             fireNotification(vehicle, pair, stopsData);
             notifiedVehicles.add(`${vehicle.id}:${pair.id}`);
         }

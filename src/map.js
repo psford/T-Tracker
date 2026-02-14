@@ -2,7 +2,7 @@
 import { config } from '../config.js';
 import { decodePolyline } from './polyline.js';
 import { formatVehiclePopup } from './vehicle-popup.js';
-import { darkenHexColor, bearingToTransform, haversineDistance } from './vehicle-math.js';
+import { darkenHexColor, bearingToTransform, haversineDistance, nearestPointOnSegment } from './vehicle-math.js';
 import { VEHICLE_ICONS, DEFAULT_ICON } from './vehicle-icons.js';
 
 let map = null;
@@ -623,12 +623,14 @@ export async function loadStops() {
         const stops = jsonApi.data || [];
 
         // Parse each stop from JSON:API and store in Map
+        // Include parentStopId for child→parent resolution (notification stop matching)
         stops.forEach((stop) => {
             stopsData.set(stop.id, {
                 id: stop.id,
                 name: stop.attributes?.name || '',
                 latitude: stop.attributes?.latitude || 0,
                 longitude: stop.attributes?.longitude || 0,
+                parentStopId: stop.relationships?.parent_station?.data?.id || null,
             });
         });
 
@@ -708,6 +710,7 @@ export async function buildRouteStopsMapping() {
                         name: stop.attributes?.name || '',
                         latitude: stop.attributes?.latitude || 0,
                         longitude: stop.attributes?.longitude || 0,
+                        parentStopId: stop.relationships?.parent_station?.data?.id || null,
                     });
                 }
             });
@@ -753,4 +756,39 @@ export async function buildRouteStopsMapping() {
  */
 export function getRouteStopsMap() {
     return routeStopsMap;
+}
+
+/**
+ * Snap a lat/lng point to the nearest position on a route's polyline.
+ * Iterates all polyline segments for the route and returns the closest point.
+ * If the route has no polylines, returns the original coordinates unchanged.
+ *
+ * @param {number} lat — stop latitude
+ * @param {number} lng — stop longitude
+ * @param {string} routeId — route ID to snap to
+ * @returns {{ lat: number, lng: number }} — snapped position
+ */
+export function snapToRoutePolyline(lat, lng, routeId) {
+    const polylines = routePolylines.get(routeId);
+    if (!polylines || polylines.length === 0) return { lat, lng };
+
+    let bestDistSq = Infinity;
+    let bestPoint = { lat, lng };
+
+    for (const polyline of polylines) {
+        const coords = polyline.getLatLngs();
+        for (let i = 0; i < coords.length - 1; i++) {
+            const result = nearestPointOnSegment(
+                lat, lng,
+                coords[i].lat, coords[i].lng,
+                coords[i + 1].lat, coords[i + 1].lng
+            );
+            if (result.distSq < bestDistSq) {
+                bestDistSq = result.distSq;
+                bestPoint = { lat: result.lat, lng: result.lng };
+            }
+        }
+    }
+
+    return bestPoint;
 }

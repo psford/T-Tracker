@@ -565,7 +565,7 @@ html, body {
 /* Notification panel toggle button */
 .notification-panel-toggle {
     position: absolute;
-    top: 10px;
+    top: 80px;
     left: 10px;
     z-index: 1000;
     background: rgba(22, 33, 62, 0.95);
@@ -584,7 +584,7 @@ html, body {
 /* Notification configuration panel */
 .notification-panel {
     position: absolute;
-    top: 50px;
+    top: 118px;
     left: 10px;
     z-index: 1000;
     background: rgba(22, 33, 62, 0.95);

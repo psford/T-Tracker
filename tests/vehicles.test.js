@@ -1,6 +1,6 @@
 // tests/vehicles.test.js — Unit tests for vehicle state management
 import assert from 'assert';
-import { lerp, easeOutCubic, lerpAngle, haversineDistance, darkenHexColor, bearingToTransform } from '../src/vehicle-math.js';
+import { lerp, easeOutCubic, lerpAngle, haversineDistance, darkenHexColor, bearingToTransform, nearestPointOnSegment } from '../src/vehicle-math.js';
 
 /**
  * Test lerp function
@@ -245,6 +245,39 @@ function testBearingToTransform() {
 }
 
 /**
+ * Test nearestPointOnSegment function
+ */
+function testNearestPointOnSegment() {
+    // Point projects onto middle of segment
+    const r1 = nearestPointOnSegment(1, 0, 0, -1, 0, 1);
+    assert(Math.abs(r1.lat - 0) < 1e-10, `Nearest lat should be 0, got ${r1.lat}`);
+    assert(Math.abs(r1.lng - 0) < 1e-10, `Nearest lng should be 0, got ${r1.lng}`);
+
+    // Point projects onto start of segment (t clamped to 0)
+    const r2 = nearestPointOnSegment(0, -5, 0, 0, 0, 10);
+    assert(Math.abs(r2.lat - 0) < 1e-10, 'Should clamp to segment start lat');
+    assert(Math.abs(r2.lng - 0) < 1e-10, 'Should clamp to segment start lng');
+
+    // Point projects onto end of segment (t clamped to 1)
+    const r3 = nearestPointOnSegment(0, 15, 0, 0, 0, 10);
+    assert(Math.abs(r3.lat - 0) < 1e-10, 'Should clamp to segment end lat');
+    assert(Math.abs(r3.lng - 10) < 1e-10, 'Should clamp to segment end lng');
+
+    // Zero-length segment (degenerate case)
+    const r4 = nearestPointOnSegment(1, 1, 5, 5, 5, 5);
+    assert.strictEqual(r4.lat, 5, 'Zero-length segment returns segment point lat');
+    assert.strictEqual(r4.lng, 5, 'Zero-length segment returns segment point lng');
+
+    // Point exactly on segment
+    const r5 = nearestPointOnSegment(0, 0.5, 0, 0, 0, 1);
+    assert(Math.abs(r5.lat - 0) < 1e-10, 'Point on segment: lat');
+    assert(Math.abs(r5.lng - 0.5) < 1e-10, 'Point on segment: lng');
+    assert(r5.distSq < 1e-10, 'Point on segment: distSq should be ~0');
+
+    console.log('✓ nearestPointOnSegment tests passed');
+}
+
+/**
  * Run all tests
  */
 function runTests() {
@@ -256,6 +289,7 @@ function runTests() {
     testHaversineDistance();
     testDarkenHexColor();
     testBearingToTransform();
+    testNearestPointOnSegment();
 
     console.log('\n✓ All tests passed!');
 }

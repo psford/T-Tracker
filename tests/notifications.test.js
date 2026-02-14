@@ -326,6 +326,76 @@ function testShouldNotify() {
 }
 
 /**
+ * Test shouldNotify parent stop resolution (child→parent stop ID matching)
+ * MBTA SSE reports child/platform stop IDs (e.g., "70064") but notification pairs
+ * may store parent station IDs (e.g., "place-davis"). shouldNotify resolves through
+ * the stopsData parentStopId field.
+ */
+function testShouldNotifyParentResolution() {
+    localStorage.clear();
+    initNotifications(new EventTarget(), new Map());
+
+    // Build mock stopsData with parent-child relationships
+    const stopsData = new Map([
+        ['place-davis', { id: 'place-davis', name: 'Davis', parentStopId: null }],
+        ['70063', { id: '70063', name: 'Davis Northbound', parentStopId: 'place-davis' }],
+        ['70064', { id: '70064', name: 'Davis Southbound', parentStopId: 'place-davis' }],
+        ['place-portr', { id: 'place-portr', name: 'Porter', parentStopId: null }],
+        ['70065', { id: '70065', name: 'Porter Northbound', parentStopId: 'place-portr' }],
+    ]);
+
+    // Pair configured with parent station ID (as shown in stop markers)
+    const pair = {
+        id: 'p-parent',
+        checkpointStopId: 'place-davis',
+        myStopId: 'place-portr',
+        routeId: 'Red',
+        learnedDirectionId: null,
+    };
+
+    // Vehicle reports child stop ID (as received from MBTA SSE)
+    const vehicleAtChild = { id: 'v-child', stopId: '70064', routeId: 'Red', directionId: 0 };
+    assert.strictEqual(
+        shouldNotify(vehicleAtChild, pair, new Set(), stopsData),
+        true,
+        'Should notify when vehicle child stop resolves to pair parent station'
+    );
+
+    // Vehicle at a different child stop of same parent should also match
+    const vehicleAtOtherChild = { id: 'v-child2', stopId: '70063', routeId: 'Red', directionId: 0 };
+    const pair2 = { ...pair, id: 'p-parent2', learnedDirectionId: 0 };
+    assert.strictEqual(
+        shouldNotify(vehicleAtOtherChild, pair2, new Set(), stopsData),
+        true,
+        'Should notify for other child stop of same parent station'
+    );
+
+    // Vehicle at unrelated child stop should NOT match
+    const vehicleAtPorter = { id: 'v-porter', stopId: '70065', routeId: 'Red', directionId: 0 };
+    assert.strictEqual(
+        shouldNotify(vehicleAtPorter, pair2, new Set(), stopsData),
+        false,
+        'Should not notify when child stop parent is different station'
+    );
+
+    // Without stopsData (backward compat), only exact match works
+    const vehicleExactMatch = { id: 'v-exact', stopId: 'place-davis', routeId: 'Red', directionId: 0 };
+    const pair3 = { ...pair, id: 'p-exact', learnedDirectionId: null };
+    assert.strictEqual(
+        shouldNotify(vehicleExactMatch, pair3, new Set()),
+        true,
+        'Should still match exact stop IDs without stopsData'
+    );
+    assert.strictEqual(
+        shouldNotify(vehicleAtChild, { ...pair, id: 'p-nodata', learnedDirectionId: null }, new Set()),
+        false,
+        'Should not resolve parent without stopsData'
+    );
+
+    console.log('✓ shouldNotify parent stop resolution tests passed');
+}
+
+/**
  * Test permission handling (AC9.1, AC9.2, AC9.5, AC9.6)
  */
 async function testPermissionHandling() {
@@ -521,6 +591,7 @@ async function runTests() {
     await testLocalStoragePersistence();
     await testCorruptedLocalStorage();
     testShouldNotify();
+    testShouldNotifyParentResolution();
     await testPermissionHandling();
     await testAsyncAddNotificationPair();
     testPauseResume();

@@ -100,6 +100,44 @@ export function darkenHexColor(hex, amount) {
 }
 
 /**
+ * Find the nearest point on line segment AB to point P.
+ * Uses projected parameter t clamped to [0,1] so the result always lies on the segment.
+ * Coordinates are in degrees (lat/lng). Distance comparison uses squared degree difference
+ * (sufficient for nearest-point ranking at city scale).
+ *
+ * @param {number} pLat — point latitude
+ * @param {number} pLng — point longitude
+ * @param {number} aLat — segment start latitude
+ * @param {number} aLng — segment start longitude
+ * @param {number} bLat — segment end latitude
+ * @param {number} bLng — segment end longitude
+ * @returns {{ lat: number, lng: number, distSq: number }} — nearest point and squared distance
+ */
+export function nearestPointOnSegment(pLat, pLng, aLat, aLng, bLat, bLng) {
+    const dx = bLng - aLng;
+    const dy = bLat - aLat;
+    const lenSq = dx * dx + dy * dy;
+
+    if (lenSq === 0) {
+        // Segment is a point
+        const dLat = pLat - aLat;
+        const dLng = pLng - aLng;
+        return { lat: aLat, lng: aLng, distSq: dLat * dLat + dLng * dLng };
+    }
+
+    // Project P onto line AB, clamped to [0, 1]
+    let t = ((pLng - aLng) * dx + (pLat - aLat) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+
+    const nearLat = aLat + t * dy;
+    const nearLng = aLng + t * dx;
+    const dLat = pLat - nearLat;
+    const dLng = pLng - nearLng;
+
+    return { lat: nearLat, lng: nearLng, distSq: dLat * dLat + dLng * dLng };
+}
+
+/**
  * Converts bearing (compass direction) to CSS transform values for vehicle icons.
  * Icons are drawn facing right (east = 90 degrees).
  * Vehicles heading left (180-360°) are flipped horizontally so wheels remain on bottom.
