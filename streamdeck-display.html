@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>T-Tracker Stream Deck Display</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 800px;
+            height: 100px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        /* Top section: Timeline */
+        .timeline {
+            height: 60px;
+            padding: 8px 20px;
+            background: #222;
+            border-bottom: 1px solid #333;
+            position: relative;
+        }
+
+        .track-container {
+            position: relative;
+            height: 100%;
+        }
+
+        .track {
+            position: absolute;
+            top: 28px;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg,
+                #00843D 0%,   /* Green Line color */
+                #00843D 100%
+            );
+            border-radius: 2px;
+        }
+
+        .stop {
+            position: absolute;
+            top: 18px;
+            transform: translateX(-50%);
+        }
+
+        .stop-dot {
+            width: 12px;
+            height: 12px;
+            background: #00843D;
+            border: 2px solid #1a1a1a;
+            border-radius: 50%;
+            margin: 0 auto 2px;
+        }
+
+        .stop-label {
+            font-size: 9px;
+            white-space: nowrap;
+            color: #aaa;
+            text-align: center;
+        }
+
+        .stop.user-location .stop-dot {
+            background: #FFD700;
+            border-color: #FFB700;
+            box-shadow: 0 0 8px rgba(255, 215, 0, 0.6);
+        }
+
+        .stop.user-location .stop-label {
+            color: #FFD700;
+            font-weight: bold;
+        }
+
+        .vehicle {
+            position: absolute;
+            top: 20px;
+            transform: translateX(-50%);
+            width: 16px;
+            height: 16px;
+            background: #00843D;
+            border: 2px solid #fff;
+            border-radius: 3px;
+            box-shadow: 0 0 4px rgba(0, 132, 61, 0.8);
+            z-index: 10;
+        }
+
+        .bus-indicator {
+            position: absolute;
+            top: 8px;
+            right: 20px;
+            padding: 4px 8px;
+            background: #FFC72C;
+            color: #000;
+            font-size: 10px;
+            font-weight: bold;
+            border-radius: 3px;
+        }
+
+        /* Bottom section: Arrivals */
+        .arrivals {
+            height: 40px;
+            display: flex;
+            background: #1a1a1a;
+        }
+
+        .arrival-column {
+            flex: 1;
+            padding: 6px 8px;
+            border-right: 1px solid #333;
+            font-size: 10px;
+        }
+
+        .arrival-column:last-child {
+            border-right: none;
+            flex: 0.6;
+        }
+
+        .arrival-header {
+            font-weight: bold;
+            font-size: 9px;
+            color: #888;
+            margin-bottom: 2px;
+            text-transform: uppercase;
+        }
+
+        .arrival-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin: 2px 0;
+            font-size: 11px;
+        }
+
+        .arrival-icon {
+            width: 10px;
+            height: 10px;
+            background: #00843D;
+            border-radius: 2px;
+        }
+
+        .bus-icon {
+            background: #FFC72C;
+        }
+
+        .arrival-time {
+            color: #e0e0e0;
+            font-weight: 600;
+        }
+
+        .no-data {
+            color: #666;
+            font-style: italic;
+        }
+
+        .connection-status {
+            position: absolute;
+            bottom: 2px;
+            left: 4px;
+            font-size: 7px;
+            color: #666;
+        }
+
+        .connection-status.connected {
+            color: #00843D;
+        }
+    </style>
+</head>
+<body>
+    <div class="timeline">
+        <div class="bus-indicator" id="bus-count">39 🚌 --</div>
+        <div class="track-container">
+            <div class="track"></div>
+            <!-- Stops will be positioned dynamically -->
+            <div class="stop" id="stop-heath" style="left: 10%;">
+                <div class="stop-dot"></div>
+                <div class="stop-label">Heath</div>
+            </div>
+            <div class="stop" id="stop-backofhill" style="left: 35%;">
+                <div class="stop-dot"></div>
+                <div class="stop-label">Back of Hill</div>
+            </div>
+            <div class="stop" id="stop-riverway" style="left: 60%;">
+                <div class="stop-dot"></div>
+                <div class="stop-label">Riverway</div>
+            </div>
+            <div class="stop" id="stop-mission" style="left: 85%;">
+                <div class="stop-dot"></div>
+                <div class="stop-label">Mission Park</div>
+            </div>
+            <!-- Vehicles will be added dynamically -->
+            <div id="vehicles-container"></div>
+        </div>
+    </div>
+
+    <div class="arrivals">
+        <div class="arrival-column">
+            <div class="arrival-header">Riverway</div>
+            <div id="riverway-arrivals" class="no-data">Connecting...</div>
+        </div>
+        <div class="arrival-column">
+            <div class="arrival-header">Back of Hill</div>
+            <div id="backofhill-arrivals" class="no-data">Connecting...</div>
+        </div>
+        <div class="arrival-column">
+            <div class="arrival-header">39 Bus</div>
+            <div id="bus-arrivals" class="no-data">--</div>
+        </div>
+    </div>
+
+    <div class="connection-status" id="status">Connecting...</div>
+
+    <script type="module">
+        import { config } from './config.js';
+
+        const STOP_IDS = {
+            heath: 'place-hsmnl',         // Heath Street
+            backofhill: 'place-bcnfd',    // Back of the Hill
+            riverway: 'place-rvrwy',      // Riverway
+            mission: 'place-mispk'        // Mission Park
+        };
+
+        let vehicles = new Map();
+        let stops = new Map();
+        let eventSource = null;
+
+        // Connection status
+        const statusEl = document.getElementById('status');
+        function setStatus(text, connected = false) {
+            statusEl.textContent = text;
+            statusEl.className = `connection-status ${connected ? 'connected' : ''}`;
+        }
+
+        // Fetch stop data
+        async function fetchStops() {
+            const stopIds = Object.values(STOP_IDS).join(',');
+            const url = `${config.api.baseUrl}/stops?filter[id]=${stopIds}&api_key=${config.api.key}`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                data.data.forEach(stop => {
+                    stops.set(stop.id, {
+                        id: stop.id,
+                        name: stop.attributes.name,
+                        lat: stop.attributes.latitude,
+                        lon: stop.attributes.longitude
+                    });
+                });
+                console.log('Loaded stops:', stops.size);
+            } catch (error) {
+                console.error('Failed to fetch stops:', error);
+            }
+        }
+
+        // Connect to vehicle SSE stream
+        function connect() {
+            const url = `${config.api.baseUrl}/vehicles?filter[route]=Green-E,39&api_key=${config.api.key}`;
+
+            eventSource = new EventSource(url);
+
+            eventSource.addEventListener('reset', (e) => {
+                const data = JSON.parse(e.data);
+                vehicles.clear();
+                processVehicles(data);
+                setStatus('Connected', true);
+            });
+
+            eventSource.addEventListener('add', (e) => {
+                const data = JSON.parse(e.data);
+                processVehicles([data]);
+            });
+
+            eventSource.addEventListener('update', (e) => {
+                const data = JSON.parse(e.data);
+                processVehicles([data]);
+            });
+
+            eventSource.addEventListener('remove', (e) => {
+                const data = JSON.parse(e.data);
+                vehicles.delete(data.id);
+                render();
+            });
+
+            eventSource.onerror = () => {
+                setStatus('Disconnected');
+                setTimeout(() => {
+                    eventSource.close();
+                    connect();
+                }, 5000);
+            };
+        }
+
+        // Process vehicle data
+        function processVehicles(data) {
+            data.forEach(item => {
+                const attrs = item.attributes;
+                const rels = item.relationships;
+
+                // Extract route
+                const routeId = rels?.route?.data?.id;
+                if (!routeId) return;
+
+                // Get direction (0 = inbound, 1 = outbound)
+                const directionId = attrs.direction_id;
+
+                // For Green-E: we want inbound vehicles (toward Park St)
+                // For route 39: we want inbound vehicles (toward Back Bay)
+                // Both use direction_id: 0 for inbound
+                if (directionId !== 0) return;
+
+                vehicles.set(item.id, {
+                    id: item.id,
+                    routeId: routeId,
+                    lat: attrs.latitude,
+                    lon: attrs.longitude,
+                    currentStatus: attrs.current_status,
+                    stopId: rels?.stop?.data?.id,
+                    updatedAt: attrs.updated_at
+                });
+            });
+
+            render();
+        }
+
+        // Calculate distance between two lat/lng points (haversine)
+        function distance(lat1, lon1, lat2, lon2) {
+            const R = 6371000; // meters
+            const toRad = Math.PI / 180;
+            const dLat = (lat2 - lat1) * toRad;
+            const dLon = (lon2 - lon1) * toRad;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) *
+                    Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // Estimate time to arrival (rough calculation)
+        function estimateArrival(vehicleLat, vehicleLon, stopLat, stopLon) {
+            const dist = distance(vehicleLat, vehicleLon, stopLat, stopLon);
+            // Assume average speed of 20 km/h = 5.56 m/s for Green Line
+            const avgSpeed = 5.56;
+            const timeSeconds = dist / avgSpeed;
+
+            if (timeSeconds < 60) {
+                return '< 1 min';
+            }
+            const minutes = Math.round(timeSeconds / 60);
+            return `${minutes} min`;
+        }
+
+        // Render vehicles and arrivals
+        function render() {
+            const container = document.getElementById('vehicles-container');
+            container.innerHTML = '';
+
+            // Filter Green-E vehicles
+            const greenEVehicles = Array.from(vehicles.values())
+                .filter(v => v.routeId === 'Green-E');
+
+            // Filter route 39 buses
+            const buses = Array.from(vehicles.values())
+                .filter(v => v.routeId === '39');
+
+            // Update bus count
+            document.getElementById('bus-count').textContent = `39 🚌 ${buses.length}`;
+
+            // Render Green-E vehicles on timeline
+            greenEVehicles.forEach(v => {
+                // Calculate position on timeline based on proximity to stops
+                // Simplified: use distance from Heath St as proxy
+                const heathStop = stops.get(STOP_IDS.heath);
+                const missionStop = stops.get(STOP_IDS.mission);
+
+                if (!heathStop || !missionStop) return;
+
+                const distFromHeath = distance(heathStop.lat, heathStop.lon, v.lat, v.lon);
+                const totalDist = distance(heathStop.lat, heathStop.lon, missionStop.lat, missionStop.lon);
+                const percentage = Math.min(100, Math.max(0, (distFromHeath / totalDist) * 100));
+
+                const vehicleEl = document.createElement('div');
+                vehicleEl.className = 'vehicle';
+                vehicleEl.style.left = `${10 + (percentage * 0.75)}%`; // Scale to 10%-85% range
+                container.appendChild(vehicleEl);
+            });
+
+            // Update arrivals
+            updateArrivals(greenEVehicles, buses);
+        }
+
+        // Update arrival times
+        function updateArrivals(greenEVehicles, buses) {
+            const riverwayStop = stops.get(STOP_IDS.riverway);
+            const backofhillStop = stops.get(STOP_IDS.backofhill);
+
+            // Riverway arrivals
+            if (riverwayStop) {
+                const arriving = greenEVehicles
+                    .map(v => ({
+                        ...v,
+                        eta: estimateArrival(v.lat, v.lon, riverwayStop.lat, riverwayStop.lon),
+                        distance: distance(v.lat, v.lon, riverwayStop.lat, riverwayStop.lon)
+                    }))
+                    .filter(v => v.distance < 2000) // Within 2km
+                    .sort((a, b) => a.distance - b.distance)
+                    .slice(0, 2);
+
+                const riverwayEl = document.getElementById('riverway-arrivals');
+                if (arriving.length > 0) {
+                    riverwayEl.innerHTML = arriving.map(v =>
+                        `<div class="arrival-item"><div class="arrival-icon"></div><span class="arrival-time">${v.eta}</span></div>`
+                    ).join('');
+                } else {
+                    riverwayEl.innerHTML = '<div class="no-data">No trains nearby</div>';
+                }
+            }
+
+            // Back of the Hill arrivals
+            if (backofhillStop) {
+                const arriving = greenEVehicles
+                    .map(v => ({
+                        ...v,
+                        eta: estimateArrival(v.lat, v.lon, backofhillStop.lat, backofhillStop.lon),
+                        distance: distance(v.lat, v.lon, backofhillStop.lat, backofhillStop.lon)
+                    }))
+                    .filter(v => v.distance < 2000)
+                    .sort((a, b) => a.distance - b.distance)
+                    .slice(0, 2);
+
+                const backofhillEl = document.getElementById('backofhill-arrivals');
+                if (arriving.length > 0) {
+                    backofhillEl.innerHTML = arriving.map(v =>
+                        `<div class="arrival-item"><div class="arrival-icon"></div><span class="arrival-time">${v.eta}</span></div>`
+                    ).join('');
+                } else {
+                    backofhillEl.innerHTML = '<div class="no-data">No trains nearby</div>';
+                }
+            }
+
+            // Bus arrivals with ETAs
+            const busEl = document.getElementById('bus-arrivals');
+            if (buses.length > 0) {
+                // Calculate ETAs to user's location (midpoint between Riverway and Back of Hill)
+                const riverwayLat = riverwayStop.lat;
+                const riverwayLon = riverwayStop.lon;
+                const backofhillLat = backofhillStop.lat;
+                const backofhillLon = backofhillStop.lon;
+
+                const userLat = (riverwayLat + backofhillLat) / 2;
+                const userLon = (riverwayLon + backofhillLon) / 2;
+
+                const arriving = buses
+                    .map(v => ({
+                        ...v,
+                        eta: estimateArrival(v.lat, v.lon, userLat, userLon),
+                        distance: distance(v.lat, v.lon, userLat, userLon)
+                    }))
+                    .filter(v => v.distance < 5000) // Within 5km
+                    .sort((a, b) => a.distance - b.distance)
+                    .slice(0, 2);
+
+                if (arriving.length > 0) {
+                    busEl.innerHTML = arriving.map(v =>
+                        `<div class="arrival-item"><div class="arrival-icon bus-icon"></div><span class="arrival-time">${v.eta}</span></div>`
+                    ).join('');
+                } else {
+                    busEl.innerHTML = '<div class="no-data">None nearby</div>';
+                }
+            } else {
+                busEl.innerHTML = '<div class="no-data">None nearby</div>';
+            }
+        }
+
+        // Initialize
+        async function init() {
+            setStatus('Loading...');
+            await fetchStops();
+            connect();
+        }
+
+        init();
+    </script>
+</body>
+</html>
