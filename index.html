@@ -48,13 +48,13 @@
 
     <!-- App entry point (ES6 module) -->
     <script type="module">
-        import { initMap, loadRoutes, loadStops, buildRouteStopsMapping, syncVehicleMarkers, getRouteMetadata, setVisibleRoutes, getStopData } from './src/map.js?v=11';
-        import { connect, apiEvents } from './src/api.js?v=11';
-        import { initVehicles, onVehicleUpdate } from './src/vehicles.js?v=11';
-        import { initUI } from './src/ui.js?v=11';
-        import { initStopMarkers, updateVisibleStops } from './src/stop-markers.js?v=11';
-        import { initNotifications } from './src/notifications.js?v=11';
-        import { initNotificationUI, updateStatus as updateNotificationStatus, initNotificationPanel, renderPanel } from './src/notification-ui.js?v=11';
+        import { initMap, loadRoutes, loadStops, buildRouteStopsMapping, syncVehicleMarkers, getRouteMetadata, setVisibleRoutes, getStopData } from './src/map.js';
+        import { connect, apiEvents } from './src/api.js';
+        import { initVehicles, onVehicleUpdate } from './src/vehicles.js';
+        import { initUI } from './src/ui.js';
+        import { initStopMarkers, updateVisibleStops } from './src/stop-markers.js';
+        import { initNotifications } from './src/notifications.js';
+        import { initNotificationUI, updateStatus as updateNotificationStatus, initNotificationPanel, renderPanel } from './src/notification-ui.js';
 
         const map = initMap('map');
         initVehicles(apiEvents, () => map.getBounds());
