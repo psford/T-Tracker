@@ -111,9 +111,9 @@ No external packages installed at build time.
 
 | Endpoint | Method | Purpose | When |
 |----------|--------|---------|------|
-| `GET /vehicles?filter[route_type]=0,1,2,3` | SSE | Live vehicle positions | App startup (persistent connection) |
-| `GET /routes?filter[type]=0,1,2,3&include=route_patterns.representative_trip.shape` | REST | Route metadata + polylines | App startup (one-time) |
-| `GET /stops?filter[route_type]=0,1,2,3` | REST | Stop names for popups | App startup (one-time) |
+| `GET /vehicles?filter[route_type]=0,1,2,3,4` | SSE | Live vehicle positions | App startup (persistent connection) |
+| `GET /routes?filter[type]=0,1,2,3,4&include=route_patterns.representative_trip.shape` | REST | Route metadata + polylines | App startup (one-time) |
+| `GET /stops?filter[route_type]=0,1,2,3,4` | REST | Stop names for popups | App startup (one-time) |
 
 ### SSE Event Types
 
@@ -315,3 +315,4 @@ node tests/vehicle-popup.test.js
 | 2026-02-09 | Cloudflare Pages deployment with build-time API key injection |
 | 2026-02-11 | Bug fixes: tile retry backoff, route visibility logic, polyline typicality filtering, endpoint snapping, page load flash |
 | 2026-02-11 | Feature: pulsing directional indicators (headlights/taillights) on vehicle icons |
+| 2026-02-14 | Ferry service support: route type 4 (MBTA aqua #008EAA boat icon), Ferry group in UI (hidden by default), full API integration |
