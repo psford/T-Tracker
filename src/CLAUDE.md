@@ -1,6 +1,6 @@
 # T-Tracker Source Modules
 
-Last verified: 2026-02-13
+Last verified: 2026-02-14
 
 ## Purpose
 Thirteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
@@ -95,9 +95,9 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 
 ### ui.js -- Route Selection Panel
 - **Exposes**: `initUI(routeMetadata, onVisibilityChange)`
-- **Guarantees**: Populates #controls with checkboxes grouped in three-tier hierarchy: Subway (heavy rail + Green Line branches), Bus, Commuter Rail.
+- **Guarantees**: Populates #controls with checkboxes grouped in four-tier hierarchy: Subway (heavy rail + Green Line branches), Bus, Commuter Rail, Ferry.
   Persists service toggle states to localStorage (key: `ttracker-service-toggles`) and individual route selections to localStorage (key: `ttracker-visible-routes`).
-  First-visit defaults: Subway on, Bus off, Commuter Rail off (derived from metadata, not config).
+  First-visit defaults: Subway on, Bus off, Commuter Rail off, Ferry off (derived from metadata, not config).
   Returning-visit behavior: restores stored state, silently drops removed routes, adds new routes as visible if their service type is enabled.
   Mobile (<768px): slide-in drawer with backdrop. Desktop: static panel.
 - **Expects**: `#controls` element in DOM. Route metadata from `getRouteMetadata()`.
@@ -110,11 +110,12 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 
 ### route-sorter.js -- Route Sorting and Grouping
 - **Exposes**: `groupAndSortRoutes(routes)`
-- **Guarantees**: Pure function. Returns routes organized into three top-level groups:
+- **Guarantees**: Pure function. Returns routes organized into four top-level groups:
   (1) Subway (types 0 + 1): Heavy rail routes (Red, Orange, Blue) in fixed order, with optional subgroup
   for Green Line branches (B, C, D, E) sorted alphabetically.
   (2) Bus (type 3): Sorted numerically (1, 2, ...) then alphanumerically (CT1, ...).
   (3) Commuter Rail (type 2): Sorted alphabetically by longName.
+  (4) Ferry (type 4): Sorted alphabetically by longName.
   Return shape: `Array<{group: string, routes: Array<Object>, subGroups?: Array<{group: string, routes: Array<Object>}>}>`.
   Each group only appears if it has routes.
 - **Expects**: Array of route objects with {id, shortName, longName, color, type} properties

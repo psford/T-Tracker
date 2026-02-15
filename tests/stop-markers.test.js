@@ -63,6 +63,14 @@ function testComputeVisibleStops() {
     assert(result.visibleStopIds.has('stop-3'), 'stop-3 should be visible from Blue');
 
     console.log('✓ Test 6: Set input accepted and processed correctly');
+
+    // Test 7: stopRouteMap tracks owning route for each stop
+    result = computeVisibleStops(['Red', 'Blue'], mockRouteStopsMap, mockRouteColorMap);
+    assert.strictEqual(result.stopRouteMap.get('stop-1'), 'Red', 'stop-1 should be owned by Red');
+    assert.strictEqual(result.stopRouteMap.get('stop-2'), 'Red', 'stop-2 should be owned by Red (first route wins)');
+    assert.strictEqual(result.stopRouteMap.get('stop-3'), 'Blue', 'stop-3 should be owned by Blue');
+
+    console.log('✓ Test 7: stopRouteMap tracks owning route for polyline snapping');
 }
 
 /**

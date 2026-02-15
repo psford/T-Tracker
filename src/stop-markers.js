@@ -1,5 +1,5 @@
 // src/stop-markers.js — Renders stop markers on map for visible routes
-import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata } from './map.js';
+import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, snapToRoutePolyline, isTerminusStop, getDirectionDestinations } from './map.js';
 import { formatStopPopup, escapeHtml } from './stop-popup.js';
 import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';
 import { updateStatus as updateNotificationStatus, renderPanel } from './notification-ui.js';
@@ -16,12 +16,6 @@ let stopRoutesMap = null;
 
 // Leaflet map instance — stored for popup event delegation and popup close/open
 let mapInstance = null;
-
-// Two-click workflow state: checkpoint stop ID selected first
-let pendingCheckpointStopId = null;
-
-// Two-click workflow state: route ID for the pending checkpoint
-let pendingRouteId = null;
 
 /**
  * Build reverse mapping: stopId → Array<routeId>
@@ -51,58 +45,79 @@ function buildStopRoutesMap() {
  * @param {Set<string>|Array<string>} visibleRouteIds — route IDs that should be visible
  * @param {Map<string, Set<string>>} routeStopsMap — route ID to set of stop IDs
  * @param {Map<string, string>} routeColorMap — route ID to hex color string
- * @returns {Object} — {visibleStopIds: Set<string>, stopColorMap: Map<string, string>}
+ * @returns {Object} — {visibleStopIds: Set<string>, stopColorMap: Map<string, string>, stopRouteMap: Map<string, string>}
  */
 export function computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap) {
     const visibleStopIds = new Set();
     const stopColorMap = new Map();
+    const stopRouteMap = new Map();
 
     new Set(visibleRouteIds).forEach((routeId) => {
         const stopIds = routeStopsMap.get(routeId);
         if (stopIds) {
             stopIds.forEach((stopId) => {
                 visibleStopIds.add(stopId);
-                // First route to claim this stop sets its color (AC1.5: no stacking)
+                // First route to claim this stop sets its color and route (AC1.5: no stacking)
                 if (!stopColorMap.has(stopId)) {
                     stopColorMap.set(stopId, routeColorMap.get(routeId) || '#888888');
+                    stopRouteMap.set(stopId, routeId);
                 }
             });
         }
     });
 
-    return { visibleStopIds, stopColorMap };
+    return { visibleStopIds, stopColorMap, stopRouteMap };
 }
 
 /**
- * Compute config state for a stop based on notification pairs and pending checkpoint.
- * Used to pass dynamic state to formatStopPopup on each popup open.
+ * Compute config state for a stop popup.
+ * Builds per-route direction info with labels and terminus status.
  *
  * @param {string} stopId — stop ID
- * @returns {Object} — {isCheckpoint, isDestination, pairCount, pendingCheckpoint, pendingCheckpointName, maxPairs}
+ * @returns {Object} — {pairCount, maxPairs, existingAlerts, routeDirections}
  */
 function getStopConfigState(stopId) {
     const pairs = getNotificationPairs();
-    const stopsData = getStopData();
+    const routeMetadata = getRouteMetadata();
 
-    // Resolve pending checkpoint stop ID to human-readable name
-    const pendingName = pendingCheckpointStopId
-        ? (stopsData.get(pendingCheckpointStopId)?.name || pendingCheckpointStopId)
-        : null;
+    // Find which alerts already exist at this stop
+    const existingAlerts = pairs
+        .filter(p => p.checkpointStopId === stopId)
+        .map(p => ({ routeId: p.routeId, directionId: p.directionId }));
+
+    // Build route directions for each route serving this stop
+    if (!stopRoutesMap) {
+        stopRoutesMap = buildStopRoutesMap();
+    }
+    const stopRouteIds = stopRoutesMap.get(stopId) || [];
+
+    const routeDirections = stopRouteIds.map(routeId => {
+        const meta = routeMetadata.find(m => m.id === routeId);
+        const routeName = meta
+            ? (meta.type === 2 ? meta.longName : meta.shortName)
+            : routeId;
+        const labels = getDirectionDestinations(routeId);
+        const terminus = isTerminusStop(stopId, routeId);
+
+        return {
+            routeId,
+            routeName,
+            dir0Label: labels[0],
+            dir1Label: labels[1],
+            isTerminus: terminus,
+        };
+    });
 
     return {
-        isCheckpoint: pairs.some(p => p.checkpointStopId === stopId),
-        isDestination: pairs.some(p => p.myStopId === stopId),
         pairCount: pairs.length,
-        pendingCheckpoint: pendingCheckpointStopId,
-        pendingCheckpointName: pendingName,
         maxPairs: MAX_PAIRS,
+        existingAlerts,
+        routeDirections,
     };
 }
 
 /**
  * Highlight a configured stop by increasing marker size and opacity.
- * Called after successful notification pair creation to visually distinguish
- * stops that are part of configured pairs.
  *
  * @param {string} stopId — stop ID to highlight
  */
@@ -110,9 +125,9 @@ function highlightConfiguredStop(stopId) {
     const marker = stopMarkers.get(stopId);
     if (marker) {
         marker.setStyle({
-            radius: 5,           // Larger than default 3
-            fillOpacity: 1.0,    // Full opacity vs default 0.6
-            weight: 2,           // Thicker border
+            radius: 8,
+            fillOpacity: 1.0,
+            weight: 2,
         });
     }
 }
@@ -125,23 +140,21 @@ function restoreConfiguredHighlights() {
     const pairs = getNotificationPairs();
     for (const pair of pairs) {
         highlightConfiguredStop(pair.checkpointStopId);
-        highlightConfiguredStop(pair.myStopId);
     }
 }
 
 /**
  * Reset all stop markers to default style and re-apply highlights for current pairs.
  * Called when a notification pair is deleted to remove stale visual highlights.
- * This is simpler than tracking individual stop→pair associations.
  *
- * Resets: radius → 3, fillOpacity → 0.6, weight → 1
- * Then re-applies highlights (radius → 5, fillOpacity → 1.0, weight → 2) for stops in current pairs.
+ * Resets: radius → 6, fillOpacity → 0.6, weight → 1
+ * Then re-applies highlights (radius → 8, fillOpacity → 1.0, weight → 2) for stops in current pairs.
  */
 export function refreshAllHighlights() {
     // First reset all markers to default style
     stopMarkers.forEach((marker) => {
         marker.setStyle({
-            radius: 3,
+            radius: 6,
             fillOpacity: 0.6,
             weight: 1,
         });
@@ -151,7 +164,6 @@ export function refreshAllHighlights() {
     const pairs = getNotificationPairs();
     for (const pair of pairs) {
         highlightConfiguredStop(pair.checkpointStopId);
-        highlightConfiguredStop(pair.myStopId);
     }
 }
 
@@ -165,7 +177,7 @@ export function initStopMarkers(map) {
     mapInstance = map;
     stopLayerGroup = L.layerGroup().addTo(map);
 
-    // Set up popup event delegation for config button clicks
+    // Set up popup event delegation for alert button clicks and hover persistence
     mapInstance.on('popupopen', (e) => {
         const container = e.popup.getElement();
         if (!container) return;
@@ -173,51 +185,44 @@ export function initStopMarkers(map) {
         // Only handle stop popups (check for stop-popup class)
         if (!container.querySelector('.stop-popup')) return;
 
-        const checkpointBtn = container.querySelector('[data-action="set-checkpoint"]');
-        const destBtn = container.querySelector('[data-action="set-destination"]');
-
-        if (checkpointBtn) {
-            checkpointBtn.addEventListener('click', () => {
-                const stopId = checkpointBtn.dataset.stopId;
-                const routeIds = checkpointBtn.dataset.routeIds;
-                pendingCheckpointStopId = stopId;
-                pendingRouteId = routeIds ? routeIds.split(',')[0] : null;
-                // Close popup so user can click destination stop
+        // Keep popup open when mouse enters popup area (cancel marker's mouseout timer)
+        const sourceMarker = e.popup._source;
+        if (sourceMarker) {
+            container.addEventListener('mouseenter', () => {
+                if (sourceMarker._hoverCloseTimer) {
+                    clearTimeout(sourceMarker._hoverCloseTimer);
+                    sourceMarker._hoverCloseTimer = null;
+                }
+            });
+            container.addEventListener('mouseleave', () => {
                 mapInstance.closePopup();
             });
         }
 
-        if (destBtn) {
-            destBtn.addEventListener('click', async () => {
-                const destStopId = destBtn.dataset.stopId;
-                if (!pendingCheckpointStopId) {
-                    // No checkpoint selected yet — set this as destination directly
-                    // (user needs to click checkpoint first)
-                    return;
-                }
-                const result = await addNotificationPair(
-                    pendingCheckpointStopId, destStopId, pendingRouteId
-                );
+        // One-click alert: handle all set-alert buttons
+        const alertBtns = container.querySelectorAll('[data-action="set-alert"]');
+        alertBtns.forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const stopId = btn.dataset.stopId;
+                const routeId = btn.dataset.routeId;
+                const directionId = parseInt(btn.dataset.directionId, 10);
+
+                const result = await addNotificationPair(stopId, routeId, directionId);
                 if (result.error) {
-                    // Show error in popup (replace actions content)
+                    // Show error in popup
                     const actionsDiv = container.querySelector('.stop-popup__actions');
                     if (actionsDiv) {
-                        actionsDiv.innerHTML = `<div class="stop-popup__configured" style="color: #ff6b6b">${escapeHtml(result.error)}</div>`;
+                        actionsDiv.innerHTML = `<div class="stop-popup__alert-configured" style="color: #ff6b6b">${escapeHtml(result.error)}</div>`;
                     }
                 } else {
-                    // Success — highlight configured stops, clear pending state
-                    highlightConfiguredStop(pendingCheckpointStopId);
-                    highlightConfiguredStop(destStopId);
-                    pendingCheckpointStopId = null;
-                    pendingRouteId = null;
-                    // AC6.5: Update status indicator to show new pair count
+                    // Success — highlight stop, update UI
+                    highlightConfiguredStop(stopId);
                     updateNotificationStatus();
-                    // AC10: Update panel to show new pair in list
                     renderPanel();
                     mapInstance.closePopup();
                 }
             });
-        }
+        });
     });
 
     // Restore highlights for any already-configured stops from localStorage
@@ -227,8 +232,6 @@ export function initStopMarkers(map) {
 /**
  * Update stop marker visibility based on currently visible routes.
  * Creates markers for newly visible stops, removes markers for hidden stops.
- * Follows the deduplication pattern from AC1.5: same physical stop on multiple routes
- * gets one marker with the color of the first visible route claiming it.
  *
  * @param {Set<string>|Array<string>} routeIds — route IDs that should be visible
  */
@@ -237,7 +240,10 @@ export function updateVisibleStops(routeIds) {
     const routeStopsMap = getRouteStopsMap();
     const routeColorMap = getRouteColorMap();
 
-    const { visibleStopIds, stopColorMap } = computeVisibleStops(routeIds, routeStopsMap, routeColorMap);
+    const { visibleStopIds, stopColorMap, stopRouteMap } = computeVisibleStops(routeIds, routeStopsMap, routeColorMap);
+
+    // Detect hover support (desktop vs touch)
+    const hasHover = window.matchMedia('(hover: hover)').matches;
 
     // Collect stops to remove (avoid modifying Map during iteration)
     const stopsToRemove = [];
@@ -264,9 +270,15 @@ export function updateVisibleStops(routeIds) {
             // Skip stops without coordinates
             if (!stop || !stop.latitude || !stop.longitude) return;
 
+            // Snap stop position to nearest point on its route's polyline
+            const ownerRouteId = stopRouteMap.get(stopId);
+            const snapped = ownerRouteId
+                ? snapToRoutePolyline(stop.latitude, stop.longitude, ownerRouteId)
+                : { lat: stop.latitude, lng: stop.longitude };
+
             const color = stopColorMap.get(stopId) || '#888888';
-            const marker = L.circleMarker([stop.latitude, stop.longitude], {
-                radius: 3,
+            const marker = L.circleMarker([snapped.lat, snapped.lng], {
+                radius: 6,
                 color: color,
                 fillColor: color,
                 fillOpacity: 0.6,
@@ -276,7 +288,7 @@ export function updateVisibleStops(routeIds) {
             });
 
             // Build popup content dynamically on each popup open
-            // This ensures config state (pending checkpoint, pair count, etc.) is always fresh
+            // This ensures config state is always fresh
             const popupFunction = () => {
                 // Compute stopRoutesMap lazily on first use
                 if (!stopRoutesMap) {
@@ -295,9 +307,27 @@ export function updateVisibleStops(routeIds) {
 
             marker.bindPopup(popupFunction, {
                 className: 'stop-popup-container',
-                closeButton: true,    // Stop popups use click, need close button
-                autoPan: true,        // Pan to show full popup (unlike vehicle popups which use false)
+                closeButton: true,
+                autoPan: false,
             });
+
+            // Desktop: hover to show popup with delayed close for button interaction
+            if (hasHover) {
+                marker.on('mouseover', function () {
+                    if (this._hoverCloseTimer) {
+                        clearTimeout(this._hoverCloseTimer);
+                        this._hoverCloseTimer = null;
+                    }
+                    this.openPopup();
+                });
+                marker.on('mouseout', function () {
+                    const self = this;
+                    self._hoverCloseTimer = setTimeout(() => {
+                        self.closePopup();
+                        self._hoverCloseTimer = null;
+                    }, 300);
+                });
+            }
 
             stopMarkers.set(stopId, marker);
             stopLayerGroup.addLayer(marker);

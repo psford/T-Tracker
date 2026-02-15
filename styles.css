@@ -521,34 +521,54 @@ html, body {
     border-top: 1px solid rgba(15, 52, 96, 0.5);
 }
 
-/* Stop popup config buttons */
-.stop-popup__btn {
-    display: block;
-    width: 100%;
-    padding: 4px 8px;
+/* Stop popup direction alert buttons */
+.stop-popup__route-alerts {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     margin-bottom: 4px;
+}
+
+.stop-popup__route-label {
+    font-size: 11px;
+    color: #8888aa;
+    white-space: nowrap;
+    min-width: 40px;
+}
+
+.stop-popup__btn {
+    flex: 1;
+    padding: 4px 8px;
     background: rgba(15, 52, 96, 0.6);
     border: 1px solid #0f3460;
     border-radius: 4px;
     color: #e0e0e0;
-    font-size: 12px;
+    font-size: 11px;
     cursor: pointer;
     transition: background 0.15s;
+    white-space: nowrap;
 }
 
 .stop-popup__btn:hover {
     background: rgba(15, 52, 96, 0.9);
 }
 
-.stop-popup__btn--active {
-    background: rgba(0, 165, 81, 0.3);
-    border-color: #00A551;
+.stop-popup__btn--terminus {
+    flex: none;
+    width: 100%;
+    background: rgba(0, 165, 81, 0.2);
+    border-color: rgba(0, 165, 81, 0.5);
 }
 
-.stop-popup__pending {
-    font-size: 12px;
-    color: #c0c0d0;
-    margin-bottom: 4px;
+.stop-popup__btn--terminus:hover {
+    background: rgba(0, 165, 81, 0.4);
+}
+
+.stop-popup__alert-configured {
+    font-size: 11px;
+    color: #00A551;
+    flex: 1;
+    text-align: center;
 }
 
 .stop-popup__count {
@@ -557,15 +577,10 @@ html, body {
     margin-top: 4px;
 }
 
-.stop-popup__configured {
-    font-size: 12px;
-    color: #00A551;
-}
-
 /* Notification panel toggle button */
 .notification-panel-toggle {
     position: absolute;
-    top: 10px;
+    top: 80px;
     left: 10px;
     z-index: 1000;
     background: rgba(22, 33, 62, 0.95);
@@ -584,7 +599,7 @@ html, body {
 /* Notification configuration panel */
 .notification-panel {
     position: absolute;
-    top: 50px;
+    top: 118px;
     left: 10px;
     z-index: 1000;
     background: rgba(22, 33, 62, 0.95);

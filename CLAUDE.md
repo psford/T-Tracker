@@ -1,6 +1,6 @@
 # T-Tracker -- MBTA Real-Time Transit Tracker
 
-Last verified: 2026-02-13
+Last verified: 2026-02-14
 
 ## Data Flow Architecture
 
@@ -96,7 +96,7 @@ All data flows through dedicated modules with clear responsibilities:
 ## Configuration
 - `config.js` holds API key, map settings, animation timing, route defaults
 - Gitignored (contains API key); copy `config.example.js` to create
-- Default visibility derived from service type (Subway on, Bus/CR off on first visit)
+- Default visibility derived from service type (Subway on, Bus/CR/Ferry off on first visit)
 - `routes.defaultVisible` in config is vestigial; ui.js derives defaults from metadata
 - Animation thresholds (snap >100m, interpolation 800ms, fade 200ms)
 

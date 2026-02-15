@@ -62,15 +62,16 @@ Polyline thickness adapts to how many routes are visible:
 
 ### F4. Route Selection Panel
 
-A control panel lets users choose which routes to display. The panel organizes routes into three collapsible groups:
+A control panel lets users choose which routes to display. The panel organizes routes into four collapsible groups:
 
 1. **Subway** -- Heavy rail (Red, Orange, Blue in fixed order) with a Green Line subgroup (branches B, C, D, E sorted alphabetically)
 2. **Bus** -- Sorted numerically (1, 2, 3...) then alphanumerically (CT1, SL1...)
 3. **Commuter Rail** -- Sorted alphabetically by line name
+4. **Ferry** -- Sorted alphabetically by line name
 
 Each group has a master toggle. Unchecking a group hides all its routes and collapses the list. Individual routes have their own checkboxes with color swatches.
 
-**First visit defaults:** Subway on, Bus off, Commuter Rail off.
+**First visit defaults:** Subway on, Bus off, Commuter Rail off, Ferry off.
 
 **Returning visits:** The app restores the previous selection from localStorage. Removed routes are silently dropped. New routes added by MBTA are automatically visible only if (1) their service type toggle is on AND (2) you already have at least one route from that service type visible. This prevents all bus routes from suddenly appearing when you check the Bus toggle for the first time.
 

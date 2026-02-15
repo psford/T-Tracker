@@ -2,7 +2,7 @@
 import { config } from '../config.js';
 import { decodePolyline } from './polyline.js';
 import { formatVehiclePopup } from './vehicle-popup.js';
-import { darkenHexColor, bearingToTransform, haversineDistance } from './vehicle-math.js';
+import { darkenHexColor, bearingToTransform, haversineDistance, nearestPointOnSegment } from './vehicle-math.js';
 import { VEHICLE_ICONS, DEFAULT_ICON } from './vehicle-icons.js';
 
 let map = null;
@@ -310,7 +310,7 @@ export function syncVehicleMarkers(vehiclesMap) {
 export async function loadRoutes() {
     try {
         const apiUrl = new URL(`${config.api.baseUrl}/routes`);
-        apiUrl.searchParams.append('filter[type]', '0,1,2,3'); // Light Rail (0), Heavy Rail (1), Commuter Rail (2), Bus (3)
+        apiUrl.searchParams.append('filter[type]', '0,1,2,3,4'); // Light Rail (0), Heavy Rail (1), Commuter Rail (2), Bus (3), Ferry (4)
         apiUrl.searchParams.append('include', 'route_patterns.representative_trip.shape');
         apiUrl.searchParams.append('api_key', config.api.key);
 
@@ -349,6 +349,10 @@ export async function loadRoutes() {
                 color = darkenHexColor(color, 0.15);
             }
 
+            // Parse direction metadata from MBTA route attributes
+            const directionNames = route.attributes.direction_names || ['Outbound', 'Inbound'];
+            const directionDestinations = route.attributes.direction_destinations || [];
+
             // Store route metadata
             routeMetadata.push({
                 id: routeId,
@@ -356,6 +360,8 @@ export async function loadRoutes() {
                 shortName,
                 longName,
                 type,
+                directionNames,
+                directionDestinations,
             });
 
             // Store color in lookup map for vehicle icon generation
@@ -603,7 +609,7 @@ export function setVisibleRoutes(routeIds) {
 
 /**
  * Fetches stops from MBTA API and caches them for session.
- * Filters by route_type 0 (Light Rail), 1 (Heavy Rail), 2 (Commuter Rail), and 3 (Bus).
+ * Filters by route_type 0 (Light Rail), 1 (Heavy Rail), 2 (Commuter Rail), 3 (Bus), and 4 (Ferry).
  * Parses JSON:API response and stores stop data keyed by stop ID.
  *
  * Graceful degradation: if fetch fails, app continues without stop data.
@@ -611,7 +617,7 @@ export function setVisibleRoutes(routeIds) {
 export async function loadStops() {
     try {
         const apiUrl = new URL(`${config.api.baseUrl}/stops`);
-        apiUrl.searchParams.append('filter[route_type]', '0,1,2,3'); // Light Rail (0), Heavy Rail (1), Commuter Rail (2), Bus (3)
+        apiUrl.searchParams.append('filter[route_type]', '0,1,2,3,4'); // Light Rail (0), Heavy Rail (1), Commuter Rail (2), Bus (3), Ferry (4)
         apiUrl.searchParams.append('api_key', config.api.key);
 
         const response = await fetch(apiUrl.toString());
@@ -623,12 +629,14 @@ export async function loadStops() {
         const stops = jsonApi.data || [];
 
         // Parse each stop from JSON:API and store in Map
+        // Include parentStopId for child→parent resolution (notification stop matching)
         stops.forEach((stop) => {
             stopsData.set(stop.id, {
                 id: stop.id,
                 name: stop.attributes?.name || '',
                 latitude: stop.attributes?.latitude || 0,
                 longitude: stop.attributes?.longitude || 0,
+                parentStopId: stop.relationships?.parent_station?.data?.id || null,
             });
         });
 
@@ -708,6 +716,7 @@ export async function buildRouteStopsMapping() {
                         name: stop.attributes?.name || '',
                         latitude: stop.attributes?.latitude || 0,
                         longitude: stop.attributes?.longitude || 0,
+                        parentStopId: stop.relationships?.parent_station?.data?.id || null,
                     });
                 }
             });
@@ -753,4 +762,79 @@ export async function buildRouteStopsMapping() {
  */
 export function getRouteStopsMap() {
     return routeStopsMap;
+}
+
+/**
+ * Snap a lat/lng point to the nearest position on a route's polyline.
+ * Iterates all polyline segments for the route and returns the closest point.
+ * If the route has no polylines, returns the original coordinates unchanged.
+ *
+ * @param {number} lat — stop latitude
+ * @param {number} lng — stop longitude
+ * @param {string} routeId — route ID to snap to
+ * @returns {{ lat: number, lng: number }} — snapped position
+ */
+export function snapToRoutePolyline(lat, lng, routeId) {
+    const polylines = routePolylines.get(routeId);
+    if (!polylines || polylines.length === 0) return { lat, lng };
+
+    let bestDistSq = Infinity;
+    let bestPoint = { lat, lng };
+
+    for (const polyline of polylines) {
+        const coords = polyline.getLatLngs();
+        for (let i = 0; i < coords.length - 1; i++) {
+            const result = nearestPointOnSegment(
+                lat, lng,
+                coords[i].lat, coords[i].lng,
+                coords[i + 1].lat, coords[i + 1].lng
+            );
+            if (result.distSq < bestDistSq) {
+                bestDistSq = result.distSq;
+                bestPoint = { lat: result.lat, lng: result.lng };
+            }
+        }
+    }
+
+    return bestPoint;
+}
+
+/**
+ * Check if a stop is a terminus for a given route.
+ * Matches stop name against route's direction_destinations using case-insensitive
+ * substring matching (handles "Heath Street" vs "Heath St" variations).
+ *
+ * @param {string} stopId — stop ID to check
+ * @param {string} routeId — route ID
+ * @returns {boolean} — true if stop is a terminus for this route
+ */
+export function isTerminusStop(stopId, routeId) {
+    const stop = stopsData.get(stopId);
+    if (!stop?.name) return false;
+
+    const meta = routeMetadata.find(r => r.id === routeId);
+    if (!meta?.directionDestinations?.length) return false;
+
+    const stopNameLower = stop.name.toLowerCase();
+    return meta.directionDestinations.some(dest => {
+        const destLower = dest.toLowerCase();
+        return stopNameLower.includes(destLower) || destLower.includes(stopNameLower);
+    });
+}
+
+/**
+ * Get direction destination labels for a route (e.g., ["Ashmont/Braintree", "Alewife"]).
+ * Index 0 = direction_id 0, Index 1 = direction_id 1.
+ *
+ * @param {string} routeId — route ID
+ * @returns {Array<string>} — [dir0Label, dir1Label] or fallback to direction names
+ */
+export function getDirectionDestinations(routeId) {
+    const meta = routeMetadata.find(r => r.id === routeId);
+    if (!meta) return ['Direction 0', 'Direction 1'];
+    // Prefer destination names (e.g., "Alewife") over generic names (e.g., "Inbound")
+    if (meta.directionDestinations?.length >= 2) {
+        return [meta.directionDestinations[0], meta.directionDestinations[1]];
+    }
+    return meta.directionNames || ['Outbound', 'Inbound'];
 }

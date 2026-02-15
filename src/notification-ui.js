@@ -1,7 +1,7 @@
 // src/notification-ui.js — Notification status UI management
 import { getNotificationPairs, getPermissionState, requestPermission, isPaused, togglePause, removeNotificationPair } from './notifications.js';
 import { escapeHtml } from './stop-popup.js';
-import { getStopData, getRouteMetadata } from './map.js';
+import { getStopData, getRouteMetadata, getDirectionDestinations, isTerminusStop } from './map.js';
 import { refreshAllHighlights } from './stop-markers.js';
 
 let statusEl = null;
@@ -10,30 +10,34 @@ let toggleBtn = null;
 
 /**
  * Pure function to format a notification pair for display.
- * Resolves stop and route names from raw pair data.
+ * Resolves stop and route names, and direction label.
  * Exported for testing purposes.
  *
- * @param {Object} pair — {id, checkpointStopId, myStopId, routeId}
+ * @param {Object} pair — {id, checkpointStopId, routeId, directionId}
  * @param {Map} stopsData — Map of stop ID → {id, name}
  * @param {Array} routeMetadata — Array of {id, shortName, longName, type}
- * @returns {Object} — {checkpointName, destName, routeName}
+ * @returns {Object} — {checkpointName, directionLabel, routeName}
  */
 export function formatPairForDisplay(pair, stopsData, routeMetadata) {
     const checkpointName = stopsData.get(pair.checkpointStopId)?.name || pair.checkpointStopId;
-    const destName = stopsData.get(pair.myStopId)?.name || pair.myStopId;
     const routeMeta = routeMetadata.find(r => r.id === pair.routeId);
     const routeName = routeMeta
         ? (routeMeta.type === 2 ? routeMeta.longName : routeMeta.shortName)
         : pair.routeId;
 
-    return { checkpointName, destName, routeName };
+    // Get direction label
+    const labels = getDirectionDestinations(pair.routeId);
+    const isTerminus = isTerminusStop(pair.checkpointStopId, pair.routeId);
+    const directionLabel = isTerminus
+        ? 'any direction'
+        : (labels[pair.directionId] || `Direction ${pair.directionId}`);
+
+    return { checkpointName, directionLabel, routeName };
 }
 
 /**
  * Initialize notification UI.
- * AC6.5: Sets up visibilitychange listener to detect permission revocation when tab regains focus.
- * AC6.1: Shows status indicator with pair count.
- * AC6.3: Shows blocked status with enable button.
+ * Sets up visibilitychange listener to detect permission revocation when tab regains focus.
  *
  * @param {HTMLElement} statusElement — #notification-status element
  */
@@ -41,7 +45,7 @@ export function initNotificationUI(statusElement) {
     statusEl = statusElement;
     updateStatus();
 
-    // AC6.5 + AC9.6: Detect permission changes when tab regains focus
+    // Detect permission changes when tab regains focus
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
             updateStatus();
@@ -51,7 +55,7 @@ export function initNotificationUI(statusElement) {
 
 /**
  * Initialize notification panel.
- * AC10.4: Toggle panel visibility on button click
+ * Toggle panel visibility on button click.
  *
  * @param {HTMLElement} panelElement — #notification-panel
  * @param {HTMLElement} toggleButton — #notification-panel-toggle
@@ -60,7 +64,6 @@ export function initNotificationPanel(panelElement, toggleButton) {
     panelEl = panelElement;
     toggleBtn = toggleButton;
 
-    // AC10.4: Toggle panel visibility on button click
     if (toggleBtn) {
         toggleBtn.addEventListener('click', () => {
             panelEl.classList.toggle('notification-panel--hidden');
@@ -80,13 +83,6 @@ export function initNotificationPanel(panelElement, toggleButton) {
 
 /**
  * Update the status indicator based on current notification and permission state.
- * AC6.1: Active state shows "Active: N alerts — Pause" (green)
- * AC6.3: Blocked state shows "Notifications blocked — Enable" button (red)
- * AC9.3: Warning banner shown when permission denied
- * AC9.4: Enable button triggers permission request
- * AC9.5: Status updates after permission change
- * AC5.4: Paused state shows "Paused — Resume" button (amber)
- * AC6.2: Status shows "Paused" when manually paused
  *
  * Call this after any config change or permission change.
  */
@@ -98,30 +94,24 @@ export function updateStatus() {
     const textEl = statusEl.querySelector('.notification-status__text');
 
     if (pairs.length === 0) {
-        // No config — hide status
         statusEl.className = 'notification-status notification-status--hidden';
         return;
     }
 
-    // Remove all modifier classes, keep base class
     statusEl.className = 'notification-status';
 
     if (permission === 'denied' || permission === 'unavailable') {
-        // AC6.3 + AC9.3: Blocked state with enable button
         statusEl.classList.add('notification-status--blocked');
         textEl.innerHTML = `Notifications blocked &mdash; <button class="notification-status__enable">Enable</button>`;
         bindEnableButton(textEl);
     } else if (isPaused()) {
-        // AC5.4 + AC6.2: Paused state
         statusEl.classList.add('notification-status--paused');
         textEl.innerHTML = `Paused &mdash; <button class="notification-status__toggle">Resume</button>`;
         bindToggleButton(textEl);
     } else if (permission === 'default') {
-        // Permission not yet requested
         statusEl.classList.add('notification-status--default');
         textEl.textContent = `${pairs.length} alert${pairs.length !== 1 ? 's' : ''} configured`;
     } else {
-        // AC6.1: Active state — permission granted, with pause button
         statusEl.classList.add('notification-status--active');
         textEl.innerHTML = `Active: ${pairs.length} alert${pairs.length !== 1 ? 's' : ''} &mdash; <button class="notification-status__toggle">Pause</button>`;
         bindToggleButton(textEl);
@@ -150,11 +140,7 @@ function bindEnableButton(container) {
 
 /**
  * Render the panel list with current notification pairs.
- * AC10.1: Lists all pairs with readable checkpoint→destination names and route names
- * AC10.2: Delete buttons call removeNotificationPair()
- * AC10.3: Counter shows "X/5 pairs configured"
- * AC10.4: Toggle button shown/hidden based on pair count
- * AC10.5: Empty state shows "No notifications configured"
+ * Lists all pairs with checkpoint name, direction, and route.
  *
  * Call after any config change.
  */
@@ -169,12 +155,12 @@ export function renderPanel() {
     const emptyEl = panelEl.querySelector('.notification-panel__empty');
     const countEl = panelEl.querySelector('.notification-panel__count');
 
-    // AC10.4: Show/hide toggle button based on pair count
+    // Show/hide toggle button based on pair count
     if (toggleBtn) {
         toggleBtn.style.display = pairs.length > 0 ? 'block' : 'none';
     }
 
-    // AC10.5: Empty state
+    // Empty state
     if (pairs.length === 0) {
         listEl.innerHTML = '';
         emptyEl.style.display = 'block';
@@ -184,17 +170,17 @@ export function renderPanel() {
 
     emptyEl.style.display = 'none';
 
-    // AC10.3: Count display
-    countEl.textContent = `${pairs.length}/5 pairs configured`;
+    // Count display
+    countEl.textContent = `${pairs.length}/5 alerts configured`;
 
-    // AC10.1: Render each pair with readable names
+    // Render each pair with readable names
     listEl.innerHTML = pairs.map(pair => {
-        const { checkpointName, destName, routeName } = formatPairForDisplay(pair, stopsData, metadata);
+        const { checkpointName, directionLabel, routeName } = formatPairForDisplay(pair, stopsData, metadata);
 
         return `
             <div class="notification-pair" data-pair-id="${escapeHtml(pair.id)}">
                 <div>
-                    <div class="notification-pair__info">${escapeHtml(checkpointName)} &rarr; ${escapeHtml(destName)}</div>
+                    <div class="notification-pair__info">${escapeHtml(checkpointName)} &rarr; ${escapeHtml(directionLabel)}</div>
                     <div class="notification-pair__route">${escapeHtml(routeName)}</div>
                 </div>
                 <button class="notification-pair__delete" data-pair-id="${escapeHtml(pair.id)}">Delete</button>
@@ -202,14 +188,14 @@ export function renderPanel() {
         `;
     }).join('');
 
-    // AC10.2: Bind delete buttons
+    // Bind delete buttons
     listEl.querySelectorAll('.notification-pair__delete').forEach(btn => {
         btn.addEventListener('click', () => {
             const pairId = btn.dataset.pairId;
             removeNotificationPair(pairId);
-            refreshAllHighlights();   // Reset and re-apply stop marker highlights
-            updateStatus();   // Update status indicator (separate from panel)
-            renderPanel();    // Re-render panel (separate from status)
+            refreshAllHighlights();
+            updateStatus();
+            renderPanel();
         });
     });
 }
