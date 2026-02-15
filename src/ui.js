@@ -113,8 +113,8 @@ function isMobileViewport() {
 
 /**
  * Initializes the route selection UI in the #controls container.
- * Builds a control panel with three-tier collapsible checkboxes (service groups, routes, subgroups).
- * Restores selection from localStorage (or uses service type defaults if no saved state: Subway on, Bus/Commuter Rail off).
+ * Builds a control panel with four-tier collapsible checkboxes (service groups, routes, subgroups).
+ * Restores selection from localStorage (or uses service type defaults if no saved state: Subway on, Bus/Commuter Rail/Ferry off).
  * Calls onVisibilityChange with the initial visible set and on every checkbox change.
  *
  * On mobile: creates a drawer that slides in from the right with a toggle button and backdrop.

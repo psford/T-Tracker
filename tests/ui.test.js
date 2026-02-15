@@ -6,7 +6,7 @@ import { groupAndSortRoutes } from '../src/route-sorter.js';
  * Test groupAndSortRoutes function
  */
 function testGroupAndSortRoutes() {
-    // Test 1: Full network with all three groups (Subway with subgroups, Bus, Commuter Rail)
+    // Test 1: Full network with all four groups (Subway with subgroups, Bus, Commuter Rail, Ferry)
     // AC2.6, AC2.7, AC2.8, AC2.9
     const fullMetadata = [
         // Green Line (type 0)
