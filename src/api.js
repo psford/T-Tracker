@@ -165,7 +165,7 @@ function buildUrl() {
     const baseUrl = `${config.api.baseUrl}/vehicles`;
     const params = new URLSearchParams({
         api_key: config.api.key,
-        'filter[route_type]': '0,1,2,3', // Light rail, heavy rail, commuter rail, bus
+        'filter[route_type]': '0,1,2,3,4', // Light rail, heavy rail, commuter rail, bus, ferry
     });
     return `${baseUrl}?${params.toString()}`;
 }

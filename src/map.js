@@ -310,7 +310,7 @@ export function syncVehicleMarkers(vehiclesMap) {
 export async function loadRoutes() {
     try {
         const apiUrl = new URL(`${config.api.baseUrl}/routes`);
-        apiUrl.searchParams.append('filter[type]', '0,1,2,3'); // Light Rail (0), Heavy Rail (1), Commuter Rail (2), Bus (3)
+        apiUrl.searchParams.append('filter[type]', '0,1,2,3,4'); // Light Rail (0), Heavy Rail (1), Commuter Rail (2), Bus (3), Ferry (4)
         apiUrl.searchParams.append('include', 'route_patterns.representative_trip.shape');
         apiUrl.searchParams.append('api_key', config.api.key);
 
@@ -609,7 +609,7 @@ export function setVisibleRoutes(routeIds) {
 
 /**
  * Fetches stops from MBTA API and caches them for session.
- * Filters by route_type 0 (Light Rail), 1 (Heavy Rail), 2 (Commuter Rail), and 3 (Bus).
+ * Filters by route_type 0 (Light Rail), 1 (Heavy Rail), 2 (Commuter Rail), 3 (Bus), and 4 (Ferry).
  * Parses JSON:API response and stores stop data keyed by stop ID.
  *
  * Graceful degradation: if fetch fails, app continues without stop data.
@@ -617,7 +617,7 @@ export function setVisibleRoutes(routeIds) {
 export async function loadStops() {
     try {
         const apiUrl = new URL(`${config.api.baseUrl}/stops`);
-        apiUrl.searchParams.append('filter[route_type]', '0,1,2,3'); // Light Rail (0), Heavy Rail (1), Commuter Rail (2), Bus (3)
+        apiUrl.searchParams.append('filter[route_type]', '0,1,2,3,4'); // Light Rail (0), Heavy Rail (1), Commuter Rail (2), Bus (3), Ferry (4)
         apiUrl.searchParams.append('api_key', config.api.key);
 
         const response = await fetch(apiUrl.toString());
