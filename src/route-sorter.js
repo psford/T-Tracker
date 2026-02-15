@@ -2,12 +2,13 @@
 // Extracted from ui.js for testability (no browser dependencies)
 
 /**
- * Organizes route metadata into three top-level groups with nested subgroups:
+ * Organizes route metadata into four top-level groups with nested subgroups:
  * 1. Subway (type 0 + 1):
  *    - Heavy rail (Red, Orange, Blue) in fixed order in main routes
  *    - Green Line (type 0) as nested subgroup with branches (B, C, D, E) sorted alphabetically
  * 2. Bus (type 3): sorted numerically then alphanumerically
  * 3. Commuter Rail (type 2): sorted alphabetically by longName
+ * 4. Ferry (type 4): sorted alphabetically by longName
  *
  * @param {Array<Object>} metadata — array of {id, color, shortName, longName, type}
  * @returns {Array<{group: string, routes: Array<Object>, subGroups?: Array<{group, routes}>}>}
@@ -17,6 +18,7 @@ export function groupAndSortRoutes(metadata) {
     const heavyRailRoutes = [];
     const busRoutes = [];
     const commuterRailRoutes = [];
+    const ferryRoutes = [];
 
     // Classify routes by type
     metadata.forEach((route) => {
@@ -32,6 +34,9 @@ export function groupAndSortRoutes(metadata) {
         } else if (route.type === 3) {
             // Bus
             busRoutes.push(route);
+        } else if (route.type === 4) {
+            // Ferry
+            ferryRoutes.push(route);
         }
     });
 
@@ -79,7 +84,12 @@ export function groupAndSortRoutes(metadata) {
         return (a.longName || '').localeCompare(b.longName || '');
     });
 
-    // Build result with 3-tier structure
+    // Sort Ferry alphabetically by longName
+    ferryRoutes.sort((a, b) => {
+        return (a.longName || '').localeCompare(b.longName || '');
+    });
+
+    // Build result with 4-tier structure
     const groups = [];
 
     // Subway group: heavy rail in routes, Green Line as subgroup
@@ -115,6 +125,14 @@ export function groupAndSortRoutes(metadata) {
         groups.push({
             group: 'Commuter Rail',
             routes: commuterRailRoutes,
+        });
+    }
+
+    // Ferry group
+    if (ferryRoutes.length > 0) {
+        groups.push({
+            group: 'Ferry',
+            routes: ferryRoutes,
         });
     }
 
