@@ -81,20 +81,23 @@ const groupToToggleKey = {
     'Subway': 'subway',
     'Bus': 'bus',
     'Commuter Rail': 'commuterRail',
+    'Ferry': 'ferry',
 };
 
 /**
  * Maps a route to its service type toggle key.
  * Routes with type 0 (light rail) or 1 (heavy rail) are subway.
  * Routes with type 2 are commuter rail.
+ * Routes with type 4 are ferry.
  * All other types default to bus.
  *
  * @param {Object} route — route object with type property
- * @returns {string} service type key ('subway', 'commuterRail', or 'bus')
+ * @returns {string} service type key ('subway', 'commuterRail', 'ferry', or 'bus')
  */
 function getServiceTypeForRoute(route) {
     if (route.type === 0 || route.type === 1) return 'subway';
     if (route.type === 2) return 'commuterRail';
+    if (route.type === 4) return 'ferry';
     return 'bus';
 }
 
@@ -127,10 +130,10 @@ export function initUI(routeMetadata, onVisibilityChange) {
         return;
     }
 
-    // Read service toggles (first visit defaults to Subway on, Bus and Commuter Rail off)
+    // Read service toggles (first visit defaults to Subway on, Bus, Commuter Rail, and Ferry off)
     let serviceToggles = readServiceToggles();
     if (serviceToggles === null) {
-        serviceToggles = { subway: true, bus: false, commuterRail: false };
+        serviceToggles = { subway: true, bus: false, commuterRail: false, ferry: false };
     }
 
     // Determine initial visible routes
