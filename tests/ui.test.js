@@ -26,12 +26,15 @@ function testGroupAndSortRoutes() {
         // Commuter Rail (type 2)
         { id: 'CR-Worcester', color: '#80276C', shortName: 'CR-Worcester', longName: 'Worcester/Framingham Line', type: 2 },
         { id: 'CR-Providence', color: '#80276C', shortName: 'CR-Providence', longName: 'Providence/Stoughton Line', type: 2 },
+        // Ferry (type 4)
+        { id: 'Boat-F1', color: '#008EAA', shortName: 'Boat-F1', longName: 'Hingham/Hull Ferry', type: 4 },
+        { id: 'Boat-F4', color: '#008EAA', shortName: 'Boat-F4', longName: 'Charlestown Ferry', type: 4 },
     ];
 
     const result = groupAndSortRoutes(fullMetadata);
 
-    // AC2.6: Should have 3 groups (Subway, Bus, Commuter Rail)
-    assert.strictEqual(result.length, 3, 'Should have 3 groups (Subway, Bus, Commuter Rail)');
+    // AC2.6: Should have 4 groups (Subway, Bus, Commuter Rail, Ferry)
+    assert.strictEqual(result.length, 4, 'Should have 4 groups (Subway, Bus, Commuter Rail, Ferry)');
 
     // AC2.6 & AC2.7: First group should be Subway with subGroups for Green Line
     assert.strictEqual(result[0].group, 'Subway', 'First group should be Subway');
@@ -66,6 +69,14 @@ function testGroupAndSortRoutes() {
 
     const crLongNames = result[2].routes.map((r) => r.longName);
     assert.deepStrictEqual(crLongNames, ['Providence/Stoughton Line', 'Worcester/Framingham Line'], 'Commuter Rail should be sorted alphabetically by longName');
+
+    // AC2.1, AC2.2, AC2.3: Fourth group should be Ferry, sorted alphabetically by longName
+    assert.strictEqual(result[3].group, 'Ferry', 'Fourth group should be Ferry');
+    assert.strictEqual(result[3].routes.length, 2, 'Ferry should have 2 routes');
+    assert.strictEqual(result[3].subGroups === undefined, true, 'Ferry group should not have subGroups');
+
+    const ferryLongNames = result[3].routes.map((r) => r.longName);
+    assert.deepStrictEqual(ferryLongNames, ['Charlestown Ferry', 'Hingham/Hull Ferry'], 'Ferry routes should be sorted alphabetically by longName');
 
     // Test 2: Only subway routes (Green Line + Heavy Rail)
     const subwayOnly = [
@@ -124,6 +135,23 @@ function testGroupAndSortRoutes() {
     assert.strictEqual(result6[0].group, 'Subway', 'Group should be Subway');
     assert.strictEqual(result6[0].routes.length, 3, 'Subway should have 3 routes');
     assert.strictEqual(result6[0].subGroups === undefined, true, 'Subway should not have subGroups when no Green Line');
+
+    // Test 7: Only ferry routes
+    const ferryOnly = [
+        { id: 'Boat-F4', color: '#008EAA', shortName: 'Boat-F4', longName: 'Charlestown Ferry', type: 4 },
+        { id: 'Boat-F1', color: '#008EAA', shortName: 'Boat-F1', longName: 'Hingham/Hull Ferry', type: 4 },
+        { id: 'Boat-EastBoston', color: '#008EAA', shortName: 'Boat-EastBoston', longName: 'East Boston Ferry', type: 4 },
+    ];
+    const result7 = groupAndSortRoutes(ferryOnly);
+    assert.strictEqual(result7.length, 1, 'Should have 1 group (Ferry only)');
+    assert.strictEqual(result7[0].group, 'Ferry', 'Group should be Ferry');
+    assert.strictEqual(result7[0].routes.length, 3, 'Ferry should have 3 routes');
+    assert.strictEqual(result7[0].subGroups === undefined, true, 'Ferry group should not have subGroups');
+    const ferryNames = result7[0].routes.map(r => r.longName);
+    assert.deepStrictEqual(ferryNames, ['Charlestown Ferry', 'East Boston Ferry', 'Hingham/Hull Ferry'], 'Ferry routes should be sorted alphabetically by longName');
+
+    // AC2.6 (edge case): Existing test data with no ferry routes returns 3 groups
+    // This test implicitly covers the edge case where no ferry routes exist, no Ferry group appears
 
     console.log('✓ groupAndSortRoutes tests passed');
 }
