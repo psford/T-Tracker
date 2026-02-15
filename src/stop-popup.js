@@ -31,10 +31,14 @@ function validateHexColor(color) {
 }
 
 /**
- * Format complete stop popup HTML
+ * Format complete stop popup HTML with per-route direction alert buttons.
  * @param {Object} stop - Stop object with {id, name, latitude, longitude}
  * @param {Array<Object>} routeInfos - Array of route metadata {id, shortName, longName, color, type}
- * @param {Object} configState - Configuration state with {isCheckpoint, isDestination, pairCount, pendingCheckpoint, maxPairs}
+ * @param {Object} configState - Configuration state
+ * @param {number} configState.pairCount - Number of existing alert pairs
+ * @param {number} configState.maxPairs - Maximum allowed pairs
+ * @param {Array<Object>} [configState.existingAlerts] - Alerts at this stop [{routeId, directionId}]
+ * @param {Array<Object>} [configState.routeDirections] - Per-route direction info [{routeId, routeName, dir0Label, dir1Label, isTerminus}]
  * @returns {string} HTML string for popup content
  */
 export function formatStopPopup(stop, routeInfos, configState = {}) {
@@ -45,8 +49,6 @@ export function formatStopPopup(stop, routeInfos, configState = {}) {
 
     // Build route list
     const routeHtmls = (routeInfos || []).map((routeInfo) => {
-        // For commuter rail (type 2), use longName for context
-        // For subway and bus, use shortName for conciseness
         let routeName;
         if (routeInfo?.type === 2) {
             routeName = escapeHtml(routeInfo?.longName || routeInfo?.shortName || routeInfo?.id);
@@ -72,66 +74,82 @@ export function formatStopPopup(stop, routeInfos, configState = {}) {
 }
 
 /**
- * Build actions div HTML based on configuration state
+ * Build actions div HTML with per-route direction buttons.
  * @private
  */
 function buildActionsHtml(stop, routeInfos, configState) {
     const {
-        isCheckpoint = false,
-        isDestination = false,
         pairCount = 0,
-        pendingCheckpoint = null,
-        pendingCheckpointName = null,
         maxPairs = 5,
+        existingAlerts = [],
+        routeDirections = [],
     } = configState;
 
-    // Build route IDs string for data-route-ids attribute
-    const routeIds = (routeInfos || []).map(r => r.id).join(',');
-
-    // If already configured as checkpoint
-    if (isCheckpoint) {
-        const routeName = routeInfos?.[0]?.shortName || routeInfos?.[0]?.id || 'route';
-        return `<div class="stop-popup__actions">
-            <span class="stop-popup__configured">Checkpoint for ${escapeHtml(routeName)} alert</span>
-        </div>`;
-    }
-
-    // If already configured as destination
-    if (isDestination) {
-        const routeName = routeInfos?.[0]?.shortName || routeInfos?.[0]?.id || 'route';
-        return `<div class="stop-popup__actions">
-            <span class="stop-popup__configured">Destination for ${escapeHtml(routeName)} alert</span>
-        </div>`;
-    }
-
-    // If pending checkpoint is selected (another stop is waiting for destination)
-    if (pendingCheckpoint !== null && pendingCheckpoint !== stop.id) {
-        const displayName = pendingCheckpointName || pendingCheckpoint;
-        return `<div class="stop-popup__actions">
-            <div class="stop-popup__pending">Checkpoint: ${escapeHtml(displayName)}</div>
-            <button class="stop-popup__btn stop-popup__btn--active" data-action="set-destination" data-stop-id="${escapeHtml(stop.id)}" data-route-ids="${escapeHtml(routeIds)}">
-                Set as My Stop
-            </button>
-            <div class="stop-popup__count">${pairCount}/${maxPairs} pairs configured</div>
-        </div>`;
-    }
-
-    // If max pairs reached and stop not configured
+    // If max pairs reached, show limit message
     if (pairCount >= maxPairs) {
         return `<div class="stop-popup__actions">
-            <div class="stop-popup__count">${maxPairs}/${maxPairs} pairs configured (maximum reached)</div>
+            <div class="stop-popup__count">${maxPairs}/${maxPairs} alerts configured (maximum reached)</div>
         </div>`;
     }
 
-    // Default state: show both buttons
+    // If no route direction data, show minimal state
+    if (routeDirections.length === 0) {
+        return `<div class="stop-popup__actions">
+            <div class="stop-popup__count">${pairCount}/${maxPairs} alerts configured</div>
+        </div>`;
+    }
+
+    // Build per-route direction buttons
+    const routeAlertHtmls = routeDirections.map(rd => {
+        const {
+            routeId,
+            routeName,
+            dir0Label = 'Direction 0',
+            dir1Label = 'Direction 1',
+            isTerminus = false,
+        } = rd;
+
+        const escapedRouteId = escapeHtml(routeId);
+        const escapedStopId = escapeHtml(stop.id);
+
+        // Check which directions already have alerts at this stop for this route
+        const hasDir0 = existingAlerts.some(a => a.routeId === routeId && a.directionId === 0);
+        const hasDir1 = existingAlerts.some(a => a.routeId === routeId && a.directionId === 1);
+
+        if (isTerminus) {
+            // Terminus: single button (uses directionId 0 as convention)
+            if (hasDir0 || hasDir1) {
+                return `<div class="stop-popup__route-alerts">
+                    <span class="stop-popup__alert-configured">Alert active (terminus)</span>
+                </div>`;
+            }
+            return `<div class="stop-popup__route-alerts">
+                <button class="stop-popup__btn stop-popup__btn--terminus" data-action="set-alert" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="0">Alert me here</button>
+            </div>`;
+        }
+
+        // Non-terminus: two direction buttons
+        const btn0 = hasDir0
+            ? `<span class="stop-popup__alert-configured">${escapeHtml(dir0Label)}</span>`
+            : `<button class="stop-popup__btn" data-action="set-alert" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="0">\u2192 ${escapeHtml(dir0Label)}</button>`;
+
+        const btn1 = hasDir1
+            ? `<span class="stop-popup__alert-configured">${escapeHtml(dir1Label)}</span>`
+            : `<button class="stop-popup__btn" data-action="set-alert" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="1">\u2192 ${escapeHtml(dir1Label)}</button>`;
+
+        // Only show route label if multiple routes serve this stop
+        const labelHtml = routeDirections.length > 1
+            ? `<span class="stop-popup__route-label">${escapeHtml(routeName)}:</span>`
+            : '';
+
+        return `<div class="stop-popup__route-alerts">
+            ${labelHtml}${btn0}${btn1}
+        </div>`;
+    });
+
     return `<div class="stop-popup__actions">
-        <button class="stop-popup__btn" data-action="set-checkpoint" data-stop-id="${escapeHtml(stop.id)}" data-route-ids="${escapeHtml(routeIds)}">
-            Set as Checkpoint
-        </button>
-        <button class="stop-popup__btn" data-action="set-destination" data-stop-id="${escapeHtml(stop.id)}" data-route-ids="${escapeHtml(routeIds)}">
-            Set as My Stop
-        </button>
-        <div class="stop-popup__count">${pairCount}/${maxPairs} pairs configured</div>
+        ${routeAlertHtmls.join('')}
+        <div class="stop-popup__count">${pairCount}/${maxPairs} alerts configured</div>
     </div>`;
 }
 

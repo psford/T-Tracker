@@ -48,7 +48,7 @@
 
     <!-- App entry point (ES6 module) -->
     <script type="module">
-        import { initMap, loadRoutes, loadStops, buildRouteStopsMapping, syncVehicleMarkers, getRouteMetadata, setVisibleRoutes, getStopData } from './src/map.js';
+        import { initMap, loadRoutes, loadStops, buildRouteStopsMapping, syncVehicleMarkers, getRouteMetadata, setVisibleRoutes, getStopData, isTerminusStop, getDirectionDestinations } from './src/map.js';
         import { connect, apiEvents } from './src/api.js';
         import { initVehicles, onVehicleUpdate } from './src/vehicles.js';
         import { initUI } from './src/ui.js';
@@ -71,8 +71,8 @@
                     setVisibleRoutes(routeIds);
                     updateVisibleStops(routeIds);
                 });
-                // Initialize notification system with loaded stops data
-                initNotifications(apiEvents, getStopData());
+                // Initialize notification system with loaded stops data, terminus checker, direction labels, and route metadata
+                initNotifications(apiEvents, getStopData(), isTerminusStop, getDirectionDestinations, getRouteMetadata);
                 // Initialize notification UI status indicator
                 const notificationStatusEl = document.getElementById('notification-status');
                 initNotificationUI(notificationStatusEl);

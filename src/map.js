@@ -349,6 +349,10 @@ export async function loadRoutes() {
                 color = darkenHexColor(color, 0.15);
             }
 
+            // Parse direction metadata from MBTA route attributes
+            const directionNames = route.attributes.direction_names || ['Outbound', 'Inbound'];
+            const directionDestinations = route.attributes.direction_destinations || [];
+
             // Store route metadata
             routeMetadata.push({
                 id: routeId,
@@ -356,6 +360,8 @@ export async function loadRoutes() {
                 shortName,
                 longName,
                 type,
+                directionNames,
+                directionDestinations,
             });
 
             // Store color in lookup map for vehicle icon generation
@@ -791,4 +797,44 @@ export function snapToRoutePolyline(lat, lng, routeId) {
     }
 
     return bestPoint;
+}
+
+/**
+ * Check if a stop is a terminus for a given route.
+ * Matches stop name against route's direction_destinations using case-insensitive
+ * substring matching (handles "Heath Street" vs "Heath St" variations).
+ *
+ * @param {string} stopId — stop ID to check
+ * @param {string} routeId — route ID
+ * @returns {boolean} — true if stop is a terminus for this route
+ */
+export function isTerminusStop(stopId, routeId) {
+    const stop = stopsData.get(stopId);
+    if (!stop?.name) return false;
+
+    const meta = routeMetadata.find(r => r.id === routeId);
+    if (!meta?.directionDestinations?.length) return false;
+
+    const stopNameLower = stop.name.toLowerCase();
+    return meta.directionDestinations.some(dest => {
+        const destLower = dest.toLowerCase();
+        return stopNameLower.includes(destLower) || destLower.includes(stopNameLower);
+    });
+}
+
+/**
+ * Get direction destination labels for a route (e.g., ["Ashmont/Braintree", "Alewife"]).
+ * Index 0 = direction_id 0, Index 1 = direction_id 1.
+ *
+ * @param {string} routeId — route ID
+ * @returns {Array<string>} — [dir0Label, dir1Label] or fallback to direction names
+ */
+export function getDirectionDestinations(routeId) {
+    const meta = routeMetadata.find(r => r.id === routeId);
+    if (!meta) return ['Direction 0', 'Direction 1'];
+    // Prefer destination names (e.g., "Alewife") over generic names (e.g., "Inbound")
+    if (meta.directionDestinations?.length >= 2) {
+        return [meta.directionDestinations[0], meta.directionDestinations[1]];
+    }
+    return meta.directionNames || ['Outbound', 'Inbound'];
 }
