@@ -1,6 +1,7 @@
 // tests/ui.test.js — Unit tests for UI utility functions
 import assert from 'assert';
 import { groupAndSortRoutes } from '../src/route-sorter.js';
+import { resolveVisibleRoutes } from '../src/ui.js';
 
 /**
  * Test groupAndSortRoutes function
@@ -157,11 +158,79 @@ function testGroupAndSortRoutes() {
 }
 
 /**
+ * Test resolveVisibleRoutes — route visibility persistence logic
+ */
+function testResolveVisibleRoutes() {
+    const metadata = [
+        { id: 'Red', type: 1 },
+        { id: 'Orange', type: 1 },
+        { id: 'Blue', type: 1 },
+        { id: 'Green-B', type: 0 },
+        { id: 'Green-E', type: 0 },
+        { id: '39', type: 3 },
+        { id: 'CR-Worcester', type: 2 },
+    ];
+    const defaultToggles = { subway: true, bus: false, commuterRail: false, ferry: false };
+
+    // Test 1: First visit (null stored) — defaults to subway routes only
+    const firstVisit = resolveVisibleRoutes(null, defaultToggles, metadata);
+    assert.deepStrictEqual(
+        Array.from(firstVisit).sort(),
+        ['Blue', 'Green-B', 'Green-E', 'Orange', 'Red'],
+        'First visit should enable all subway routes'
+    );
+    assert.ok(!firstVisit.has('39'), 'First visit should not include bus routes');
+    assert.ok(!firstVisit.has('CR-Worcester'), 'First visit should not include commuter rail');
+
+    // Test 2: Returning visit — restores exactly the stored selection
+    const stored = new Set(['Orange', 'Green-E']);
+    const returning = resolveVisibleRoutes(stored, defaultToggles, metadata);
+    assert.deepStrictEqual(
+        Array.from(returning).sort(),
+        ['Green-E', 'Orange'],
+        'Returning visit should restore exactly stored routes, not re-add deselected subway lines'
+    );
+
+    // Test 3: Returning visit with bus route — only stored routes restored
+    const storedMixed = new Set(['Green-E', 'Orange', '39']);
+    const mixedToggles = { subway: true, bus: true, commuterRail: false, ferry: false };
+    const returningMixed = resolveVisibleRoutes(storedMixed, mixedToggles, metadata);
+    assert.deepStrictEqual(
+        Array.from(returningMixed).sort(),
+        ['39', 'Green-E', 'Orange'],
+        'Should restore exactly the mixed selection without adding other subway or bus routes'
+    );
+
+    // Test 4: Stale route IDs are filtered out
+    const storedStale = new Set(['Orange', 'Green-E', 'Nonexistent-Route']);
+    const filtered = resolveVisibleRoutes(storedStale, defaultToggles, metadata);
+    assert.deepStrictEqual(
+        Array.from(filtered).sort(),
+        ['Green-E', 'Orange'],
+        'Should filter out route IDs no longer in metadata'
+    );
+    assert.ok(!filtered.has('Nonexistent-Route'), 'Stale route ID should be removed');
+
+    // Test 5: Empty stored set — user deselected everything
+    const storedEmpty = new Set();
+    const empty = resolveVisibleRoutes(storedEmpty, defaultToggles, metadata);
+    assert.strictEqual(empty.size, 0, 'Empty stored set should restore as empty (user deselected all)');
+
+    // Test 6: First visit with all toggles on — shows everything
+    const allOn = { subway: true, bus: true, commuterRail: true, ferry: true };
+    const firstAll = resolveVisibleRoutes(null, allOn, metadata);
+    assert.strictEqual(firstAll.size, metadata.length, 'All toggles on should show all routes on first visit');
+
+    console.log('✓ resolveVisibleRoutes tests passed');
+}
+
+/**
  * Run all tests
  */
 function runTests() {
     console.log('Running UI utility tests...\n');
     testGroupAndSortRoutes();
+    testResolveVisibleRoutes();
     console.log('\n✓ All UI tests passed!');
 }
 

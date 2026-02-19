@@ -5,7 +5,10 @@ const STORAGE_KEY = 'ttracker-visible-routes';
 const SERVICE_TOGGLES_KEY = 'ttracker-service-toggles';
 
 // Cache the media query result to avoid recreating the MediaQueryList on every call
-const mobileMediaQuery = window.matchMedia('(max-width: 767px)');
+// Guarded for Node.js test environment where window is not available
+const mobileMediaQuery = typeof window !== 'undefined'
+    ? window.matchMedia('(max-width: 767px)')
+    : { matches: false };
 
 /**
  * Reads visible routes from localStorage.
@@ -112,6 +115,35 @@ function isMobileViewport() {
 }
 
 /**
+ * Determines which routes should be visible on page load.
+ * First visit (no stored data): enables routes whose service type is toggled on.
+ * Returning visit: restores exactly the user's last selection, filtering out stale IDs.
+ *
+ * @param {Set<string> | null} storedVisible — stored route IDs, or null on first visit
+ * @param {Object} serviceToggles — { subway: bool, bus: bool, commuterRail: bool, ferry: bool }
+ * @param {Array<Object>} routeMetadata — array of { id, type, ... }
+ * @returns {Set<string>} route IDs to show
+ */
+export function resolveVisibleRoutes(storedVisible, serviceToggles, routeMetadata) {
+    if (storedVisible === null) {
+        // First visit: enable routes whose service type is toggled on
+        const visible = new Set();
+        routeMetadata.forEach((route) => {
+            const serviceType = getServiceTypeForRoute(route);
+            if (serviceToggles[serviceType]) {
+                visible.add(route.id);
+            }
+        });
+        return visible;
+    }
+    // Returning visit: restore exactly what the user had selected, filtering out removed routes
+    const validRouteIds = new Set(routeMetadata.map((r) => r.id));
+    return new Set(
+        Array.from(storedVisible).filter((id) => validRouteIds.has(id))
+    );
+}
+
+/**
  * Initializes the route selection UI in the #controls container.
  * Builds a control panel with four-tier collapsible checkboxes (service groups, routes, subgroups).
  * Restores selection from localStorage (or uses service type defaults if no saved state: Subway on, Bus/Commuter Rail/Ferry off).
@@ -137,43 +169,8 @@ export function initUI(routeMetadata, onVisibilityChange) {
     }
 
     // Determine initial visible routes
-    let storedVisible = readFromStorage();
-    const validRouteIds = new Set(routeMetadata.map((r) => r.id));
-
-    let initialVisible;
-    if (storedVisible === null) {
-        // First visit: only enable Subway routes by default (serviceToggles starts with subway:true, others:false)
-        initialVisible = new Set();
-        routeMetadata.forEach((route) => {
-            const serviceType = getServiceTypeForRoute(route);
-            if (serviceToggles[serviceType]) {
-                initialVisible.add(route.id);
-            }
-        });
-    } else {
-        // Returning visit: restore stored routes, filtering out removed routes
-        initialVisible = new Set(
-            Array.from(storedVisible).filter((id) => validRouteIds.has(id))
-        );
-        // New routes: in metadata but not in stored state
-        // Only auto-add if their service type is enabled AND we already have visible routes from that service
-        const visibleServiceTypes = new Set();
-        storedVisible.forEach((routeId) => {
-            const route = routeMetadata.find(r => r.id === routeId);
-            if (route) {
-                visibleServiceTypes.add(getServiceTypeForRoute(route));
-            }
-        });
-        routeMetadata.forEach((route) => {
-            if (!storedVisible.has(route.id)) {
-                const serviceType = getServiceTypeForRoute(route);
-                // Only auto-add new routes if we already have visible routes from that service
-                if (serviceToggles[serviceType] && visibleServiceTypes.has(serviceType)) {
-                    initialVisible.add(route.id);
-                }
-            }
-        });
-    }
+    const storedVisible = readFromStorage();
+    const initialVisible = resolveVisibleRoutes(storedVisible, serviceToggles, routeMetadata);
 
     // Save initial state to storage
     writeToStorage(initialVisible);
