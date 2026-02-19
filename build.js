@@ -20,7 +20,7 @@ fs.mkdirSync(DIST, { recursive: true });
 fs.mkdirSync(path.join(DIST, 'src'), { recursive: true });
 
 // Copy static files
-const rootFiles = ['index.html', 'styles.css'];
+const rootFiles = ['index.html', 'styles.css', 'favicon.svg'];
 rootFiles.forEach(file => {
     fs.copyFileSync(path.join(__dirname, file), path.join(DIST, file));
 });
