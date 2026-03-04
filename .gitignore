@@ -25,3 +25,6 @@ nul
 
 # Claude Code plugins cache
 .ed3d-plugins/
+
+# Git worktrees
+.worktrees/
