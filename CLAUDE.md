@@ -1,6 +1,6 @@
 # T-Tracker -- MBTA Real-Time Transit Tracker
 
-Last verified: 2026-02-14
+Last verified: 2026-03-04
 
 ## Data Flow Architecture
 
