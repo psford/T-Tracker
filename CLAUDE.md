@@ -9,11 +9,13 @@ MBTA API (SSE) → api.js (parse + validate) → vehicles.js (interpolate + anim
                       |                                ↓
                       |                           vehicle-math.js (pure math)
                       |                                ↓
-                      |                        map.js (render + visibility)
-                      |                          ↑               ↑
-                      |                    ui.js (configure)  vehicle-icons.js (icon data)
-                      |                                      stop-markers.js (render stops)
-                      |                                      stop-popup.js (format)
+         route-stops-cache.js (localStorage)          map.js (render + visibility)
+                      ↓                                 ↑               ↑
+                  (hydrate/fetch)              ui.js (configure)  vehicle-icons.js (icon data)
+                                                  ↓                 ↑
+                                           route-sorter.js     stop-markers.js (render stops)
+                                            (group/sort)        stop-popup.js (format)
+                                                              vehicle-popup.js (format)
                       |
                       +→ notifications.js (monitor vehicles → fire alerts)
                                ↓
@@ -25,9 +27,12 @@ All data flows through dedicated modules with clear responsibilities:
 - `vehicles.js`: State management, animation loop, viewport culling
 - `vehicle-math.js`: Pure math (lerp, easing, distance, angle interpolation, color manipulation, bearing transform)
 - `vehicle-icons.js`: Pure data module with SVG silhouettes for each MBTA vehicle type
+- `vehicle-popup.js`: Pure formatting for vehicle popup content (HTML escaping, status strings)
 - `polyline.js`: Pure function for Google polyline decoding
-- `map.js`: Leaflet rendering, marker management, route visibility filtering, stop data
-- `ui.js`: Route selection UI, localStorage persistence, grouping/sorting
+- `map.js`: Leaflet rendering, marker management, route visibility filtering, stop data fetching
+- `route-stops-cache.js`: localStorage caching for route-stops mapping with TTL invalidation
+- `route-sorter.js`: Pure function for grouping and sorting route metadata by type and name
+- `ui.js`: Route selection UI, localStorage persistence, grouping/sorting orchestration
 - `stop-markers.js`: Stop marker rendering on map, notification pair config workflow
 - `stop-popup.js`: Stop popup HTML formatting with notification config states
 - `notifications.js`: Notification engine, pair management, localStorage persistence, direction detection
