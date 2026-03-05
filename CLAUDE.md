@@ -48,6 +48,8 @@ All data flows through dedicated modules with clear responsibilities:
 - `node tests/stop-popup.test.js` -- run stop popup formatting tests
 - `node tests/notifications.test.js` -- run notification engine tests
 - `node tests/notification-ui.test.js` -- run notification UI tests
+- `node tests/route-stops-cache.test.js` -- run route-stops cache unit tests
+- `node tests/map-hydrate.test.js` -- run map hydration unit tests
 - ES6 modules require HTTP server; `file://` protocol will not work
 
 ## Project Structure
@@ -55,8 +57,8 @@ All data flows through dedicated modules with clear responsibilities:
 - `styles.css` -- Dark theme, responsive layout, vehicle marker styles, stop/notification styles
 - `config.js` -- All configuration (API key, map center, animation timing, route defaults)
 - `config.example.js` -- Template for config.js (committed; config.js is gitignored)
-- `src/` -- 13 application modules (see `src/CLAUDE.md` for contracts)
-- `tests/` -- 10 unit test files for pure functions and data modules
+- `src/` -- 14 application modules (see `src/CLAUDE.md` for contracts)
+- `tests/` -- 12 unit test files for pure functions and data modules
 - `docs/` -- Design plans and implementation phase docs
 
 ## Conventions
@@ -117,6 +119,6 @@ All data flows through dedicated modules with clear responsibilities:
 ## API Rate Limits
 - MBTA allows 1000 req/min with API key
 - SSE connection counts as 1 request (persistent)
-- Startup fetches: routes list + stops list (~2 requests), then per-route stop mapping (~180 requests, throttled to 3 concurrent via buildRouteStopsMapping)
+- Startup fetches: routes list + stops list (~2 requests), then route-stop mapping for visible routes only (~12 subway routes on first visit, 0 on cached visit via route-stops-cache.js with 24hr TTL). Additional routes fetched on-demand when user toggles services. Max 3 concurrent via fetchRouteStops.
 - Exponential backoff on reconnect: 1s, 2s, 4s... max 30s
 - Rapid-close detection triggers aggressive backoff (likely rate limited)
