@@ -640,6 +640,23 @@ export async function loadStops() {
             });
         });
 
+        // Build parent station entries from child platforms.
+        // The route-level /stops API returns parent station IDs (e.g. "place-hsmnl")
+        // but the all-stops API returns child platforms. Ensure stopsData has both
+        // so cached route-stops mappings can resolve parent station IDs.
+        stops.forEach((stop) => {
+            const parentId = stop.relationships?.parent_station?.data?.id;
+            if (parentId && !stopsData.has(parentId)) {
+                stopsData.set(parentId, {
+                    id: parentId,
+                    name: stop.attributes?.name || '',
+                    latitude: stop.attributes?.latitude || 0,
+                    longitude: stop.attributes?.longitude || 0,
+                    parentStopId: null,
+                });
+            }
+        });
+
         console.log(`Cached ${stops.length} stops`);
     } catch (error) {
         console.error('Failed to load stops:', error.message);
