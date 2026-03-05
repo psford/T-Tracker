@@ -348,8 +348,16 @@ export function initUI(routeMetadata, onVisibilityChange) {
     // Toggle button click handler
     toggleButton.addEventListener('click', toggleDrawer);
 
-    // Backdrop click handler — close drawer
-    backdrop.addEventListener('click', closeDrawer);
+    // Close drawer when tapping outside panel — uses document listener
+    // instead of backdrop click to avoid mobile ghost-click/touch pass-through
+    // issues with overlapping fixed-position elements
+    document.addEventListener('click', (e) => {
+        if (panel.classList.contains('control-panel--open') &&
+            !panel.contains(e.target) &&
+            e.target !== toggleButton) {
+            closeDrawer();
+        }
+    });
 
     // Escape key handler — close drawer when Escape is pressed and drawer is open
     document.addEventListener('keydown', (event) => {
