@@ -49,51 +49,87 @@
 
     <!-- App entry point (ES6 module) -->
     <script type="module">
-        import { initMap, loadRoutes, loadStops, buildRouteStopsMapping, syncVehicleMarkers, getRouteMetadata, setVisibleRoutes, getStopData, isTerminusStop, getDirectionDestinations } from './src/map.js';
+        import { initMap, loadRoutes, loadStops, fetchRouteStops, hydrateRouteStopsMap, syncVehicleMarkers, getRouteMetadata, setVisibleRoutes, getStopData, getRouteStopsMap, isTerminusStop, getDirectionDestinations } from './src/map.js';
         import { connect, apiEvents } from './src/api.js';
         import { initVehicles, onVehicleUpdate } from './src/vehicles.js';
         import { initUI } from './src/ui.js';
         import { initStopMarkers, updateVisibleStops } from './src/stop-markers.js';
         import { initNotifications } from './src/notifications.js';
         import { initNotificationUI, updateStatus as updateNotificationStatus, initNotificationPanel, renderPanel } from './src/notification-ui.js';
+        import { getCachedRouteStops, setCachedRouteStops } from './src/route-stops-cache.js';
 
         const map = initMap('map');
         initVehicles(apiEvents, () => map.getBounds());
         onVehicleUpdate(syncVehicleMarkers);
 
-        // Load routes + stops in parallel (bulk fetches are independent)
-        // Then build route-stop mapping (needs routeMetadata from loadRoutes)
-        Promise.all([loadRoutes(), loadStops()])
-            .then(() => buildRouteStopsMapping())
-            .then(() => {
-                const metadata = getRouteMetadata();
-                initStopMarkers(map);
-                initUI(metadata, (routeIds) => {
-                    setVisibleRoutes(routeIds);
-                    updateVisibleStops(routeIds);
-                });
-                // Initialize notification system with loaded stops data, terminus checker, direction labels, and route metadata
-                initNotifications(apiEvents, getStopData(), isTerminusStop, getDirectionDestinations, getRouteMetadata);
-                // Initialize notification UI status indicator
-                const notificationStatusEl = document.getElementById('notification-status');
-                initNotificationUI(notificationStatusEl);
-                // Initialize notification panel
-                const notificationPanelEl = document.getElementById('notification-panel');
-                const notificationToggleBtn = document.getElementById('notification-panel-toggle');
-                initNotificationPanel(notificationPanelEl, notificationToggleBtn);
-            });
-
-        // Wire connection status indicator
+        // Connection status and SSE connect stay OUTSIDE .then() — they fire immediately,
+        // in parallel with loadRoutes/loadStops. This is the existing behavior and ensures
+        // AC3.1: vehicle markers appear as early as possible.
         const statusEl = document.getElementById('status');
         const statusText = statusEl.querySelector('.status-text');
-
         apiEvents.addEventListener('connection:status', (e) => {
             const { state, message } = e.detail;
             statusEl.className = `connection-status connection-status--${state}`;
             statusText.textContent = message;
         });
-
         connect();
+
+        Promise.all([loadRoutes(), loadStops()]).then(() => {
+            const metadata = getRouteMetadata();
+            initStopMarkers(map);
+
+            // Cache-first route-stops loader
+            async function loadRouteStopsAndDisplay(routeIds) {
+                const routeIdArray = [...routeIds];
+                const { cached, uncached } = getCachedRouteStops(routeIdArray);
+
+                for (const [routeId, stopIds] of cached) {
+                    hydrateRouteStopsMap(routeId, stopIds);
+                }
+
+                if (uncached.length > 0) {
+                    await fetchRouteStops(uncached);
+                    const routeStopsMap = getRouteStopsMap();
+                    for (const routeId of uncached) {
+                        const stopIds = routeStopsMap.get(routeId);
+                        if (stopIds) {
+                            setCachedRouteStops(routeId, stopIds);
+                        }
+                    }
+                }
+
+                updateVisibleStops(routeIds);
+            }
+
+            // Enhanced visibility callback with on-demand fetching
+            initUI(metadata, (routeIds) => {
+                setVisibleRoutes(routeIds);
+
+                const routeStopsMap = getRouteStopsMap();
+                const routeIdArray = [...routeIds];
+                const needsData = routeIdArray.filter(id => !routeStopsMap.has(id));
+
+                if (needsData.length === 0) {
+                    updateVisibleStops(routeIds);
+                } else {
+                    // Routes needing data: fetch via cache-first loader, which calls
+                    // updateVisibleStops after hydration/fetch completes
+                    loadRouteStopsAndDisplay(routeIds);
+                }
+            });
+
+            // Init notifications (does NOT depend on route-stops mapping)
+            initNotifications(apiEvents, getStopData(), isTerminusStop, getDirectionDestinations, getRouteMetadata);
+            const notificationStatusEl = document.getElementById('notification-status');
+            initNotificationUI(notificationStatusEl);
+            const notificationPanelEl = document.getElementById('notification-panel');
+            const notificationToggleBtn = document.getElementById('notification-panel-toggle');
+            initNotificationPanel(notificationPanelEl, notificationToggleBtn);
+
+            // Note: no explicit loadRouteStopsAndDisplay call needed here.
+            // initUI fires the visibility callback synchronously (ui.js:372),
+            // which already triggers loadRouteStopsAndDisplay for initial visible routes.
+        });
     </script>
 </body>
 </html>

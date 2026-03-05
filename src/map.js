@@ -740,13 +740,6 @@ export function hydrateRouteStopsMap(routeId, stopIds) {
     routeStopsMap.set(routeId, stopIds instanceof Set ? stopIds : new Set(stopIds));
 }
 
-/**
- * @deprecated Use fetchRouteStops(routeIds) instead. Removed in Phase 3.
- */
-export async function buildRouteStopsMapping() {
-    const routeIds = routeMetadata.map(r => r.id);
-    await fetchRouteStops(routeIds);
-}
 
 /**
  * Returns the route-to-stops mapping.
