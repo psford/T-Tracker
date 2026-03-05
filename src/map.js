@@ -740,7 +740,6 @@ export function hydrateRouteStopsMap(routeId, stopIds) {
     routeStopsMap.set(routeId, stopIds instanceof Set ? stopIds : new Set(stopIds));
 }
 
-
 /**
  * Returns the route-to-stops mapping.
  * Key: route ID (string), Value: Set of stop IDs
