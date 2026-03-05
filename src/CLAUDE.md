@@ -46,7 +46,8 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 
 ### map.js -- Leaflet Rendering
 - **Exposes**: `initMap(containerId)`, `loadRoutes()`, `loadStops()`,
-  `buildRouteStopsMapping()`, `syncVehicleMarkers(vehiclesMap)`, `getRouteMetadata()`,
+  `fetchRouteStops(routeIds)`, `hydrateRouteStopsMap(routeId, stopIds)`, `buildRouteStopsMapping()` (deprecated),
+  `syncVehicleMarkers(vehiclesMap)`, `getRouteMetadata()`,
   `setVisibleRoutes(routeIds)`, `getStopData()`, `getRouteColorMap()`, `getRouteStopsMap()`
 - **Guarantees**: Route polylines render below vehicle markers (layer ordering).
   Visible routes render polylines and 48x32 vehicle icon markers with type-specific SVG silhouettes.
@@ -54,7 +55,11 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Route colors from MBTA API applied to polylines. Vehicle popups bound to markers on creation.
   Desktop: hover opens, mouseout closes. Mobile: tap opens.
   Popup content refreshes when popup is open and vehicle data changes (throttled by updatedAt comparison).
-  `buildRouteStopsMapping()` limits concurrency to 3 simultaneous requests to avoid browser connection limits and rate limiting.
+  `fetchRouteStops(routeIds)` fetches route-stops mapping for only the specified routes (not all routes),
+  limits concurrency to 3 simultaneous requests to avoid browser connection limits and rate limiting.
+  `hydrateRouteStopsMap(routeId, stopIds)` populates the internal route-stops map from cached data without making network calls,
+  accepts stopIds as either an Array or Set and stores as a Set.
+  `buildRouteStopsMapping()` is deprecated; use `fetchRouteStops()` instead (will be removed in Phase 3).
 - **Expects**: Leaflet `L` global available. `config.map.*`, `config.tiles.*` set.
 
 ### stop-markers.js -- Stop Marker Rendering & Notification Config
