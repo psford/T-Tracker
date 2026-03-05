@@ -1,15 +1,19 @@
 # T-Tracker Source Modules
 
-Last verified: 2026-02-14
+Last verified: 2026-03-04
 
 ## Purpose
-Thirteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
+Fourteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
 rendering (Leaflet markers/polylines/stop markers), user controls (route filtering), polyline decoding,
 route organization, popup content formatting, vehicle icon data, stop popup formatting, notification engine,
-and notification UI management.
+notification UI management, and route-stops cache management.
 
 ## Data Flow
 ```
+route-stops-cache.js (localStorage read/write)
+       ↕
+index.html (orchestrator — hydrate or fetch)
+       ↓
 MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
                       |                  ^                           ^
                       |               ui.js (configure)      polyline.js (decode)
@@ -46,7 +50,8 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 
 ### map.js -- Leaflet Rendering
 - **Exposes**: `initMap(containerId)`, `loadRoutes()`, `loadStops()`,
-  `buildRouteStopsMapping()`, `syncVehicleMarkers(vehiclesMap)`, `getRouteMetadata()`,
+  `fetchRouteStops(routeIds)`, `hydrateRouteStopsMap(routeId, stopIds)`,
+  `syncVehicleMarkers(vehiclesMap)`, `getRouteMetadata()`,
   `setVisibleRoutes(routeIds)`, `getStopData()`, `getRouteColorMap()`, `getRouteStopsMap()`
 - **Guarantees**: Route polylines render below vehicle markers (layer ordering).
   Visible routes render polylines and 48x32 vehicle icon markers with type-specific SVG silhouettes.
@@ -54,7 +59,10 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Route colors from MBTA API applied to polylines. Vehicle popups bound to markers on creation.
   Desktop: hover opens, mouseout closes. Mobile: tap opens.
   Popup content refreshes when popup is open and vehicle data changes (throttled by updatedAt comparison).
-  `buildRouteStopsMapping()` limits concurrency to 3 simultaneous requests to avoid browser connection limits and rate limiting.
+  `fetchRouteStops(routeIds)` fetches route-stops mapping for only the specified routes (not all routes),
+  limits concurrency to 3 simultaneous requests to avoid browser connection limits and rate limiting.
+  `hydrateRouteStopsMap(routeId, stopIds)` populates the internal route-stops map from cached data without making network calls,
+  accepts stopIds as either an Array or Set and stores as a Set.
 - **Expects**: Leaflet `L` global available. `config.map.*`, `config.tiles.*` set.
 
 ### stop-markers.js -- Stop Marker Rendering & Notification Config
@@ -158,6 +166,11 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Expects**: `#notification-status` and `#notification-panel` elements in DOM.
   `notifications.js` functions for state queries (`getNotificationPairs()`, `getPermissionState()`, `requestPermission()`, `isPaused()`, `togglePause()`, `removeNotificationPair()`).
   `getStopData()` and `getRouteMetadata()` from `map.js` for name resolution.
+
+### route-stops-cache.js -- Route-Stops Cache
+- **Exposes**: `getCachedRouteStops(routeIds, ttlMs)`, `setCachedRouteStops(routeId, stopIds)`, `clearRouteStopsCache()`
+- **Guarantees**: `getCachedRouteStops` returns `{ cached: Map<routeId, Set<stopId>>, uncached: string[] }`. Per-route TTL (default 24hr / 86,400,000ms). Version field enables cache invalidation on schema changes. Malformed or corrupted localStorage JSON gracefully falls back to empty cache. Quota exceeded on write silently fails (no crash). Single localStorage key: `ttracker-route-stops-cache`.
+- **Expects**: `localStorage` available. Pure module — no DOM access, no network calls, no imports from other app modules.
 
 ## Key Decisions
 - Event-driven (CustomEvent/EventTarget) over direct function calls: enables multiple subscribers

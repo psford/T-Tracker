@@ -1,6 +1,6 @@
 # T-Tracker -- MBTA Real-Time Transit Tracker
 
-Last verified: 2026-02-14
+Last verified: 2026-03-04
 
 ## Data Flow Architecture
 
@@ -9,11 +9,13 @@ MBTA API (SSE) → api.js (parse + validate) → vehicles.js (interpolate + anim
                       |                                ↓
                       |                           vehicle-math.js (pure math)
                       |                                ↓
-                      |                        map.js (render + visibility)
-                      |                          ↑               ↑
-                      |                    ui.js (configure)  vehicle-icons.js (icon data)
-                      |                                      stop-markers.js (render stops)
-                      |                                      stop-popup.js (format)
+         route-stops-cache.js (localStorage)          map.js (render + visibility)
+                      ↓                                 ↑               ↑
+                  (hydrate/fetch)              ui.js (configure)  vehicle-icons.js (icon data)
+                                                  ↓                 ↑
+                                           route-sorter.js     stop-markers.js (render stops)
+                                            (group/sort)        stop-popup.js (format)
+                                                              vehicle-popup.js (format)
                       |
                       +→ notifications.js (monitor vehicles → fire alerts)
                                ↓
@@ -25,9 +27,12 @@ All data flows through dedicated modules with clear responsibilities:
 - `vehicles.js`: State management, animation loop, viewport culling
 - `vehicle-math.js`: Pure math (lerp, easing, distance, angle interpolation, color manipulation, bearing transform)
 - `vehicle-icons.js`: Pure data module with SVG silhouettes for each MBTA vehicle type
+- `vehicle-popup.js`: Pure formatting for vehicle popup content (HTML escaping, status strings)
 - `polyline.js`: Pure function for Google polyline decoding
-- `map.js`: Leaflet rendering, marker management, route visibility filtering, stop data
-- `ui.js`: Route selection UI, localStorage persistence, grouping/sorting
+- `map.js`: Leaflet rendering, marker management, route visibility filtering, stop data fetching
+- `route-stops-cache.js`: localStorage caching for route-stops mapping with TTL invalidation
+- `route-sorter.js`: Pure function for grouping and sorting route metadata by type and name
+- `ui.js`: Route selection UI, localStorage persistence, grouping/sorting orchestration
 - `stop-markers.js`: Stop marker rendering on map, notification pair config workflow
 - `stop-popup.js`: Stop popup HTML formatting with notification config states
 - `notifications.js`: Notification engine, pair management, localStorage persistence, direction detection
@@ -48,6 +53,8 @@ All data flows through dedicated modules with clear responsibilities:
 - `node tests/stop-popup.test.js` -- run stop popup formatting tests
 - `node tests/notifications.test.js` -- run notification engine tests
 - `node tests/notification-ui.test.js` -- run notification UI tests
+- `node tests/route-stops-cache.test.js` -- run route-stops cache unit tests
+- `node tests/map-hydrate.test.js` -- run map hydration unit tests
 - ES6 modules require HTTP server; `file://` protocol will not work
 
 ## Project Structure
@@ -55,8 +62,8 @@ All data flows through dedicated modules with clear responsibilities:
 - `styles.css` -- Dark theme, responsive layout, vehicle marker styles, stop/notification styles
 - `config.js` -- All configuration (API key, map center, animation timing, route defaults)
 - `config.example.js` -- Template for config.js (committed; config.js is gitignored)
-- `src/` -- 13 application modules (see `src/CLAUDE.md` for contracts)
-- `tests/` -- 10 unit test files for pure functions and data modules
+- `src/` -- 14 application modules (see `src/CLAUDE.md` for contracts)
+- `tests/` -- 12 unit test files for pure functions and data modules
 - `docs/` -- Design plans and implementation phase docs
 
 ## Conventions
@@ -117,6 +124,6 @@ All data flows through dedicated modules with clear responsibilities:
 ## API Rate Limits
 - MBTA allows 1000 req/min with API key
 - SSE connection counts as 1 request (persistent)
-- Startup fetches: routes list + stops list (~2 requests), then per-route stop mapping (~180 requests, throttled to 3 concurrent via buildRouteStopsMapping)
+- Startup fetches: routes list + stops list (~2 requests), then route-stop mapping for visible routes only (~12 subway routes on first visit, 0 on cached visit via route-stops-cache.js with 24hr TTL). Additional routes fetched on-demand when user toggles services. Max 3 concurrent via fetchRouteStops.
 - Exponential backoff on reconnect: 1s, 2s, 4s... max 30s
 - Rapid-close detection triggers aggressive backoff (likely rate limited)
