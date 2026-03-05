@@ -114,7 +114,7 @@
                 } else {
                     // Routes needing data: fetch via cache-first loader, which calls
                     // updateVisibleStops after hydration/fetch completes
-                    loadRouteStopsAndDisplay(routeIds);
+                    loadRouteStopsAndDisplay(routeIds).catch(err => console.error('Failed to load route stops:', err.message));
                 }
             });
 
