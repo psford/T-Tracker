@@ -264,11 +264,6 @@ export function initUI(routeMetadata, onVisibilityChange) {
                 const currentVisible = collectVisibleRoutes();
                 writeToStorage(currentVisible);
                 onVisibilityChange(currentVisible);
-
-                // Close drawer on mobile after checkbox change
-                if (isMobileViewport()) {
-                    closeDrawer();
-                }
             });
 
             childrenContainer.appendChild(label);
@@ -310,11 +305,6 @@ export function initUI(routeMetadata, onVisibilityChange) {
             const currentVisible = collectVisibleRoutes();
             writeToStorage(currentVisible);
             onVisibilityChange(currentVisible);
-
-            // Close drawer on mobile after checkbox change
-            if (isMobileViewport()) {
-                closeDrawer();
-            }
         });
 
         serviceGroup.appendChild(childrenContainer);
