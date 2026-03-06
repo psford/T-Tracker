@@ -1013,6 +1013,13 @@ async function testExpiryEventIntegration() {
     const pairsAfter = getNotificationPairs();
     assert.strictEqual(pairsAfter.length, 0, 'Pair should be auto-deleted');
 
+    // Verify localStorage config is empty array
+    const stored = localStorage.getItem('ttracker-notifications-config');
+    assert(stored, 'Should have config in localStorage');
+    const parsed = JSON.parse(stored);
+    assert(Array.isArray(parsed), 'localStorage config should be an array');
+    assert.strictEqual(parsed.length, 0, 'localStorage config should be empty array');
+
     console.log('✓ expiry event integration test passed');
 }
 
