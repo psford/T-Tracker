@@ -51,10 +51,12 @@ export function formatPairForDisplay(pair, stopsData, routeMetadata) {
 /**
  * Initialize notification UI.
  * Sets up visibilitychange listener to detect permission revocation when tab regains focus.
+ * Listens for pair auto-delete events to update UI in real-time.
  *
  * @param {HTMLElement} statusElement — #notification-status element
+ * @param {EventTarget} apiEventsTarget — EventTarget for API and notification events
  */
-export function initNotificationUI(statusElement) {
+export function initNotificationUI(statusElement, apiEventsTarget = null) {
     statusEl = statusElement;
     updateStatus();
 
@@ -64,6 +66,14 @@ export function initNotificationUI(statusElement) {
             updateStatus();
         }
     });
+
+    // Listen for pair auto-delete to update status and panel
+    if (apiEventsTarget) {
+        apiEventsTarget.addEventListener('notification:pair-expired', () => {
+            updateStatus();
+            renderPanel();
+        });
+    }
 }
 
 /**
