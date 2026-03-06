@@ -577,6 +577,98 @@ html, body {
     margin-top: 4px;
 }
 
+/* Chip picker — inline count selector for notification expiry */
+.chip-picker {
+    padding: 6px 0;
+    margin: 4px 0;
+    border-top: 1px solid #333;
+}
+
+.chip-picker__chips {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 6px;
+}
+
+.chip-picker__chip {
+    background: #2a2a3e;
+    border: 1px solid #444;
+    color: #e0e0e0;
+    padding: 4px 10px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 13px;
+    min-width: 32px;
+    text-align: center;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.chip-picker__chip:hover {
+    background: #3a3a4e;
+    border-color: #666;
+}
+
+.chip-picker__chip--selected {
+    background: #4a9eff;
+    border-color: #4a9eff;
+    color: #fff;
+}
+
+.chip-picker__custom {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 6px;
+    align-items: center;
+}
+
+.chip-picker__input {
+    background: #2a2a3e;
+    border: 1px solid #444;
+    color: #e0e0e0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    width: 60px;
+    font-size: 13px;
+}
+
+.chip-picker__input--error {
+    border-color: #ff6b6b;
+}
+
+.chip-picker__input:focus {
+    outline: none;
+    border-color: #4a9eff;
+}
+
+.chip-picker__confirm {
+    background: #4a9eff;
+    border: none;
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.chip-picker__confirm:hover {
+    background: #3a8ede;
+}
+
+.chip-picker__create {
+    background: #2d8659;
+    border: none;
+    color: #fff;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    width: 100%;
+}
+
+.chip-picker__create:hover {
+    background: #247a4e;
+}
+
 /* Notification panel toggle button */
 .notification-panel-toggle {
     position: absolute;
