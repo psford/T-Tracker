@@ -124,7 +124,7 @@ function getStopConfigState(stopId) {
  * @param {string} stopId — stop ID for highlighting on success
  * @param {HTMLElement} container — popup container for error display
  */
-async function handleAlertResult(result, stopId, container) {
+function handleAlertResult(result, stopId, container) {
     if (result.error) {
         const actionsDiv = container.querySelector('.stop-popup__actions');
         if (actionsDiv) {
@@ -290,7 +290,7 @@ export function initStopMarkers(map) {
                 const directionId = parseInt(picker.dataset.directionId, 10);
 
                 const result = await addNotificationPair(stopId, routeId, directionId, value);
-                await handleAlertResult(result, stopId, container);
+                handleAlertResult(result, stopId, container);
                 return;
             }
 
@@ -304,7 +304,7 @@ export function initStopMarkers(map) {
                 const count = countStr === 'unlimited' ? null : parseInt(countStr, 10);
 
                 const result = await addNotificationPair(stopId, routeId, directionId, count);
-                await handleAlertResult(result, stopId, container);
+                handleAlertResult(result, stopId, container);
             }
         });
     });
