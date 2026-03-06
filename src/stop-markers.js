@@ -194,10 +194,18 @@ export function refreshAllHighlights() {
  * Creates layer group, stores map instance for event delegation, and sets up popup event handling.
  *
  * @param {L.Map} map — Leaflet map instance
+ * @param {EventTarget} [apiEventsTarget=null] — EventTarget for listening to notification:pair-expired events
  */
-export function initStopMarkers(map) {
+export function initStopMarkers(map, apiEventsTarget = null) {
     mapInstance = map;
     stopLayerGroup = L.layerGroup().addTo(map);
+
+    // Listen for pair auto-delete to refresh stop highlights
+    if (apiEventsTarget) {
+        apiEventsTarget.addEventListener('notification:pair-expired', () => {
+            refreshAllHighlights();
+        });
+    }
 
     // Set up popup event delegation for alert button clicks and hover persistence
     mapInstance.on('popupopen', (e) => {
