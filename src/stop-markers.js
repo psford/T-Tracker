@@ -1,6 +1,6 @@
 // src/stop-markers.js — Renders stop markers on map for visible routes
 import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, snapToRoutePolyline, isTerminusStop, getDirectionDestinations } from './map.js';
-import { formatStopPopup, escapeHtml } from './stop-popup.js';
+import { formatStopPopup, escapeHtml, buildChipPickerHtml } from './stop-popup.js';
 import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';
 import { updateStatus as updateNotificationStatus, renderPanel } from './notification-ui.js';
 
@@ -199,29 +199,111 @@ export function initStopMarkers(map) {
             });
         }
 
-        // One-click alert: handle all set-alert buttons
-        const alertBtns = container.querySelectorAll('[data-action="set-alert"]');
-        alertBtns.forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const stopId = btn.dataset.stopId;
-                const routeId = btn.dataset.routeId;
-                const directionId = parseInt(btn.dataset.directionId, 10);
+        // Handle direction button clicks — reveal chip picker
+        container.addEventListener('click', async (e) => {
+            const showChipsBtn = e.target.closest('[data-action="show-chips"]');
+            if (showChipsBtn) {
+                const stopId = showChipsBtn.dataset.stopId;
+                const routeId = showChipsBtn.dataset.routeId;
+                const directionId = parseInt(showChipsBtn.dataset.directionId, 10);
 
-                const result = await addNotificationPair(stopId, routeId, directionId);
+                // Collapse any existing chip picker in this popup (AC1.7)
+                container.querySelectorAll('.chip-picker').forEach(el => el.remove());
+
+                // Insert chip picker after the clicked button's parent route-alerts div
+                const routeAlertsDiv = showChipsBtn.closest('.stop-popup__route-alerts');
+                if (routeAlertsDiv) {
+                    routeAlertsDiv.insertAdjacentHTML('afterend', buildChipPickerHtml(stopId, routeId, directionId));
+                }
+                return;
+            }
+
+            // Handle chip selection
+            const chip = e.target.closest('.chip-picker__chip');
+            if (chip) {
+                const picker = chip.closest('.chip-picker');
+                if (!picker) return;
+
+                // Update selected state
+                picker.querySelectorAll('.chip-picker__chip').forEach(c => c.classList.remove('chip-picker__chip--selected'));
+                chip.classList.add('chip-picker__chip--selected');
+
+                const countValue = chip.dataset.count;
+                const customDiv = picker.querySelector('.chip-picker__custom');
+                const createBtn = picker.querySelector('[data-action="create-alert"]');
+
+                if (countValue === 'custom') {
+                    // Show custom input
+                    customDiv.style.display = 'flex';
+                    customDiv.querySelector('.chip-picker__input').focus();
+                } else {
+                    customDiv.style.display = 'none';
+                    if (countValue === 'unlimited') {
+                        createBtn.dataset.count = 'unlimited';
+                    } else {
+                        createBtn.dataset.count = countValue;
+                    }
+                }
+                return;
+            }
+
+            // Handle custom input confirm — directly create the alert (AC1.5: "confirming creates pair")
+            const confirmBtn = e.target.closest('.chip-picker__confirm');
+            if (confirmBtn) {
+                const picker = confirmBtn.closest('.chip-picker');
+                const input = picker.querySelector('.chip-picker__input');
+                const value = parseInt(input.value, 10);
+
+                // Validate: AC1.6 — reject non-numeric, 0, negative, >99
+                if (isNaN(value) || value < 1 || value > 99) {
+                    input.classList.add('chip-picker__input--error');
+                    input.value = '';
+                    input.placeholder = '1-99';
+                    return;
+                }
+
+                // Directly create the alert with custom count (3 taps: direction → # → OK)
+                const stopId = picker.dataset.stopId;
+                const routeId = picker.dataset.routeId;
+                const directionId = parseInt(picker.dataset.directionId, 10);
+
+                const result = await addNotificationPair(stopId, routeId, directionId, value);
                 if (result.error) {
-                    // Show error in popup
                     const actionsDiv = container.querySelector('.stop-popup__actions');
                     if (actionsDiv) {
                         actionsDiv.innerHTML = `<div class="stop-popup__alert-configured" style="color: #ff6b6b">${escapeHtml(result.error)}</div>`;
                     }
                 } else {
-                    // Success — highlight stop, update UI
                     highlightConfiguredStop(stopId);
                     updateNotificationStatus();
                     renderPanel();
                     mapInstance.closePopup();
                 }
-            });
+                return;
+            }
+
+            // Handle "Set Alert" button click — create the pair
+            const createBtn = e.target.closest('[data-action="create-alert"]');
+            if (createBtn) {
+                const stopId = createBtn.dataset.stopId;
+                const routeId = createBtn.dataset.routeId;
+                const directionId = parseInt(createBtn.dataset.directionId, 10);
+                const countStr = createBtn.dataset.count;
+                const count = countStr === 'unlimited' ? null : parseInt(countStr, 10);
+
+                const result = await addNotificationPair(stopId, routeId, directionId, count);
+                if (result.error) {
+                    const actionsDiv = container.querySelector('.stop-popup__actions');
+                    if (actionsDiv) {
+                        actionsDiv.innerHTML = `<div class="stop-popup__alert-configured" style="color: #ff6b6b">${escapeHtml(result.error)}</div>`;
+                    }
+                } else {
+                    highlightConfiguredStop(stopId);
+                    updateNotificationStatus();
+                    renderPanel();
+                    mapInstance.closePopup();
+                }
+            }
         });
     });
 
