@@ -338,7 +338,7 @@ function testDirectionButtons() {
         ],
     });
     assert.ok(terminusConfiguredHtml.includes('Alert active (terminus)'), 'Configured terminus should show active indicator');
-    const terminusConfigButtons = terminusConfiguredHtml.match(/data-action="set-alert"/g);
+    const terminusConfigButtons = terminusConfiguredHtml.match(/data-action="show-chips"/g);
     assert.ok(!terminusConfigButtons, 'Configured terminus should have no buttons');
     console.log('✓ Configured terminus shows indicator');
 
