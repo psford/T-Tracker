@@ -1,5 +1,5 @@
 // src/notification-ui.js — Notification status UI management
-import { getNotificationPairs, getPermissionState, requestPermission, isPaused, togglePause, removeNotificationPair } from './notifications.js';
+import { getNotificationPairs, getPermissionState, requestPermission, isPaused, togglePause, removeNotificationPair, updatePairCount } from './notifications.js';
 import { escapeHtml } from './stop-popup.js';
 import { getStopData, getRouteMetadata, getDirectionDestinations, isTerminusStop } from './map.js';
 import { refreshAllHighlights } from './stop-markers.js';
@@ -177,11 +177,17 @@ export function renderPanel() {
     listEl.innerHTML = pairs.map(pair => {
         const { checkpointName, directionLabel, routeName } = formatPairForDisplay(pair, stopsData, metadata);
 
+        // Compute count display string
+        const countDisplay = pair.remainingCount === null || pair.remainingCount === undefined
+            ? '∞ unlimited'
+            : `${pair.remainingCount} remaining`;
+
         return `
             <div class="notification-pair" data-pair-id="${escapeHtml(pair.id)}">
                 <div>
                     <div class="notification-pair__info">${escapeHtml(checkpointName)} &rarr; ${escapeHtml(directionLabel)}</div>
                     <div class="notification-pair__route">${escapeHtml(routeName)}</div>
+                    <div class="notification-pair__count" data-pair-id="${escapeHtml(pair.id)}">${countDisplay}</div>
                 </div>
                 <button class="notification-pair__delete" data-pair-id="${escapeHtml(pair.id)}">Delete</button>
             </div>
