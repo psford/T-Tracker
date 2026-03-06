@@ -74,6 +74,33 @@ export function formatStopPopup(stop, routeInfos, configState = {}) {
 }
 
 /**
+ * Build chip picker HTML for notification count selection.
+ * @param {string} stopId — stop ID
+ * @param {string} routeId — route ID
+ * @param {number} directionId — direction ID
+ * @returns {string} HTML string for chip picker
+ */
+export function buildChipPickerHtml(stopId, routeId, directionId) {
+    const escapedStopId = escapeHtml(stopId);
+    const escapedRouteId = escapeHtml(routeId);
+
+    return `<div class="chip-picker" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="${directionId}">
+        <div class="chip-picker__chips">
+            <button class="chip-picker__chip chip-picker__chip--selected" data-count="1">1</button>
+            <button class="chip-picker__chip" data-count="2">2</button>
+            <button class="chip-picker__chip" data-count="3">3</button>
+            <button class="chip-picker__chip" data-count="custom">#</button>
+            <button class="chip-picker__chip" data-count="unlimited">∞</button>
+        </div>
+        <div class="chip-picker__custom" style="display: none;">
+            <input type="number" class="chip-picker__input" min="1" max="99" placeholder="1-99">
+            <button class="chip-picker__confirm">OK</button>
+        </div>
+        <button class="chip-picker__create" data-action="create-alert" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="${directionId}" data-count="1">Set Alert</button>
+    </div>`;
+}
+
+/**
  * Build actions div HTML with per-route direction buttons.
  * @private
  */
@@ -124,18 +151,18 @@ function buildActionsHtml(stop, routeInfos, configState) {
                 </div>`;
             }
             return `<div class="stop-popup__route-alerts">
-                <button class="stop-popup__btn stop-popup__btn--terminus" data-action="set-alert" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="0">Alert me here</button>
+                <button class="stop-popup__btn stop-popup__btn--terminus" data-action="show-chips" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="0">Alert me here</button>
             </div>`;
         }
 
         // Non-terminus: two direction buttons
         const btn0 = hasDir0
             ? `<span class="stop-popup__alert-configured">${escapeHtml(dir0Label)}</span>`
-            : `<button class="stop-popup__btn" data-action="set-alert" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="0">\u2192 ${escapeHtml(dir0Label)}</button>`;
+            : `<button class="stop-popup__btn" data-action="show-chips" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="0">\u2192 ${escapeHtml(dir0Label)}</button>`;
 
         const btn1 = hasDir1
             ? `<span class="stop-popup__alert-configured">${escapeHtml(dir1Label)}</span>`
-            : `<button class="stop-popup__btn" data-action="set-alert" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="1">\u2192 ${escapeHtml(dir1Label)}</button>`;
+            : `<button class="stop-popup__btn" data-action="show-chips" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="1">\u2192 ${escapeHtml(dir1Label)}</button>`;
 
         // Only show route label if multiple routes serve this stop
         const labelHtml = routeDirections.length > 1

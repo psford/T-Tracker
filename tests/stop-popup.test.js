@@ -1,6 +1,6 @@
 // tests/stop-popup.test.js — Unit tests for stop popup formatting functions
 import assert from 'assert';
-import { formatStopPopup, escapeHtml } from '../src/stop-popup.js';
+import { formatStopPopup, escapeHtml, buildChipPickerHtml } from '../src/stop-popup.js';
 
 /**
  * Test escapeHtml function
@@ -242,7 +242,7 @@ function testDirectionButtons() {
     // No routeDirections: shows count only, no buttons
     const noDirectionsHtml = formatStopPopup(stop, routes, { pairCount: 0, maxPairs: 5 });
     assert.ok(noDirectionsHtml.includes('0/5 alerts configured'), 'Should show alert count');
-    assert.ok(!noDirectionsHtml.includes('data-action="set-alert"'), 'Should not show buttons without routeDirections');
+    assert.ok(!noDirectionsHtml.includes('data-action="show-chips"'), 'Should not show buttons without routeDirections');
     console.log('✓ No routeDirections shows count only');
 
     // Single route with direction buttons
@@ -254,7 +254,7 @@ function testDirectionButtons() {
             { routeId: 'Red', routeName: 'Red', dir0Label: 'Ashmont/Braintree', dir1Label: 'Alewife', isTerminus: false },
         ],
     });
-    assert.ok(singleRouteHtml.includes('data-action="set-alert"'), 'Should have set-alert buttons');
+    assert.ok(singleRouteHtml.includes('data-action="show-chips"'), 'Should have show-chips buttons');
     assert.ok(singleRouteHtml.includes('data-route-id="Red"'), 'Should have route ID in data attribute');
     assert.ok(singleRouteHtml.includes('data-direction-id="0"'), 'Should have direction 0 button');
     assert.ok(singleRouteHtml.includes('data-direction-id="1"'), 'Should have direction 1 button');
@@ -278,7 +278,7 @@ function testDirectionButtons() {
     assert.ok(multiRouteHtml.includes('stop-popup__route-label'), 'Multi-route should show route labels');
     assert.ok(multiRouteHtml.includes('Red:'), 'Should show Red route label');
     assert.ok(multiRouteHtml.includes('Green-B:'), 'Should show Green-B route label');
-    const alertButtons = multiRouteHtml.match(/data-action="set-alert"/g);
+    const alertButtons = multiRouteHtml.match(/data-action="show-chips"/g);
     assert.strictEqual(alertButtons.length, 4, 'Should have 4 direction buttons (2 per route)');
     console.log('✓ Multi-route direction buttons with labels');
 
@@ -293,7 +293,7 @@ function testDirectionButtons() {
     });
     assert.ok(terminusHtml.includes('Alert me here'), 'Terminus should show "Alert me here" button');
     assert.ok(terminusHtml.includes('stop-popup__btn--terminus'), 'Should have terminus button class');
-    const terminusButtons = terminusHtml.match(/data-action="set-alert"/g);
+    const terminusButtons = terminusHtml.match(/data-action="show-chips"/g);
     assert.strictEqual(terminusButtons.length, 1, 'Terminus should have only 1 button');
     console.log('✓ Terminus stop single button');
 
@@ -308,7 +308,7 @@ function testDirectionButtons() {
     });
     assert.ok(configuredHtml.includes('stop-popup__alert-configured'), 'Should show configured indicator');
     // Direction 0 should be indicator, direction 1 should still be a button
-    const configuredButtons = configuredHtml.match(/data-action="set-alert"/g);
+    const configuredButtons = configuredHtml.match(/data-action="show-chips"/g);
     assert.strictEqual(configuredButtons.length, 1, 'Should have 1 button (other direction is configured)');
     assert.ok(configuredHtml.includes('data-direction-id="1"'), 'Remaining button should be for direction 1');
     console.log('✓ Already-configured alert shows indicator');
@@ -322,7 +322,7 @@ function testDirectionButtons() {
             { routeId: 'Red', routeName: 'Red', dir0Label: 'Ashmont', dir1Label: 'Alewife', isTerminus: false },
         ],
     });
-    const bothButtons = bothConfiguredHtml.match(/data-action="set-alert"/g);
+    const bothButtons = bothConfiguredHtml.match(/data-action="show-chips"/g);
     assert.ok(!bothButtons, 'Should have no buttons when both directions configured');
     const indicators = bothConfiguredHtml.match(/stop-popup__alert-configured/g);
     assert.strictEqual(indicators.length, 2, 'Should have 2 configured indicators');
@@ -345,7 +345,7 @@ function testDirectionButtons() {
     // Max pairs reached: no buttons, shows maximum reached message
     const maxHtml = formatStopPopup(stop, routes, { pairCount: 5, maxPairs: 5 });
     assert.ok(maxHtml.includes('5/5 alerts configured (maximum reached)'), 'Should show max reached message');
-    assert.ok(!maxHtml.includes('data-action="set-alert"'), 'Should not have buttons when max reached');
+    assert.ok(!maxHtml.includes('data-action="show-chips"'), 'Should not have buttons when max reached');
     console.log('✓ Max pairs state correct');
 
     // Counter shows alert count
@@ -363,7 +363,7 @@ function testDirectionButtons() {
     // Backward compatibility: formatStopPopup with no configState parameter
     const legacyHtml = formatStopPopup(stop, routes);
     assert.ok(legacyHtml.includes('0/5 alerts configured'), 'Should use default pair count of 0');
-    assert.ok(!legacyHtml.includes('data-action="set-alert"'), 'Should not show buttons in legacy mode');
+    assert.ok(!legacyHtml.includes('data-action="show-chips"'), 'Should not show buttons in legacy mode');
     console.log('✓ Backward compatibility maintained');
 
     // HTML escaping in direction labels
@@ -383,6 +383,82 @@ function testDirectionButtons() {
 }
 
 /**
+ * Test buildChipPickerHtml function
+ */
+function testBuildChipPickerHtml() {
+    // Test 1: Basic chip picker HTML generation
+    const html = buildChipPickerHtml('stop1', 'Red', 0);
+
+    // Verify structure
+    assert.ok(html.includes('class="chip-picker"'), 'Should have chip-picker container');
+    assert.ok(html.includes('class="chip-picker__chips"'), 'Should have chips container');
+    assert.ok(html.includes('class="chip-picker__custom"'), 'Should have custom input container');
+
+    // Verify data attributes
+    assert.ok(html.includes('data-stop-id="stop1"'), 'Should have stop ID in data attribute');
+    assert.ok(html.includes('data-route-id="Red"'), 'Should have route ID in data attribute');
+    assert.ok(html.includes('data-direction-id="0"'), 'Should have direction ID in data attribute');
+
+    console.log('✓ buildChipPickerHtml basic structure');
+
+    // Test 2: Verify all 5 chips are present with correct counts
+    assert.ok(html.includes('data-count="1"'), 'Should have chip with count 1');
+    assert.ok(html.includes('data-count="2"'), 'Should have chip with count 2');
+    assert.ok(html.includes('data-count="3"'), 'Should have chip with count 3');
+    assert.ok(html.includes('data-count="custom"'), 'Should have chip with count custom');
+    assert.ok(html.includes('data-count="unlimited"'), 'Should have chip with count unlimited');
+
+    // Verify chip text content
+    assert.ok(html.includes('>1</button>'), 'Should have chip text "1"');
+    assert.ok(html.includes('>2</button>'), 'Should have chip text "2"');
+    assert.ok(html.includes('>3</button>'), 'Should have chip text "3"');
+    assert.ok(html.includes('>#</button>'), 'Should have chip text "#"');
+    assert.ok(html.includes('>∞</button>'), 'Should have chip text "∞"');
+
+    console.log('✓ buildChipPickerHtml all chips present');
+
+    // Test 3: Verify chip 1 is pre-selected
+    const selectedMatch = html.match(/class="chip-picker__chip[^"]*--selected"[^>]*data-count="1"/);
+    assert.ok(selectedMatch, 'Chip with count 1 should have --selected class');
+
+    console.log('✓ buildChipPickerHtml chip 1 pre-selected');
+
+    // Test 4: Verify custom input area
+    assert.ok(html.includes('type="number"'), 'Should have number input');
+    assert.ok(html.includes('class="chip-picker__input"'), 'Should have input with chip-picker__input class');
+    assert.ok(html.includes('min="1"'), 'Input should have min="1"');
+    assert.ok(html.includes('max="99"'), 'Input should have max="99"');
+    assert.ok(html.includes('placeholder="1-99"'), 'Input should have placeholder');
+    assert.ok(html.includes('class="chip-picker__confirm"'), 'Should have confirm button');
+
+    console.log('✓ buildChipPickerHtml custom input area');
+
+    // Test 5: Verify "Set Alert" button
+    assert.ok(html.includes('data-action="create-alert"'), 'Should have create-alert action');
+    assert.ok(html.includes('>Set Alert</button>'), 'Should have "Set Alert" button text');
+    assert.ok(html.includes('data-count="1"'), 'Set Alert button should default to count 1');
+
+    console.log('✓ buildChipPickerHtml Set Alert button');
+
+    // Test 6: HTML escaping in stopId and routeId
+    const escapedHtml = buildChipPickerHtml('stop<xss>', 'Red&Co', 1);
+    assert.ok(!escapedHtml.includes('<xss>'), 'Should escape HTML in stopId');
+    assert.ok(!escapedHtml.includes('Red&Co'), 'Should escape ampersand in routeId');
+    assert.ok(escapedHtml.includes('&lt;xss&gt;'), 'Should contain escaped stopId');
+    assert.ok(escapedHtml.includes('Red&amp;Co'), 'Should contain escaped routeId');
+
+    console.log('✓ buildChipPickerHtml HTML escaping');
+
+    // Test 7: Different direction IDs
+    const dir1Html = buildChipPickerHtml('stop2', 'Green-B', 1);
+    assert.ok(dir1Html.includes('data-direction-id="1"'), 'Should handle direction ID 1');
+
+    console.log('✓ buildChipPickerHtml different direction IDs');
+
+    console.log('✓ All buildChipPickerHtml tests passed');
+}
+
+/**
  * Run all tests
  */
 function runTests() {
@@ -391,6 +467,7 @@ function runTests() {
     testEscapeHtml();
     testFormatStopPopup();
     testDirectionButtons();
+    testBuildChipPickerHtml();
 
     console.log('\n✓ All tests passed!');
 }
