@@ -66,7 +66,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Expects**: Leaflet `L` global available. `config.map.*`, `config.tiles.*` set.
 
 ### stop-markers.js -- Stop Marker Rendering & Notification Config
-- **Exposes**: `initStopMarkers(map)`, `updateVisibleStops(routeIds)`, `computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap)`, `refreshAllHighlights()`
+- **Exposes**: `initStopMarkers(map, apiEventsTarget)`, `updateVisibleStops(routeIds)`, `computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap)`, `refreshAllHighlights()`
 - **Guarantees**: Renders lightweight SVG circle markers for stops on visible routes (AC1.1).
   Creates one marker per unique stop (deduplication for stops on multiple routes, AC1.5).
   First visible route to claim a stop sets its color (no visual stacking).
@@ -83,7 +83,8 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Sanitizes error messages with `escapeHtml()` before rendering to DOM (defense-in-depth for unsanitized API strings).
   Imports `buildChipPickerHtml` from `stop-popup.js` for chip picker HTML generation on direction button click.
   Centralized success/error handling for alert creation: after `addNotificationPair()` resolves, calls `highlightConfiguredStop()`, `updateNotificationStatus()`, `renderPanel()`, and closes popup on success; shows inline error message on failure.
-- **Expects**: Leaflet `L` global available. `map.js` exports for stop data, route-stop mapping, and route colors. `stop-popup.js` for popup content formatting (`formatStopPopup`), chip picker HTML generation (`buildChipPickerHtml`), and HTML escaping (`escapeHtml`). `notifications.js` for pair management (`addNotificationPair`, `getNotificationPairs`), MAX_PAIRS constant. `notification-ui.js` for status/panel updates (`updateStatus`, `renderPanel`).
+  Listens for `notification:pair-expired` CustomEvent on apiEventsTarget to refresh stop highlights when pairs auto-delete.
+- **Expects**: Leaflet `L` global available. `map.js` exports for stop data, route-stop mapping, and route colors. `stop-popup.js` for popup content formatting (`formatStopPopup`), chip picker HTML generation (`buildChipPickerHtml`), and HTML escaping (`escapeHtml`). `notifications.js` for pair management (`addNotificationPair`, `getNotificationPairs`), MAX_PAIRS constant. `notification-ui.js` for status/panel updates (`updateStatus`, `renderPanel`). `apiEventsTarget` EventTarget for listening to `notification:pair-expired` events (optional, defaults to null).
 
 ### vehicle-math.js -- Pure Math
 - **Exposes**: `lerp(a, b, t)`, `easeOutCubic(t)`, `lerpAngle(a, b, t)`, `haversineDistance(lat1, lon1, lat2, lon2)`, `darkenHexColor(hex, amount)`, `bearingToTransform(bearing)`
@@ -146,7 +147,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Expects**: `apiEvents` EventTarget emitting `vehicles:update` and `vehicles:add` with vehicle detail objects. `stopsData` Map from `map.js` for stop name lookups. Vehicle object must have {id, stopId, routeId, directionId, label} properties. Stores apiEventsTarget reference for event dispatch.
 
 ### notification-ui.js -- Notification Status and Panel UI
-- **Exposes**: `formatPairForDisplay(pair, stopsData, routeMetadata)`, `initNotificationUI(statusElement)`, `updateStatus()`,
+- **Exposes**: `formatPairForDisplay(pair, stopsData, routeMetadata)`, `initNotificationUI(statusElement, apiEventsTarget)`, `updateStatus()`,
   `initNotificationPanel(panelElement, toggleButton)`, `renderPanel()`
 - **Guarantees**: Status indicator shows current state: active (green), blocked (red), default (gray), paused (amber), or hidden.
   Updates immediately on config or permission changes.
@@ -172,10 +173,12 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   AC4.5: Selecting a count on an unlimited pair converts it to counted (remainingCount = count).
   Helper functions: `buildPanelChipPickerHtml(pairId, currentCount)` generates chip picker HTML for editing pair counts.
   Helper function: `bindPanelChipPicker(picker, pairId)` binds chip selection, custom input, and apply interactions.
+  Listens for `notification:pair-expired` CustomEvent on apiEventsTarget to update status and panel when pairs auto-delete.
 - **Expects**: `#notification-status` and `#notification-panel` elements in DOM.
   `notifications.js` functions for state queries (`getNotificationPairs()`, `getPermissionState()`, `requestPermission()`, `isPaused()`, `togglePause()`, `removeNotificationPair()`, `updatePairCount()`).
   `getStopData()` and `getRouteMetadata()` from `map.js` for name resolution.
   `escapeHtml()` from `stop-popup.js` for HTML escaping.
+  `apiEventsTarget` EventTarget for listening to `notification:pair-expired` events (optional, defaults to null).
 
 ### route-stops-cache.js -- Route-Stops Cache
 - **Exposes**: `getCachedRouteStops(routeIds, ttlMs)`, `setCachedRouteStops(routeId, stopIds)`, `clearRouteStopsCache()`
