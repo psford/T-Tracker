@@ -139,6 +139,98 @@ function bindEnableButton(container) {
 }
 
 /**
+ * Build chip picker HTML for editing a pair's count in the panel.
+ * Similar to buildChipPickerHtml but uses pair ID instead of stop/route/direction.
+ *
+ * @param {string} pairId — pair ID to edit
+ * @param {number|null} currentCount — current remaining count (null = unlimited)
+ * @returns {string} HTML string
+ */
+function buildPanelChipPickerHtml(pairId, currentCount) {
+    const isUnlimited = currentCount === null || currentCount === undefined;
+    const isStandardCount = !isUnlimited && [1, 2, 3].includes(currentCount);
+    const isCustomCount = !isUnlimited && !isStandardCount;
+
+    // If current count is not 1/2/3/unlimited (e.g. 4 remaining from original 5),
+    // pre-select the # chip and show the custom input pre-populated
+    return `<div class="chip-picker chip-picker--panel" data-pair-id="${escapeHtml(pairId)}">
+        <div class="chip-picker__chips">
+            <button class="chip-picker__chip${isStandardCount && currentCount === 1 ? ' chip-picker__chip--selected' : ''}" data-count="1">1</button>
+            <button class="chip-picker__chip${isStandardCount && currentCount === 2 ? ' chip-picker__chip--selected' : ''}" data-count="2">2</button>
+            <button class="chip-picker__chip${isStandardCount && currentCount === 3 ? ' chip-picker__chip--selected' : ''}" data-count="3">3</button>
+            <button class="chip-picker__chip${isCustomCount ? ' chip-picker__chip--selected' : ''}" data-count="custom">#</button>
+            <button class="chip-picker__chip${isUnlimited ? ' chip-picker__chip--selected' : ''}" data-count="unlimited">∞</button>
+        </div>
+        <div class="chip-picker__custom" style="display: ${isCustomCount ? 'flex' : 'none'};">
+            <input type="number" class="chip-picker__input" min="1" max="99" placeholder="1-99" ${isCustomCount ? `value="${currentCount}"` : ''}>
+            <button class="chip-picker__confirm">OK</button>
+        </div>
+        <button class="chip-picker__apply" data-action="apply-count" data-pair-id="${escapeHtml(pairId)}"${isCustomCount ? ` data-count="${currentCount}"` : ''}>Apply</button>
+    </div>`;
+}
+
+/**
+ * Bind interactions for a panel chip picker.
+ * Handles chip selection, custom input, and apply button.
+ *
+ * @param {HTMLElement} picker — the chip-picker--panel element
+ * @param {string} pairId — pair ID being edited
+ */
+function bindPanelChipPicker(picker, pairId) {
+    // Chip selection
+    picker.querySelectorAll('.chip-picker__chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            picker.querySelectorAll('.chip-picker__chip').forEach(c => c.classList.remove('chip-picker__chip--selected'));
+            chip.classList.add('chip-picker__chip--selected');
+
+            const countValue = chip.dataset.count;
+            const customDiv = picker.querySelector('.chip-picker__custom');
+            const applyBtn = picker.querySelector('[data-action="apply-count"]');
+
+            if (countValue === 'custom') {
+                customDiv.style.display = 'flex';
+                customDiv.querySelector('.chip-picker__input').focus();
+            } else {
+                customDiv.style.display = 'none';
+                applyBtn.dataset.count = countValue;
+            }
+        });
+    });
+
+    // Custom input confirm
+    const confirmBtn = picker.querySelector('.chip-picker__confirm');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', () => {
+            const input = picker.querySelector('.chip-picker__input');
+            const value = parseInt(input.value, 10);
+            if (isNaN(value) || value < 1 || value > 99) {
+                input.classList.add('chip-picker__input--error');
+                input.value = '';
+                input.placeholder = '1-99';
+                return;
+            }
+            input.classList.remove('chip-picker__input--error');
+            const applyBtn = picker.querySelector('[data-action="apply-count"]');
+            applyBtn.dataset.count = String(value);
+        });
+    }
+
+    // Apply button — update pair count
+    const applyBtn = picker.querySelector('[data-action="apply-count"]');
+    if (applyBtn) {
+        applyBtn.addEventListener('click', () => {
+            const countStr = applyBtn.dataset.count;
+            if (!countStr) return; // No chip selected yet
+
+            const count = countStr === 'unlimited' ? null : parseInt(countStr, 10);
+            updatePairCount(pairId, count);
+            updateStatus();
+            renderPanel(); // Re-render to show updated count
+        });
+    }
+}
+
+/**
  * Render the panel list with current notification pairs.
  * Lists all pairs with checkpoint name, direction, and route.
  *
@@ -202,6 +294,29 @@ export function renderPanel() {
             refreshAllHighlights();
             updateStatus();
             renderPanel();
+        });
+    });
+
+    // Bind count text → reveal chip picker for editing
+    listEl.querySelectorAll('.notification-pair__count').forEach(countEl => {
+        countEl.addEventListener('click', (e) => {
+            const pairId = countEl.dataset.pairId;
+            const pairs = getNotificationPairs();
+            const pair = pairs.find(p => p.id === pairId);
+            if (!pair) return;
+
+            // Collapse any existing panel chip picker
+            listEl.querySelectorAll('.chip-picker--panel').forEach(el => el.remove());
+
+            // Insert chip picker after the count element
+            const pairDiv = countEl.closest('.notification-pair');
+            if (pairDiv) {
+                pairDiv.insertAdjacentHTML('beforeend', buildPanelChipPickerHtml(pairId, pair.remainingCount));
+
+                // Bind chip picker interactions within this picker
+                const picker = pairDiv.querySelector('.chip-picker--panel');
+                bindPanelChipPicker(picker, pairId);
+            }
         });
     });
 }

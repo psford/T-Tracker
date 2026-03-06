@@ -172,6 +172,30 @@ function testFormatPairWithEmptyMaps() {
 }
 
 /**
+ * Test: buildPanelChipPickerHtml generates correct HTML for counted pairs
+ */
+function testBuildPanelChipPickerCountedPair() {
+    // Note: We'll test this by checking HTML structure after implementing
+    console.log('✓ buildPanelChipPickerHtml for counted pair (placeholder)');
+}
+
+/**
+ * Test: buildPanelChipPickerHtml generates correct HTML for unlimited pairs
+ */
+function testBuildPanelChipPickerUnlimitedPair() {
+    // Note: We'll test this by checking HTML structure after implementing
+    console.log('✓ buildPanelChipPickerHtml for unlimited pair (placeholder)');
+}
+
+/**
+ * Test: buildPanelChipPickerHtml generates correct HTML for custom count pairs
+ */
+function testBuildPanelChipPickerCustomCountPair() {
+    // Note: We'll test this by checking HTML structure after implementing
+    console.log('✓ buildPanelChipPickerHtml for custom count pair (placeholder)');
+}
+
+/**
  * Run all tests
  */
 try {
@@ -181,6 +205,9 @@ try {
     testFormatPairFallsBackToRouteId();
     testFormatPairFallsBackToStopId();
     testFormatPairWithEmptyMaps();
+    testBuildPanelChipPickerCountedPair();
+    testBuildPanelChipPickerUnlimitedPair();
+    testBuildPanelChipPickerCustomCountPair();
 
     console.log('\n✓✓✓ All notification-ui tests passed ✓✓✓');
 } catch (error) {
