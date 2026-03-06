@@ -1,6 +1,6 @@
 # T-Tracker Source Modules
 
-Last verified: 2026-03-04
+Last verified: 2026-03-06
 
 ## Purpose
 Fourteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
@@ -147,9 +147,10 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Expects**: `apiEvents` EventTarget emitting `vehicles:update` and `vehicles:add` with vehicle detail objects. `stopsData` Map from `map.js` for stop name lookups. Vehicle object must have {id, stopId, routeId, directionId, label} properties. Stores apiEventsTarget reference for event dispatch.
 
 ### notification-ui.js -- Notification Status and Panel UI
-- **Exposes**: `formatPairForDisplay(pair, stopsData, routeMetadata)`, `initNotificationUI(statusElement, apiEventsTarget)`, `updateStatus()`,
+- **Exposes**: `formatCountDisplay(remainingCount)`, `formatPairForDisplay(pair, stopsData, routeMetadata)`, `initNotificationUI(statusElement, apiEventsTarget)`, `updateStatus()`,
   `initNotificationPanel(panelElement, toggleButton)`, `renderPanel()`
-- **Guarantees**: Status indicator shows current state: active (green), blocked (red), default (gray), paused (amber), or hidden.
+- **Guarantees**: `formatCountDisplay(remainingCount)` returns human-readable count string: "N remaining" for numbers, "unlimited" with infinity symbol for null.
+  Status indicator shows current state: active (green), blocked (red), default (gray), paused (amber), or hidden.
   Updates immediately on config or permission changes.
   "Enable" button triggers permission request from user gesture context.
   Detects permission revocation on tab focus via visibilitychange event.
