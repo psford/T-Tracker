@@ -203,56 +203,24 @@ function escapeHtmlTest(text) {
 }
 
 /**
- * Test: AC4.1 — Pair with remainingCount=3 displays "3 remaining" in rendered HTML
+ * Test: AC4.1 — formatCountDisplay returns "N remaining" for counted pairs
  */
-function testCountDisplayForCountedPair() {
-    const pair = { id: 'pair1', checkpointStopId: 'stop1', routeId: 'Red', directionId: 0, remainingCount: 3, totalCount: 3 };
-    const countDisplay = pair.remainingCount === null || pair.remainingCount === undefined
-        ? '∞ unlimited'
-        : `${pair.remainingCount} remaining`;
+async function testCountDisplayForCountedPair() {
+    const { formatCountDisplay } = await import('../src/notification-ui.js');
 
+    const countDisplay = formatCountDisplay(3);
     assert.strictEqual(countDisplay, '3 remaining', 'Should display "3 remaining"');
-
-    // Verify HTML structure would contain the count element
-    const pairHtml = `
-        <div class="notification-pair" data-pair-id="${escapeHtmlTest(pair.id)}">
-            <div>
-                <div class="notification-pair__info">Stop → Direction</div>
-                <div class="notification-pair__route">Route</div>
-                <div class="notification-pair__count" data-pair-id="${escapeHtmlTest(pair.id)}">${countDisplay}</div>
-            </div>
-        </div>
-    `;
-
-    assert(pairHtml.includes('3 remaining'), 'HTML should contain "3 remaining"');
-    assert(pairHtml.includes('notification-pair__count'), 'HTML should contain count element');
     console.log('✓ AC4.1 — Counted pair displays "N remaining"');
 }
 
 /**
- * Test: AC4.1 — Pair with remainingCount=null displays "∞ unlimited" in rendered HTML
+ * Test: AC4.1 — formatCountDisplay returns "∞ unlimited" for unlimited pairs
  */
-function testCountDisplayForUnlimitedPair() {
-    const pair = { id: 'pair2', checkpointStopId: 'stop1', routeId: '39', directionId: 1, remainingCount: null, totalCount: null };
-    const countDisplay = pair.remainingCount === null || pair.remainingCount === undefined
-        ? '∞ unlimited'
-        : `${pair.remainingCount} remaining`;
+async function testCountDisplayForUnlimitedPair() {
+    const { formatCountDisplay } = await import('../src/notification-ui.js');
 
+    const countDisplay = formatCountDisplay(null);
     assert.strictEqual(countDisplay, '∞ unlimited', 'Should display "∞ unlimited"');
-
-    // Verify HTML structure would contain the count element
-    const pairHtml = `
-        <div class="notification-pair" data-pair-id="${escapeHtmlTest(pair.id)}">
-            <div>
-                <div class="notification-pair__info">Stop → Direction</div>
-                <div class="notification-pair__route">Route</div>
-                <div class="notification-pair__count" data-pair-id="${escapeHtmlTest(pair.id)}">${countDisplay}</div>
-            </div>
-        </div>
-    `;
-
-    assert(pairHtml.includes('∞ unlimited'), 'HTML should contain "∞ unlimited"');
-    assert(pairHtml.includes('notification-pair__count'), 'HTML should contain count element');
     console.log('✓ AC4.1 — Unlimited pair displays "∞ unlimited"');
 }
 
@@ -387,10 +355,10 @@ async function runAllTests() {
         testFormatPairFallsBackToRouteId();
         testFormatPairFallsBackToStopId();
         testFormatPairWithEmptyMaps();
-        testCountDisplayForCountedPair();
-        testCountDisplayForUnlimitedPair();
 
-        // Async tests for updatePairCount
+        // Async tests for count display and updatePairCount
+        await testCountDisplayForCountedPair();
+        await testCountDisplayForUnlimitedPair();
         await testUpdatePairCountPersistence();
         await testConvertCountedToUnlimited();
         await testConvertUnlimitedToCounted();

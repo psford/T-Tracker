@@ -9,6 +9,19 @@ let panelEl = null;
 let toggleBtn = null;
 
 /**
+ * Pure function to format count display for a notification pair.
+ * Exported for testing purposes.
+ *
+ * @param {number|null} remainingCount — remaining count (null = unlimited)
+ * @returns {string} — "N remaining" or "∞ unlimited"
+ */
+export function formatCountDisplay(remainingCount) {
+    return remainingCount === null || remainingCount === undefined
+        ? '∞ unlimited'
+        : `${remainingCount} remaining`;
+}
+
+/**
  * Pure function to format a notification pair for display.
  * Resolves stop and route names, and direction label.
  * Exported for testing purposes.
@@ -270,9 +283,7 @@ export function renderPanel() {
         const { checkpointName, directionLabel, routeName } = formatPairForDisplay(pair, stopsData, metadata);
 
         // Compute count display string
-        const countDisplay = pair.remainingCount === null || pair.remainingCount === undefined
-            ? '∞ unlimited'
-            : `${pair.remainingCount} remaining`;
+        const countDisplay = formatCountDisplay(pair.remainingCount);
 
         return `
             <div class="notification-pair" data-pair-id="${escapeHtml(pair.id)}">
@@ -298,9 +309,9 @@ export function renderPanel() {
     });
 
     // Bind count text → reveal chip picker for editing
-    listEl.querySelectorAll('.notification-pair__count').forEach(countEl => {
-        countEl.addEventListener('click', (e) => {
-            const pairId = countEl.dataset.pairId;
+    listEl.querySelectorAll('.notification-pair__count').forEach(pairCountEl => {
+        pairCountEl.addEventListener('click', () => {
+            const pairId = pairCountEl.dataset.pairId;
             const pairs = getNotificationPairs();
             const pair = pairs.find(p => p.id === pairId);
             if (!pair) return;
@@ -309,7 +320,7 @@ export function renderPanel() {
             listEl.querySelectorAll('.chip-picker--panel').forEach(el => el.remove());
 
             // Insert chip picker after the count element
-            const pairDiv = countEl.closest('.notification-pair');
+            const pairDiv = pairCountEl.closest('.notification-pair');
             if (pairDiv) {
                 pairDiv.insertAdjacentHTML('beforeend', buildPanelChipPickerHtml(pairId, pair.remainingCount));
 

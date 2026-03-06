@@ -164,9 +164,17 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Counter shows "X/5 pairs configured" (AC10.3).
   Toggle button shown/hidden based on pair count (AC10.4).
   Empty state shows "No notifications configured" (AC10.5).
+  AC4.1: Each pair displays "N remaining" (or "∞ unlimited") count below route name.
+  AC4.2: Tapping the count text reveals inline chip picker for editing.
+  AC4.3: Selecting a new count updates the pair's remainingCount and totalCount via `updatePairCount()` and persists to localStorage.
+  AC4.4: Selecting ∞ on a counted pair converts it to unlimited (remainingCount = null).
+  AC4.5: Selecting a count on an unlimited pair converts it to counted (remainingCount = count).
+  Helper functions: `buildPanelChipPickerHtml(pairId, currentCount)` generates chip picker HTML for editing pair counts.
+  Helper function: `bindPanelChipPicker(picker, pairId)` binds chip selection, custom input, and apply interactions.
 - **Expects**: `#notification-status` and `#notification-panel` elements in DOM.
-  `notifications.js` functions for state queries (`getNotificationPairs()`, `getPermissionState()`, `requestPermission()`, `isPaused()`, `togglePause()`, `removeNotificationPair()`).
+  `notifications.js` functions for state queries (`getNotificationPairs()`, `getPermissionState()`, `requestPermission()`, `isPaused()`, `togglePause()`, `removeNotificationPair()`, `updatePairCount()`).
   `getStopData()` and `getRouteMetadata()` from `map.js` for name resolution.
+  `escapeHtml()` from `stop-popup.js` for HTML escaping.
 
 ### route-stops-cache.js -- Route-Stops Cache
 - **Exposes**: `getCachedRouteStops(routeIds, ttlMs)`, `setCachedRouteStops(routeId, stopIds)`, `clearRouteStopsCache()`
