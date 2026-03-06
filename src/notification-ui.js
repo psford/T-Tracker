@@ -188,7 +188,7 @@ function buildPanelChipPickerHtml(pairId, currentCount) {
             <input type="number" class="chip-picker__input" min="1" max="99" placeholder="1-99" ${isCustomCount ? `value="${currentCount}"` : ''}>
             <button class="chip-picker__confirm">OK</button>
         </div>
-        <button class="chip-picker__apply" data-action="apply-count" data-pair-id="${escapeHtml(pairId)}"${isCustomCount ? ` data-count="${currentCount}"` : ''}>Apply</button>
+        <button class="chip-picker__apply" data-action="apply-count" data-pair-id="${escapeHtml(pairId)}"${isStandardCount ? ` data-count="${currentCount}"` : ''}${isUnlimited ? ' data-count="unlimited"' : ''}${isCustomCount ? ` data-count="${currentCount}"` : ''}>Apply</button>
     </div>`;
 }
 

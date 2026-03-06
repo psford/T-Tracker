@@ -275,100 +275,16 @@ node tests/ui.test.js
 node tests/vehicle-popup.test.js
 ```
 
-## Notification Expiry (Phase 2): Chip Picker UI Component
-
-### Overview
-
-Notification expiry Phase 2 introduces a chip picker inline count selector for notification pair creation. Users tap a direction button in a stop popup to reveal a count picker, then tap a chip to create the alert with that count.
-
-### Architecture
-
-**Pure HTML generation:** `stop-popup.js` exports `buildChipPickerHtml(stopId, routeId, directionId)` — a pure function that generates the chip picker HTML structure without side effects.
-
-**Event delegation:** `stop-markers.js` handles all chip picker interactions via event delegation on the popup `popupopen` Leaflet event:
-- Direction button tap (`data-action="show-chips"`) inserts chip picker HTML below the button
-- Chip tap updates the "Set Alert" button's `data-count` attribute and visual selection state
-- Custom chip (#) reveals inline number input for 1-99
-- "Set Alert" button tap calls `addNotificationPair()` with the selected count
-
-**Centralized error handling:** Helper function `handleAlertResult()` encapsulates success/error flow after `addNotificationPair()`:
-- Success: highlight stop marker, update notification status, render panel, close popup
-- Error: display inline error message in popup
-
-### Component Structure
-
-```html
-<div class="chip-picker" data-stop-id="..." data-route-id="..." data-direction-id="...">
-  <div class="chip-picker__chips">
-    <button data-count="1" class="chip-picker__chip chip-picker__chip--selected">1</button>
-    <button data-count="2" class="chip-picker__chip">2</button>
-    <button data-count="3" class="chip-picker__chip">3</button>
-    <button data-count="custom" class="chip-picker__chip">#</button>
-    <button data-count="unlimited" class="chip-picker__chip">∞</button>
-  </div>
-  <div class="chip-picker__custom" style="display: none;">
-    <input type="number" class="chip-picker__input" min="1" max="99" placeholder="1-99">
-    <button class="chip-picker__confirm">OK</button>
-  </div>
-  <button class="chip-picker__create" data-action="create-alert" data-count="1">Set Alert</button>
-</div>
-```
-
-### Two-Tap Alert Creation Flow
-
-1. **Tap 1: Direction Button** — User taps "→ Downtown" or "→ Uptown" in stop popup
-   - Triggers `show-chips` event delegation handler
-   - Inserts `buildChipPickerHtml()` below the button
-   - Collapses any other open chip picker in the same popup (AC1.7)
-
-2. **Tap 2: Count Selection**
-   - Tapping a chip updates visual state and `createBtn.dataset.count`
-   - Tapping `#` reveals custom input, user enters 1-99, taps OK to create alert
-   - Tapping any other chip directly creates alert (no extra confirmation)
-
-3. **Alert Creation** — `handleAlertResult()` processes creation result
-
-### CSS Styling
-
-Chip picker styles follow dark theme patterns (backgrounds #1a1a2e, borders #333, text #e0e0e0):
-- `.chip-picker__chips` — flex row with 4px gap
-- `.chip-picker__chip` — rounded button, transitions on hover/select
-- `.chip-picker__chip--selected` — blue background (#4a9eff) with white text
-- `.chip-picker__custom` — hidden by default, flex row for input + confirm button
-- `.chip-picker__input` — number input with error state (red border on validation failure)
-- `.chip-picker__create` — green "Set Alert" button (full width)
-
-### Validation
-
-Custom count input validation (AC1.6):
-- Rejects non-numeric, 0, negative, >99 values
-- Adds error class to input border (red #ff6b6b)
-- Clears input and shows hint "1-99"
-
 ## Notification Expiry
 
 ### Overview
 
-Notification expiry Phase 4 completes the countdown mechanism with UI integration. When a pair's remaining count reaches 0, the pair is auto-deleted from localStorage and the UI updates immediately to reflect the change.
+Notification expiry is a four-phase feature that introduces countdown-based notification pairs with progressive UI integration. Users select a count (1, 2, 3, custom, or unlimited) when creating an alert, and the pair auto-deletes when remaining count reaches 0, with immediate UI updates.
 
-### Architecture
+### Data Model
 
-**Countdown mechanism:** Each notification pair stores `remainingCount` (number of alerts left) and `totalCount` (original count selected). When a matching vehicle is detected:
-1. If `remainingCount` is null, the pair is unlimited — no decrement, never expires
-2. If `remainingCount` is a number, it decrements by 1 after each notification
-3. When `remainingCount` reaches 0, the pair is removed from the pairs array and localStorage
-4. A `notification:pair-expired` CustomEvent is emitted to notify the UI
+Each notification pair stores `remainingCount` (number of alerts left) and `totalCount` (original count selected):
 
-**UI integration:** Three modules listen for `notification:pair-expired`:
-1. `stop-markers.js` — calls `refreshAllHighlights()` to unhighlight the stop marker if no other pairs remain for that stop
-2. `notification-ui.js` — calls `updateStatus()` and `renderPanel()` to update the alerts panel and status indicator
-3. No app-level listener needed — module-level event handlers manage the flow
-
-**Data migration:** Existing pairs without count fields (created before expiry feature) automatically migrate to unlimited (remainingCount=null, totalCount=null) on load, preserving their lifetime.
-
-### Implementation Details
-
-**Pair data model:** Each pair contains:
 ```javascript
 {
   id: string,                    // unique identifier
@@ -380,14 +296,7 @@ Notification expiry Phase 4 completes the countdown mechanism with UI integratio
 }
 ```
 
-**Event flow on auto-delete:**
-1. `checkAllPairs()` detects `remainingCount <= 0`
-2. Pair is removed from pairs array
-3. `writeConfig()` saves updated pairs to localStorage
-4. `notification:pair-expired` event dispatched with `{pairId, checkpointStopId}` detail
-5. Subscribed modules update their UI state
-
-**localStorage format:** The config entry (`ttracker-notifications-config`) now includes pairs with optional count fields:
+**localStorage format:** The config entry (`ttracker-notifications-config`) includes pairs with optional count fields:
 ```json
 [
   {
@@ -409,17 +318,89 @@ Notification expiry Phase 4 completes the countdown mechanism with UI integratio
 ]
 ```
 
-### UI Updates
+### Chip Picker UI (Phase 2)
 
-**Stop marker highlights:** When a pair expires, the stop marker is unhighlighted if it has no remaining configured pairs.
+**Overview:** Phase 2 introduces a chip picker inline count selector for notification pair creation. Users tap a direction button in a stop popup to reveal a count picker, then tap a chip to create the alert with that count.
 
-**Alerts panel:** The panel rerenders immediately to remove the expired pair entry. The pair count ("X/5 alerts") updates.
+**Pure HTML generation:** `stop-popup.js` exports `buildChipPickerHtml(stopId, routeId, directionId)` — a pure function that generates the chip picker HTML structure without side effects.
 
-**Status indicator:** The pair count in the status label updates (e.g., "Active: 4 alerts — Pause" when count drops from 5 to 4).
+**Event delegation:** `stop-markers.js` handles all chip picker interactions via event delegation on the popup `popupopen` Leaflet event:
+- Direction button tap (`data-action="show-chips"`) inserts chip picker HTML below the button
+- Chip tap updates the "Set Alert" button's `data-count` attribute and visual selection state
+- Custom chip (#) reveals inline number input for 1-99
+- "Set Alert" button tap calls `addNotificationPair()` with the selected count
+
+**Centralized error handling:** Helper function `handleAlertResult()` encapsulates success/error flow after `addNotificationPair()`:
+- Success: highlight stop marker, update notification status, render panel, close popup
+- Error: display inline error message in popup
+
+**Component structure:**
+```html
+<div class="chip-picker" data-stop-id="..." data-route-id="..." data-direction-id="...">
+  <div class="chip-picker__chips">
+    <button data-count="1" class="chip-picker__chip chip-picker__chip--selected">1</button>
+    <button data-count="2" class="chip-picker__chip">2</button>
+    <button data-count="3" class="chip-picker__chip">3</button>
+    <button data-count="custom" class="chip-picker__chip">#</button>
+    <button data-count="unlimited" class="chip-picker__chip">∞</button>
+  </div>
+  <div class="chip-picker__custom" style="display: none;">
+    <input type="number" class="chip-picker__input" min="1" max="99" placeholder="1-99">
+    <button class="chip-picker__confirm">OK</button>
+  </div>
+  <button class="chip-picker__create" data-action="create-alert" data-count="1">Set Alert</button>
+</div>
+```
+
+**Two-tap alert creation flow:**
+1. **Tap 1: Direction Button** — User taps "→ Downtown" or "→ Uptown" in stop popup, triggers `show-chips` event handler, inserts chip picker below button, collapses other open pickers
+2. **Tap 2: Count Selection** — Tapping a standard chip (1/2/3) directly creates alert; tapping # reveals custom input for 1-99; tapping ∞ creates unlimited alert
+3. **Alert Creation** — `handleAlertResult()` processes creation result
+
+**CSS styling:** Chip picker follows dark theme (backgrounds #1a1a2e, borders #333, text #e0e0e0):
+- `.chip-picker__chips` — flex row with 4px gap
+- `.chip-picker__chip` — rounded button, transitions on hover/select
+- `.chip-picker__chip--selected` — blue background (#4a9eff) with white text
+- `.chip-picker__custom` — hidden by default, flex row for input + confirm button
+- `.chip-picker__input` — number input with error state (red border on validation failure)
+- `.chip-picker__create` — green "Set Alert" button (full width)
+
+**Validation:** Custom count input validation rejects non-numeric, 0, negative, >99 values; adds error class to input border (red #ff6b6b); clears input and shows hint "1-99".
+
+### Alerts Panel Editing (Phase 3)
+
+**Count editing:** In the notification panel, users click on the count display ("3 remaining", "∞ unlimited") to reveal a chip picker for editing the pair's remaining count.
+
+**Apply button:** After selecting a new count (standard, custom, or unlimited), the Apply button updates the pair's remaining count in localStorage and immediately rerenders the panel to reflect the change.
+
+### Auto-Delete and Event Integration (Phase 4)
+
+**Countdown mechanism:** When a matching vehicle is detected:
+1. If `remainingCount` is null, the pair is unlimited — no decrement, never expires
+2. If `remainingCount` is a number, it decrements by 1 after each notification
+3. When `remainingCount` reaches 0, the pair is removed from the pairs array and localStorage
+4. A `notification:pair-expired` CustomEvent is emitted to notify the UI
+
+**Event flow on auto-delete:**
+1. `checkAllPairs()` detects `remainingCount <= 0`
+2. Pair is removed from pairs array
+3. `writeConfig()` saves updated pairs to localStorage
+4. `notification:pair-expired` event dispatched with `{pairId, checkpointStopId}` detail
+5. Subscribed modules update their UI state
+
+**UI integration:** Three modules listen for `notification:pair-expired`:
+1. `stop-markers.js` — calls `refreshAllHighlights()` to unhighlight the stop marker if no other pairs remain for that stop
+2. `notification-ui.js` — calls `updateStatus()` and `renderPanel()` to update the alerts panel and status indicator
+3. No app-level listener needed — module-level event handlers manage the flow
+
+**UI updates on expiry:**
+- **Stop marker highlights:** When a pair expires, the stop marker is unhighlighted if it has no remaining configured pairs
+- **Alerts panel:** The panel rerenders immediately to remove the expired pair entry; pair count ("X/5 alerts") updates
+- **Status indicator:** The pair count in the status label updates (e.g., "Active: 4 alerts — Pause" when count drops from 5 to 4)
 
 ### Backward Compatibility
 
-Existing pairs without count fields are automatically upgraded to unlimited on load with no user intervention. Users do not see any change in behavior — unlimited pairs continue to fire indefinitely as before.
+Existing pairs without count fields are automatically upgraded to unlimited (remainingCount=null, totalCount=null) on load with no user intervention. Users do not see any change in behavior — unlimited pairs continue to fire indefinitely as before.
 
 ## Security Considerations
 
@@ -467,4 +448,4 @@ Existing pairs without count fields are automatically upgraded to unlimited on l
 | 2026-02-11 | Bug fixes: tile retry backoff, route visibility logic, polyline typicality filtering, endpoint snapping, page load flash |
 | 2026-02-11 | Feature: pulsing directional indicators (headlights/taillights) on vehicle icons |
 | 2026-02-14 | Ferry service support: route type 4 (MBTA aqua #008EAA boat icon), Ferry group in UI (hidden by default), full API integration |
-| 2026-03-05 | Notification Expiry Phase 2: chip picker UI for count selection, two-tap alert creation flow, buildChipPickerHtml generation, centralized error handling |
+| 2026-03-05 | Notification expiry: countdown on fire, auto-delete at 0, chip picker UI for count selection, alerts panel count editing, pair-expired event integration, migration of existing pairs |

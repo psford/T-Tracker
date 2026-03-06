@@ -35,6 +35,34 @@ import {
 } from '../src/notifications.js';
 
 /**
+ * Mock the Notification API as a simple object with permission state.
+ * Supports requestPermission as an async method that returns current permission.
+ */
+function mockNotificationConstructor(permission = 'granted') {
+    globalThis.Notification = {
+        permission,
+        requestPermission: async function() {
+            return this.permission;
+        },
+    };
+}
+
+/**
+ * Mock the Notification API as a constructor function.
+ * Used for tests that verify notification firing behavior.
+ */
+function mockNotificationConstructorAsFunction(permission = 'granted') {
+    globalThis.Notification = function(title, options) {
+        this.title = title;
+        this.options = options;
+    };
+    globalThis.Notification.permission = permission;
+    globalThis.Notification.requestPermission = async function() {
+        return permission;
+    };
+}
+
+/**
  * Test validatePair pure validation function
  */
 function testValidatePair() {
@@ -79,12 +107,7 @@ async function testAddNotificationPair() {
     localStorage.clear();
 
     // Mock Notification API to avoid actual permission prompts
-    globalThis.Notification = {
-        permission: 'granted',
-        requestPermission: async function() {
-            return 'granted';
-        },
-    };
+    mockNotificationConstructor('granted');
 
     initNotifications(new EventTarget(), new Map());
 
@@ -126,12 +149,7 @@ async function testRemoveNotificationPair() {
     localStorage.clear();
 
     // Mock Notification API
-    globalThis.Notification = {
-        permission: 'granted',
-        requestPermission: async function() {
-            return 'granted';
-        },
-    };
+    mockNotificationConstructor('granted');
 
     initNotifications(new EventTarget(), new Map());
 
@@ -173,12 +191,7 @@ async function testLocalStoragePersistence() {
     localStorage.clear();
 
     // Mock Notification API
-    globalThis.Notification = {
-        permission: 'granted',
-        requestPermission: async function() {
-            return 'granted';
-        },
-    };
+    mockNotificationConstructor('granted');
 
     initNotifications(new EventTarget(), new Map());
 
@@ -203,12 +216,7 @@ async function testLocalStoragePersistence() {
  */
 async function testCorruptedLocalStorage() {
     // Mock Notification API
-    globalThis.Notification = {
-        permission: 'granted',
-        requestPermission: async function() {
-            return 'granted';
-        },
-    };
+    mockNotificationConstructor('granted');
 
     // Corrupted localStorage data discarded, starts fresh
     localStorage._store['ttracker-notifications-config'] = 'invalid json {[ garbage';
@@ -451,13 +459,7 @@ function testShouldNotifyParentResolution() {
  */
 async function testPermissionHandling() {
     // Mock Notification API
-    globalThis.Notification = {
-        permission: 'default',
-        requestPermission: async function() {
-            this.permission = 'granted';
-            return 'granted';
-        },
-    };
+    mockNotificationConstructor('default');
 
     // getPermissionState returns current permission
     let state = getPermissionState();
@@ -478,12 +480,7 @@ async function testPermissionHandling() {
     assert.strictEqual(result, 'denied', 'requestPermission should return denied when Notification undefined');
 
     // Restore mock for other tests
-    globalThis.Notification = {
-        permission: 'granted',
-        requestPermission: async function() {
-            return this.permission;
-        },
-    };
+    mockNotificationConstructor('granted');
 
     console.log('✓ permission handling tests passed');
 }
@@ -495,12 +492,7 @@ async function testAsyncAddNotificationPair() {
     localStorage.clear();
 
     // Mock Notification API in granted state
-    globalThis.Notification = {
-        permission: 'granted',
-        requestPermission: async function() {
-            return 'granted';
-        },
-    };
+    mockNotificationConstructor('granted');
 
     // Re-initialize to ensure fresh state
     initNotifications(new EventTarget(), new Map());
@@ -524,12 +516,7 @@ async function testWriteConfigQuotaError() {
     localStorage.clear();
 
     // Mock Notification API
-    globalThis.Notification = {
-        permission: 'granted',
-        requestPermission: async function() {
-            return 'granted';
-        },
-    };
+    mockNotificationConstructor('granted');
 
     // Initialize with fresh state
     initNotifications(new EventTarget(), new Map());
@@ -565,12 +552,7 @@ function testPauseResume() {
     localStorage.clear();
 
     // Mock Notification API
-    globalThis.Notification = {
-        permission: 'granted',
-        requestPermission: async function() {
-            return 'granted';
-        },
-    };
+    mockNotificationConstructor('granted');
 
     // Paused stops notifications
     pauseNotifications();
@@ -631,14 +613,7 @@ async function testCountdownDecrement() {
     localStorage.clear();
 
     // Mock Notification API as a constructor
-    globalThis.Notification = function(title, options) {
-        this.title = title;
-        this.options = options;
-    };
-    globalThis.Notification.permission = 'granted';
-    globalThis.Notification.requestPermission = async function() {
-        return 'granted';
-    };
+    mockNotificationConstructorAsFunction('granted');
 
     // Create EventTarget for event-driven testing
     const apiEventsTarget = new EventTarget();
@@ -681,14 +656,7 @@ async function testUnlimitedPair() {
     localStorage.clear();
 
     // Mock Notification API as a constructor
-    globalThis.Notification = function(title, options) {
-        this.title = title;
-        this.options = options;
-    };
-    globalThis.Notification.permission = 'granted';
-    globalThis.Notification.requestPermission = async function() {
-        return 'granted';
-    };
+    mockNotificationConstructorAsFunction('granted');
 
     const apiEventsTarget = new EventTarget();
     const stopsData = new Map([
@@ -729,14 +697,7 @@ async function testPersistenceAfterDecrement() {
     localStorage.clear();
 
     // Mock Notification API as a constructor
-    globalThis.Notification = function(title, options) {
-        this.title = title;
-        this.options = options;
-    };
-    globalThis.Notification.permission = 'granted';
-    globalThis.Notification.requestPermission = async function() {
-        return 'granted';
-    };
+    mockNotificationConstructorAsFunction('granted');
 
     const apiEventsTarget = new EventTarget();
     const stopsData = new Map([
@@ -776,14 +737,7 @@ async function testMultipleVehiclesDecrement() {
     localStorage.clear();
 
     // Mock Notification API as a constructor
-    globalThis.Notification = function(title, options) {
-        this.title = title;
-        this.options = options;
-    };
-    globalThis.Notification.permission = 'granted';
-    globalThis.Notification.requestPermission = async function() {
-        return 'granted';
-    };
+    mockNotificationConstructorAsFunction('granted');
 
     const apiEventsTarget = new EventTarget();
     const stopsData = new Map([
@@ -831,14 +785,7 @@ async function testAutoDeletion() {
     localStorage.clear();
 
     // Mock Notification API as a constructor
-    globalThis.Notification = function(title, options) {
-        this.title = title;
-        this.options = options;
-    };
-    globalThis.Notification.permission = 'granted';
-    globalThis.Notification.requestPermission = async function() {
-        return 'granted';
-    };
+    mockNotificationConstructorAsFunction('granted');
 
     const apiEventsTarget = new EventTarget();
     const stopsData = new Map([
@@ -965,14 +912,7 @@ async function testExpiryEventIntegration() {
     localStorage.clear();
 
     // Mock Notification API as a constructor
-    globalThis.Notification = function(title, options) {
-        this.title = title;
-        this.options = options;
-    };
-    globalThis.Notification.permission = 'granted';
-    globalThis.Notification.requestPermission = async function() {
-        return 'granted';
-    };
+    mockNotificationConstructorAsFunction('granted');
 
     const apiEventsTarget = new EventTarget();
     const stopsData = new Map([
