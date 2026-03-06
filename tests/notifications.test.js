@@ -958,6 +958,65 @@ function testMigrationCorruptedCountFields() {
 }
 
 /**
+ * Test expiry event integration (AC3.2, AC3.3, AC3.4)
+ * Create pair, fire vehicle, verify notification:pair-expired event is dispatched
+ */
+async function testExpiryEventIntegration() {
+    localStorage.clear();
+
+    // Mock Notification API as a constructor
+    globalThis.Notification = function(title, options) {
+        this.title = title;
+        this.options = options;
+    };
+    globalThis.Notification.permission = 'granted';
+    globalThis.Notification.requestPermission = async function() {
+        return 'granted';
+    };
+
+    const apiEventsTarget = new EventTarget();
+    const stopsData = new Map([
+        ['stop1', { id: 'stop1', name: 'Stop 1', parentStopId: null }],
+    ]);
+
+    initNotifications(apiEventsTarget, stopsData);
+
+    // Add pair with count=1
+    const result = await addNotificationPair('stop1', 'Red', 0, 1);
+    const pairId = result.pair.id;
+
+    // Register listener for notification:pair-expired event
+    let eventFired = false;
+    let eventDetail = null;
+    apiEventsTarget.addEventListener('notification:pair-expired', (e) => {
+        eventFired = true;
+        eventDetail = e.detail;
+    });
+
+    // Fire vehicle
+    const vehicle = {
+        id: 'v1',
+        label: 'Train 1',
+        stopId: 'stop1',
+        routeId: 'Red',
+        directionId: 0,
+        currentStatus: 'STOPPED_AT',
+    };
+    apiEventsTarget.dispatchEvent(new CustomEvent('vehicles:update', { detail: vehicle }));
+
+    // Verify event was fired with correct details
+    assert.strictEqual(eventFired, true, 'notification:pair-expired event should be fired');
+    assert.strictEqual(eventDetail.pairId, pairId, 'Event detail should include pairId');
+    assert.strictEqual(eventDetail.checkpointStopId, 'stop1', 'Event detail should include checkpointStopId');
+
+    // Verify pair is auto-deleted
+    const pairsAfter = getNotificationPairs();
+    assert.strictEqual(pairsAfter.length, 0, 'Pair should be auto-deleted');
+
+    console.log('✓ expiry event integration test passed');
+}
+
+/**
  * Run all tests
  */
 async function runTests() {
@@ -986,6 +1045,10 @@ async function runTests() {
     testMigrationWithoutCountFields();
     testMigrationPreservesFields();
     testMigrationCorruptedCountFields();
+
+    console.log('\nRunning notification expiry integration tests...\n');
+
+    await testExpiryEventIntegration();
 
     console.log('\n✓ All tests passed!');
 }

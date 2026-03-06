@@ -9,6 +9,7 @@ let pairs = []; // In-memory cache, synced with localStorage
 let paused = false; // In-memory pause state, synced with localStorage
 
 // Injected dependencies from initNotifications
+let _apiEventsTarget = null; // EventTarget for dispatching notification:pair-expired events
 let _terminusChecker = null; // (stopId, routeId) => boolean
 let _directionLabelFn = null; // (routeId) => [dir0Label, dir1Label]
 let _routeMetadataFn = null; // () => Array<{id, type, ...}>
@@ -360,6 +361,13 @@ function checkAllPairs(vehicle, stopsData) {
                         pairs.splice(index, 1);
                     }
                     console.log(`[Notify] Pair ${pair.id} expired (count reached 0), auto-deleted`);
+
+                    // Notify UI of auto-delete
+                    if (_apiEventsTarget) {
+                        _apiEventsTarget.dispatchEvent(new CustomEvent('notification:pair-expired', {
+                            detail: { pairId: pair.id, checkpointStopId: pair.checkpointStopId }
+                        }));
+                    }
                 }
                 writeConfig(pairs);
             }
@@ -380,6 +388,7 @@ function checkAllPairs(vehicle, stopsData) {
  */
 export function initNotifications(apiEventsTarget, stopsData, terminusChecker = null, directionLabelFn = null, routeMetadataFn = null) {
     // Store injected dependencies
+    _apiEventsTarget = apiEventsTarget;
     _terminusChecker = terminusChecker;
     _directionLabelFn = directionLabelFn;
     _routeMetadataFn = routeMetadataFn;
