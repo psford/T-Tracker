@@ -17,7 +17,7 @@ MBTA API (SSE) → api.js (parse + validate) → vehicles.js (interpolate + anim
                                             (group/sort)        stop-popup.js (format)
                                                               vehicle-popup.js (format)
                       |
-                      +→ notifications.js (monitor vehicles → fire alerts)
+                      +→ notifications.js (monitor vehicles → fire alerts → countdown expiry)
                                ↓
                          notification-ui.js (status indicator + config panel)
 ```

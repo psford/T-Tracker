@@ -345,6 +345,82 @@ Custom count input validation (AC1.6):
 - Adds error class to input border (red #ff6b6b)
 - Clears input and shows hint "1-99"
 
+## Notification Expiry
+
+### Overview
+
+Notification expiry Phase 4 completes the countdown mechanism with UI integration. When a pair's remaining count reaches 0, the pair is auto-deleted from localStorage and the UI updates immediately to reflect the change.
+
+### Architecture
+
+**Countdown mechanism:** Each notification pair stores `remainingCount` (number of alerts left) and `totalCount` (original count selected). When a matching vehicle is detected:
+1. If `remainingCount` is null, the pair is unlimited — no decrement, never expires
+2. If `remainingCount` is a number, it decrements by 1 after each notification
+3. When `remainingCount` reaches 0, the pair is removed from the pairs array and localStorage
+4. A `notification:pair-expired` CustomEvent is emitted to notify the UI
+
+**UI integration:** Three modules listen for `notification:pair-expired`:
+1. `stop-markers.js` — calls `refreshAllHighlights()` to unhighlight the stop marker if no other pairs remain for that stop
+2. `notification-ui.js` — calls `updateStatus()` and `renderPanel()` to update the alerts panel and status indicator
+3. No app-level listener needed — module-level event handlers manage the flow
+
+**Data migration:** Existing pairs without count fields (created before expiry feature) automatically migrate to unlimited (remainingCount=null, totalCount=null) on load, preserving their lifetime.
+
+### Implementation Details
+
+**Pair data model:** Each pair contains:
+```javascript
+{
+  id: string,                    // unique identifier
+  checkpointStopId: string,      // target stop
+  routeId: string,               // route
+  directionId: number,           // direction 0 or 1
+  remainingCount: number | null, // null for unlimited, number for countdown
+  totalCount: number | null      // original count for display
+}
+```
+
+**Event flow on auto-delete:**
+1. `checkAllPairs()` detects `remainingCount <= 0`
+2. Pair is removed from pairs array
+3. `writeConfig()` saves updated pairs to localStorage
+4. `notification:pair-expired` event dispatched with `{pairId, checkpointStopId}` detail
+5. Subscribed modules update their UI state
+
+**localStorage format:** The config entry (`ttracker-notifications-config`) now includes pairs with optional count fields:
+```json
+[
+  {
+    "id": "pair-1",
+    "checkpointStopId": "70036",
+    "routeId": "Red",
+    "directionId": 0,
+    "remainingCount": 2,
+    "totalCount": 5
+  },
+  {
+    "id": "pair-2",
+    "checkpointStopId": "70086",
+    "routeId": "1",
+    "directionId": 1,
+    "remainingCount": null,
+    "totalCount": null
+  }
+]
+```
+
+### UI Updates
+
+**Stop marker highlights:** When a pair expires, the stop marker is unhighlighted if it has no remaining configured pairs.
+
+**Alerts panel:** The panel rerenders immediately to remove the expired pair entry. The pair count ("X/5 alerts") updates.
+
+**Status indicator:** The pair count in the status label updates (e.g., "Active: 4 alerts — Pause" when count drops from 5 to 4).
+
+### Backward Compatibility
+
+Existing pairs without count fields are automatically upgraded to unlimited on load with no user intervention. Users do not see any change in behavior — unlimited pairs continue to fire indefinitely as before.
+
 ## Security Considerations
 
 - **API key exposure:** The MBTA API key is visible in client-side JavaScript. This is acceptable because MBTA keys are free and have no billing implications. The key is not committed to Git -- it's injected at build time from an encrypted Cloudflare environment variable.
