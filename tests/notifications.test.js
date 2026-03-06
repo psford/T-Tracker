@@ -624,6 +624,340 @@ function testPauseResume() {
 }
 
 /**
+ * Test notification countdown decrement (AC2.1)
+ * Create pair with count=3, fire notification, verify remainingCount decrements
+ */
+async function testCountdownDecrement() {
+    localStorage.clear();
+
+    // Mock Notification API as a constructor
+    globalThis.Notification = function(title, options) {
+        this.title = title;
+        this.options = options;
+    };
+    globalThis.Notification.permission = 'granted';
+    globalThis.Notification.requestPermission = async function() {
+        return 'granted';
+    };
+
+    // Create EventTarget for event-driven testing
+    const apiEventsTarget = new EventTarget();
+    const stopsData = new Map([
+        ['stop1', { id: 'stop1', name: 'Stop 1', parentStopId: null }],
+    ]);
+
+    initNotifications(apiEventsTarget, stopsData);
+
+    // Add pair with count=3
+    const result = await addNotificationPair('stop1', 'Red', 0, 3);
+    const pair = result.pair;
+    assert.strictEqual(pair.remainingCount, 3, 'New pair should have remainingCount=3');
+    assert.strictEqual(pair.totalCount, 3, 'New pair should have totalCount=3');
+
+    // Simulate vehicle arriving at checkpoint (dispatch update event)
+    const vehicle = {
+        id: 'v1',
+        label: 'Train 1',
+        stopId: 'stop1',
+        routeId: 'Red',
+        directionId: 0,
+        currentStatus: 'STOPPED_AT',
+    };
+    apiEventsTarget.dispatchEvent(new CustomEvent('vehicles:update', { detail: vehicle }));
+
+    // Check that remainingCount decremented
+    const pairsAfter = getNotificationPairs();
+    assert.strictEqual(pairsAfter.length, 1, 'Pair should still exist after first decrement');
+    assert.strictEqual(pairsAfter[0].remainingCount, 2, 'remainingCount should decrement to 2');
+
+    console.log('✓ countdown decrement test passed');
+}
+
+/**
+ * Test unlimited pairs (AC2.2)
+ * Create pair with count=null, fire notification, verify remainingCount stays null
+ */
+async function testUnlimitedPair() {
+    localStorage.clear();
+
+    // Mock Notification API as a constructor
+    globalThis.Notification = function(title, options) {
+        this.title = title;
+        this.options = options;
+    };
+    globalThis.Notification.permission = 'granted';
+    globalThis.Notification.requestPermission = async function() {
+        return 'granted';
+    };
+
+    const apiEventsTarget = new EventTarget();
+    const stopsData = new Map([
+        ['stop1', { id: 'stop1', name: 'Stop 1', parentStopId: null }],
+    ]);
+
+    initNotifications(apiEventsTarget, stopsData);
+
+    // Add pair with count=null (unlimited)
+    const result = await addNotificationPair('stop1', 'Red', 0, null);
+    const pair = result.pair;
+    assert.strictEqual(pair.remainingCount, null, 'Unlimited pair should have remainingCount=null');
+
+    // Fire notification
+    const vehicle = {
+        id: 'v1',
+        label: 'Train 1',
+        stopId: 'stop1',
+        routeId: 'Red',
+        directionId: 0,
+        currentStatus: 'STOPPED_AT',
+    };
+    apiEventsTarget.dispatchEvent(new CustomEvent('vehicles:update', { detail: vehicle }));
+
+    // Check that pair still exists and remainingCount is still null
+    const pairsAfter = getNotificationPairs();
+    assert.strictEqual(pairsAfter.length, 1, 'Unlimited pair should still exist after fire');
+    assert.strictEqual(pairsAfter[0].remainingCount, null, 'Unlimited pair should not decrement');
+
+    console.log('✓ unlimited pair test passed');
+}
+
+/**
+ * Test persistence to localStorage (AC2.3)
+ * After decrement, verify localStorage has updated count
+ */
+async function testPersistenceAfterDecrement() {
+    localStorage.clear();
+
+    // Mock Notification API as a constructor
+    globalThis.Notification = function(title, options) {
+        this.title = title;
+        this.options = options;
+    };
+    globalThis.Notification.permission = 'granted';
+    globalThis.Notification.requestPermission = async function() {
+        return 'granted';
+    };
+
+    const apiEventsTarget = new EventTarget();
+    const stopsData = new Map([
+        ['stop1', { id: 'stop1', name: 'Stop 1', parentStopId: null }],
+    ]);
+
+    initNotifications(apiEventsTarget, stopsData);
+
+    // Add pair with count=2
+    await addNotificationPair('stop1', 'Red', 0, 2);
+
+    // Fire notification
+    const vehicle = {
+        id: 'v1',
+        label: 'Train 1',
+        stopId: 'stop1',
+        routeId: 'Red',
+        directionId: 0,
+        currentStatus: 'STOPPED_AT',
+    };
+    apiEventsTarget.dispatchEvent(new CustomEvent('vehicles:update', { detail: vehicle }));
+
+    // Check localStorage directly
+    const stored = localStorage.getItem('ttracker-notifications-config');
+    assert(stored, 'Should have config in localStorage');
+    const parsed = JSON.parse(stored);
+    assert.strictEqual(parsed[0].remainingCount, 1, 'localStorage should have updated remainingCount=1');
+
+    console.log('✓ persistence after decrement test passed');
+}
+
+/**
+ * Test multiple vehicles decrementing same pair (AC2.4)
+ * Create pair with count=3, fire two different vehicles, verify count decrements to 1
+ */
+async function testMultipleVehiclesDecrement() {
+    localStorage.clear();
+
+    // Mock Notification API as a constructor
+    globalThis.Notification = function(title, options) {
+        this.title = title;
+        this.options = options;
+    };
+    globalThis.Notification.permission = 'granted';
+    globalThis.Notification.requestPermission = async function() {
+        return 'granted';
+    };
+
+    const apiEventsTarget = new EventTarget();
+    const stopsData = new Map([
+        ['stop1', { id: 'stop1', name: 'Stop 1', parentStopId: null }],
+    ]);
+
+    initNotifications(apiEventsTarget, stopsData);
+
+    // Add pair with count=3
+    await addNotificationPair('stop1', 'Red', 0, 3);
+
+    // Fire two different vehicles
+    const vehicle1 = {
+        id: 'v1',
+        label: 'Train 1',
+        stopId: 'stop1',
+        routeId: 'Red',
+        directionId: 0,
+        currentStatus: 'STOPPED_AT',
+    };
+    const vehicle2 = {
+        id: 'v2',
+        label: 'Train 2',
+        stopId: 'stop1',
+        routeId: 'Red',
+        directionId: 0,
+        currentStatus: 'STOPPED_AT',
+    };
+
+    apiEventsTarget.dispatchEvent(new CustomEvent('vehicles:update', { detail: vehicle1 }));
+    apiEventsTarget.dispatchEvent(new CustomEvent('vehicles:update', { detail: vehicle2 }));
+
+    // Verify count decremented twice (3 - 2 = 1)
+    const pairsAfter = getNotificationPairs();
+    assert.strictEqual(pairsAfter[0].remainingCount, 1, 'Two vehicles should decrement count to 1');
+
+    console.log('✓ multiple vehicles decrement test passed');
+}
+
+/**
+ * Test auto-delete on expiry (AC3.1)
+ * Create pair with count=1, fire notification, verify pair is removed
+ */
+async function testAutoDeletion() {
+    localStorage.clear();
+
+    // Mock Notification API as a constructor
+    globalThis.Notification = function(title, options) {
+        this.title = title;
+        this.options = options;
+    };
+    globalThis.Notification.permission = 'granted';
+    globalThis.Notification.requestPermission = async function() {
+        return 'granted';
+    };
+
+    const apiEventsTarget = new EventTarget();
+    const stopsData = new Map([
+        ['stop1', { id: 'stop1', name: 'Stop 1', parentStopId: null }],
+    ]);
+
+    initNotifications(apiEventsTarget, stopsData);
+
+    // Add pair with count=1
+    const result = await addNotificationPair('stop1', 'Red', 0, 1);
+    const pairId = result.pair.id;
+
+    // Fire notification
+    const vehicle = {
+        id: 'v1',
+        label: 'Train 1',
+        stopId: 'stop1',
+        routeId: 'Red',
+        directionId: 0,
+        currentStatus: 'STOPPED_AT',
+    };
+    apiEventsTarget.dispatchEvent(new CustomEvent('vehicles:update', { detail: vehicle }));
+
+    // Verify pair is auto-deleted
+    const pairsAfter = getNotificationPairs();
+    assert.strictEqual(pairsAfter.length, 0, 'Pair should be auto-deleted when count reaches 0');
+
+    // Verify localStorage is updated
+    const stored = localStorage.getItem('ttracker-notifications-config');
+    const parsed = JSON.parse(stored);
+    assert.strictEqual(parsed.length, 0, 'localStorage should have empty config array');
+
+    console.log('✓ auto-deletion test passed');
+}
+
+/**
+ * Test migration of existing pairs without count fields (AC5.1)
+ * Store pair without count fields, init, verify loaded as unlimited
+ */
+function testMigrationWithoutCountFields() {
+    localStorage.clear();
+
+    // Store pair without count fields
+    localStorage.setItem('ttracker-notifications-config', JSON.stringify([
+        { id: 'old1', checkpointStopId: 'stop1', routeId: 'Red', directionId: 0 },
+    ]));
+
+    initNotifications(new EventTarget(), new Map());
+    const pairs = getNotificationPairs();
+
+    assert.strictEqual(pairs.length, 1, 'Should load pair without count fields');
+    assert.strictEqual(pairs[0].remainingCount, null, 'Pair without count should migrate to remainingCount=null');
+    assert.strictEqual(pairs[0].totalCount, null, 'Pair without count should migrate to totalCount=null');
+
+    console.log('✓ migration without count fields test passed');
+}
+
+/**
+ * Test migration preserves existing fields (AC5.2)
+ * Store pair with all original fields, verify preserved after init
+ */
+function testMigrationPreservesFields() {
+    localStorage.clear();
+
+    // Store pair with all original fields plus missing count fields
+    const originalPair = {
+        id: 'old1',
+        checkpointStopId: 'stop1',
+        routeId: 'Red',
+        directionId: 0,
+    };
+
+    localStorage.setItem('ttracker-notifications-config', JSON.stringify([originalPair]));
+
+    initNotifications(new EventTarget(), new Map());
+    const pairs = getNotificationPairs();
+
+    assert.strictEqual(pairs.length, 1, 'Should load pair');
+    assert.strictEqual(pairs[0].id, 'old1', 'id should be preserved');
+    assert.strictEqual(pairs[0].checkpointStopId, 'stop1', 'checkpointStopId should be preserved');
+    assert.strictEqual(pairs[0].routeId, 'Red', 'routeId should be preserved');
+    assert.strictEqual(pairs[0].directionId, 0, 'directionId should be preserved');
+    assert.strictEqual(pairs[0].remainingCount, null, 'remainingCount should default to null');
+    assert.strictEqual(pairs[0].totalCount, null, 'totalCount should default to null');
+
+    console.log('✓ migration preserves fields test passed');
+}
+
+/**
+ * Test migration handles corrupted/missing count fields (AC5.3)
+ * Store pair with undefined count fields, verify defaults to unlimited without error
+ */
+function testMigrationCorruptedCountFields() {
+    localStorage.clear();
+
+    // Store pair with undefined count fields
+    const corruptedPair = {
+        id: 'corrupted1',
+        checkpointStopId: 'stop1',
+        routeId: 'Red',
+        directionId: 0,
+        remainingCount: undefined,
+        totalCount: undefined,
+    };
+
+    localStorage.setItem('ttracker-notifications-config', JSON.stringify([corruptedPair]));
+
+    // Should not throw
+    initNotifications(new EventTarget(), new Map());
+    const pairs = getNotificationPairs();
+
+    assert.strictEqual(pairs.length, 1, 'Should load pair despite undefined count fields');
+    assert.strictEqual(pairs[0].remainingCount, null, 'Undefined remainingCount should default to null');
+    assert.strictEqual(pairs[0].totalCount, null, 'Undefined totalCount should default to null');
+
+    console.log('✓ migration corrupted count fields test passed');
+}
+
+/**
  * Run all tests
  */
 async function runTests() {
@@ -641,6 +975,17 @@ async function runTests() {
     await testAsyncAddNotificationPair();
     testPauseResume();
     await testWriteConfigQuotaError();
+
+    console.log('\nRunning notification expiry tests...\n');
+
+    await testCountdownDecrement();
+    await testUnlimitedPair();
+    await testPersistenceAfterDecrement();
+    await testMultipleVehiclesDecrement();
+    await testAutoDeletion();
+    testMigrationWithoutCountFields();
+    testMigrationPreservesFields();
+    testMigrationCorruptedCountFields();
 
     console.log('\n✓ All tests passed!');
 }
