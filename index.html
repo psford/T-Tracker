@@ -76,7 +76,7 @@
 
         Promise.all([loadRoutes(), loadStops()]).then(() => {
             const metadata = getRouteMetadata();
-            initStopMarkers(map);
+            initStopMarkers(map, apiEvents);
 
             // Cache-first route-stops loader
             async function loadRouteStopsAndDisplay(routeIds) {
@@ -121,7 +121,7 @@
             // Init notifications (does NOT depend on route-stops mapping)
             initNotifications(apiEvents, getStopData(), isTerminusStop, getDirectionDestinations, getRouteMetadata);
             const notificationStatusEl = document.getElementById('notification-status');
-            initNotificationUI(notificationStatusEl);
+            initNotificationUI(notificationStatusEl, apiEvents);
             const notificationPanelEl = document.getElementById('notification-panel');
             const notificationToggleBtn = document.getElementById('notification-panel-toggle');
             initNotificationPanel(notificationPanelEl, notificationToggleBtn);
