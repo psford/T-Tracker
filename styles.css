@@ -772,6 +772,44 @@ html, body {
     background: rgba(255, 107, 107, 0.2);
 }
 
+/* Notification pair count display */
+.notification-pair__count {
+    font-size: 12px;
+    color: #888;
+    cursor: pointer;
+    margin-top: 2px;
+}
+
+.notification-pair__count:hover {
+    color: #4a9eff;
+    text-decoration: underline;
+}
+
+/* Panel chip picker variant */
+.chip-picker--panel {
+    padding: 8px;
+    margin-top: 6px;
+    background: #1a1a2e;
+    border-radius: 6px;
+    border: 1px solid #333;
+}
+
+.chip-picker__apply {
+    background: #4a9eff;
+    border: none;
+    color: #fff;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    width: 100%;
+    margin-top: 6px;
+}
+
+.chip-picker__apply:hover {
+    background: #3a8ede;
+}
+
 /* Empty state */
 .notification-panel__empty {
     font-size: 12px;
