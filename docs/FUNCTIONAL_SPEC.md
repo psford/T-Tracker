@@ -1,7 +1,7 @@
 # T-Tracker Functional Specification
 
-**Version:** 1.1
-**Last updated:** 2026-02-11
+**Version:** 1.2
+**Last updated:** 2026-03-05
 **URL:** https://supertra.in (pending DNS propagation) / https://t-tracker.pages.dev
 
 ## Overview
@@ -99,11 +99,58 @@ A pill-shaped indicator in the bottom-left corner shows the SSE connection state
 | Reconnecting | Yellow | Blink (1s) | "Connecting...", "Reconnecting in 4s..." |
 | Error | Red | Fast blink (0.5s) | "Rate limited -- retrying...", "Data format errors" |
 
-### F7. Performance
+### F7. Notifications with Expiry Count
+
+Users can set custom alerts for specific stops and directions, with optional expiry counts. When a vehicle arrives at a configured stop, T-Tracker fires a browser notification and optionally expires the alert after N arrivals.
+
+#### F7.1 Alert Creation (Two-Tap Flow)
+
+1. **Find a stop:** Click any stop on the map to open the stop popup
+2. **Tap a direction:** Click a direction button (e.g., "→ Downtown") to reveal count options
+3. **Select a count:** Choose from:
+   - `1` — Alert fires once, then auto-deletes
+   - `2`, `3` — Alert fires N times, then auto-deletes
+   - `#` — Custom count (enter 1-99)
+   - `∞` — Unlimited, never expires
+4. **Create alert:** Click "Set Alert" to save the pair
+
+The direction button reveals an inline **chip picker** with count selection below the button. All 5 count options fit in a single row. Tapping a chip updates the "Set Alert" button's count and visually highlights the selected chip. The `#` chip reveals an inline number input for values 1-99; entering an invalid value shows a red error border.
+
+#### F7.2 Alert Status Indicator
+
+A pill-shaped indicator in the bottom-left corner shows:
+- **Green "Active: N alerts — Pause"** — Permission granted, N pairs configured
+- **Amber "Paused — Resume"** — Notifications manually paused
+- **Red "Notifications blocked — Enable"** — Permission denied
+- **Gray** — No pairs configured yet
+
+Tapping the indicator opens an expandable **Alerts Panel** listing all configured pairs:
+- Stop name + route + direction (e.g., "Park Street • Red Line • Inbound")
+- Remaining count (e.g., "2 of 3 remaining")
+- Delete button to remove that pair
+
+#### F7.3 Alert Firing
+
+When a vehicle arrives at a checkpoint stop in the configured direction:
+1. Browser notification fires (if permission granted): "Vehicle arriving at [stop name]"
+2. If the pair has a count limit (not ∞), the remaining count decrements by 1
+3. When count reaches 0, the pair auto-deletes and is removed from the list
+4. Paused notifications do not fire; pause can be toggled from the indicator
+
+#### F7.4 Permission & Pausing
+
+- First alert creation triggers browser permission request: "Allow T-Tracker notifications?"
+- Users can pause/resume notifications at any time via the indicator pill (state persists)
+- Permission state is checked on app focus (paused if user revoked permission)
+- Revoking permission in browser settings shows a "Notifications blocked" indicator
+
+### F8. Performance
 
 - Animation loop pauses when the browser tab is hidden (Page Visibility API) to save CPU
 - Viewport culling: interpolation math is skipped for vehicles outside the current map view
 - Popup content only refreshes when the vehicle's `updatedAt` timestamp changes (not every frame at 60fps)
+- Notifications are checked only when vehicle updates arrive (not on every frame)
+- Notification state persists to localStorage; pairs are hydrated on startup
 
 ## What T-Tracker Does Not Do
 

@@ -1,7 +1,7 @@
 # T-Tracker Technical Specification
 
-**Version:** 1.1
-**Last updated:** 2026-02-11
+**Version:** 1.2
+**Last updated:** 2026-03-05
 
 ## Architecture Overview
 
@@ -275,10 +275,80 @@ node tests/ui.test.js
 node tests/vehicle-popup.test.js
 ```
 
+## Notification Expiry (Phase 2): Chip Picker UI Component
+
+### Overview
+
+Notification expiry Phase 2 introduces a chip picker inline count selector for notification pair creation. Users tap a direction button in a stop popup to reveal a count picker, then tap a chip to create the alert with that count.
+
+### Architecture
+
+**Pure HTML generation:** `stop-popup.js` exports `buildChipPickerHtml(stopId, routeId, directionId)` — a pure function that generates the chip picker HTML structure without side effects.
+
+**Event delegation:** `stop-markers.js` handles all chip picker interactions via event delegation on the popup `popupopen` Leaflet event:
+- Direction button tap (`data-action="show-chips"`) inserts chip picker HTML below the button
+- Chip tap updates the "Set Alert" button's `data-count` attribute and visual selection state
+- Custom chip (#) reveals inline number input for 1-99
+- "Set Alert" button tap calls `addNotificationPair()` with the selected count
+
+**Centralized error handling:** Helper function `handleAlertResult()` encapsulates success/error flow after `addNotificationPair()`:
+- Success: highlight stop marker, update notification status, render panel, close popup
+- Error: display inline error message in popup
+
+### Component Structure
+
+```html
+<div class="chip-picker" data-stop-id="..." data-route-id="..." data-direction-id="...">
+  <div class="chip-picker__chips">
+    <button data-count="1" class="chip-picker__chip chip-picker__chip--selected">1</button>
+    <button data-count="2" class="chip-picker__chip">2</button>
+    <button data-count="3" class="chip-picker__chip">3</button>
+    <button data-count="custom" class="chip-picker__chip">#</button>
+    <button data-count="unlimited" class="chip-picker__chip">∞</button>
+  </div>
+  <div class="chip-picker__custom" style="display: none;">
+    <input type="number" class="chip-picker__input" min="1" max="99" placeholder="1-99">
+    <button class="chip-picker__confirm">OK</button>
+  </div>
+  <button class="chip-picker__create" data-action="create-alert" data-count="1">Set Alert</button>
+</div>
+```
+
+### Two-Tap Alert Creation Flow
+
+1. **Tap 1: Direction Button** — User taps "→ Downtown" or "→ Uptown" in stop popup
+   - Triggers `show-chips` event delegation handler
+   - Inserts `buildChipPickerHtml()` below the button
+   - Collapses any other open chip picker in the same popup (AC1.7)
+
+2. **Tap 2: Count Selection**
+   - Tapping a chip updates visual state and `createBtn.dataset.count`
+   - Tapping `#` reveals custom input, user enters 1-99, taps OK to create alert
+   - Tapping any other chip directly creates alert (no extra confirmation)
+
+3. **Alert Creation** — `handleAlertResult()` processes creation result
+
+### CSS Styling
+
+Chip picker styles follow dark theme patterns (backgrounds #1a1a2e, borders #333, text #e0e0e0):
+- `.chip-picker__chips` — flex row with 4px gap
+- `.chip-picker__chip` — rounded button, transitions on hover/select
+- `.chip-picker__chip--selected` — blue background (#4a9eff) with white text
+- `.chip-picker__custom` — hidden by default, flex row for input + confirm button
+- `.chip-picker__input` — number input with error state (red border on validation failure)
+- `.chip-picker__create` — green "Set Alert" button (full width)
+
+### Validation
+
+Custom count input validation (AC1.6):
+- Rejects non-numeric, 0, negative, >99 values
+- Adds error class to input border (red #ff6b6b)
+- Clears input and shows hint "1-99"
+
 ## Security Considerations
 
 - **API key exposure:** The MBTA API key is visible in client-side JavaScript. This is acceptable because MBTA keys are free and have no billing implications. The key is not committed to Git -- it's injected at build time from an encrypted Cloudflare environment variable.
-- **XSS prevention:** `vehicle-popup.js` escapes all user-facing strings (stop names, vehicle labels) with `escapeHtml()` before HTML interpolation.
+- **XSS prevention:** `vehicle-popup.js` and `stop-popup.js` escape all user-facing strings (stop names, vehicle labels, direction labels) with `escapeHtml()` before HTML interpolation. `buildChipPickerHtml()` escapes stopId and routeId in data attributes.
 - **CDN integrity:** Leaflet is loaded with Subresource Integrity (SRI) hashes to prevent CDN tampering.
 - **No authentication:** The app has no user accounts, no server, no stored user data.
 
@@ -300,9 +370,14 @@ node tests/vehicle-popup.test.js
 | `src/polyline.js` | 50 | Google polyline decoder |
 | `src/route-sorter.js` | 123 | Route grouping and sorting |
 | `src/vehicle-popup.js` | 155 | Popup HTML formatting |
-| `tests/` (6 files) | ~600 | Unit tests for all pure functions |
+| `src/stop-popup.js` | 185 | Stop popup HTML formatting, chip picker generation |
+| `src/stop-markers.js` | 419 | Stop marker rendering, notification config UI, event delegation |
+| `src/notifications.js` | 421 | Notification pair management, permission handling, expiry logic |
+| `src/notification-ui.js` | 312 | Notification status indicator, alerts panel |
+| `src/route-stops-cache.js` | 89 | Route-stops mapping cache with localStorage TTL |
+| `tests/` (12 files) | ~1,200 | Unit tests for pure functions and data modules |
 
-**Total application code:** ~2,600 lines across 14 files (excluding tests and docs).
+**Total application code:** ~4,300 lines across 17 files (excluding tests and docs).
 
 ## Version History
 
@@ -316,3 +391,4 @@ node tests/vehicle-popup.test.js
 | 2026-02-11 | Bug fixes: tile retry backoff, route visibility logic, polyline typicality filtering, endpoint snapping, page load flash |
 | 2026-02-11 | Feature: pulsing directional indicators (headlights/taillights) on vehicle icons |
 | 2026-02-14 | Ferry service support: route type 4 (MBTA aqua #008EAA boat icon), Ferry group in UI (hidden by default), full API integration |
+| 2026-03-05 | Notification Expiry Phase 2: chip picker UI for count selection, two-tap alert creation flow, buildChipPickerHtml generation, centralized error handling |

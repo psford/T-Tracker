@@ -117,6 +117,28 @@ function getStopConfigState(stopId) {
 }
 
 /**
+ * Handle alert creation result: success path (update UI, close popup)
+ * or error path (display inline error message).
+ *
+ * @param {Object} result — result from addNotificationPair() {error?, ...}
+ * @param {string} stopId — stop ID for highlighting on success
+ * @param {HTMLElement} container — popup container for error display
+ */
+async function handleAlertResult(result, stopId, container) {
+    if (result.error) {
+        const actionsDiv = container.querySelector('.stop-popup__actions');
+        if (actionsDiv) {
+            actionsDiv.innerHTML = `<div class="stop-popup__alert-configured" style="color: #ff6b6b">${escapeHtml(result.error)}</div>`;
+        }
+    } else {
+        highlightConfiguredStop(stopId);
+        updateNotificationStatus();
+        renderPanel();
+        mapInstance.closePopup();
+    }
+}
+
+/**
  * Highlight a configured stop by increasing marker size and opacity.
  *
  * @param {string} stopId — stop ID to highlight
@@ -268,17 +290,7 @@ export function initStopMarkers(map) {
                 const directionId = parseInt(picker.dataset.directionId, 10);
 
                 const result = await addNotificationPair(stopId, routeId, directionId, value);
-                if (result.error) {
-                    const actionsDiv = container.querySelector('.stop-popup__actions');
-                    if (actionsDiv) {
-                        actionsDiv.innerHTML = `<div class="stop-popup__alert-configured" style="color: #ff6b6b">${escapeHtml(result.error)}</div>`;
-                    }
-                } else {
-                    highlightConfiguredStop(stopId);
-                    updateNotificationStatus();
-                    renderPanel();
-                    mapInstance.closePopup();
-                }
+                await handleAlertResult(result, stopId, container);
                 return;
             }
 
@@ -292,17 +304,7 @@ export function initStopMarkers(map) {
                 const count = countStr === 'unlimited' ? null : parseInt(countStr, 10);
 
                 const result = await addNotificationPair(stopId, routeId, directionId, count);
-                if (result.error) {
-                    const actionsDiv = container.querySelector('.stop-popup__actions');
-                    if (actionsDiv) {
-                        actionsDiv.innerHTML = `<div class="stop-popup__alert-configured" style="color: #ff6b6b">${escapeHtml(result.error)}</div>`;
-                    }
-                } else {
-                    highlightConfiguredStop(stopId);
-                    updateNotificationStatus();
-                    renderPanel();
-                    mapInstance.closePopup();
-                }
+                await handleAlertResult(result, stopId, container);
             }
         });
     });
