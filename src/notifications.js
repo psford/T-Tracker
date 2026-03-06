@@ -162,6 +162,24 @@ export function removeNotificationPair(pairId) {
 }
 
 /**
+ * Update the remaining/total count for a notification pair.
+ * Used by the alerts panel to allow editing expiry count.
+ *
+ * @param {string} pairId — pair ID to update
+ * @param {number|null} count — new count (null for unlimited)
+ * @returns {boolean} — true if updated, false if pair not found
+ */
+export function updatePairCount(pairId, count) {
+    const pair = pairs.find(p => p.id === pairId);
+    if (!pair) return false;
+
+    pair.remainingCount = count;
+    pair.totalCount = count;
+    writeConfig(pairs);
+    return true;
+}
+
+/**
  * Returns current notification pairs (in-memory cache).
  * Returns a shallow copy to prevent external mutations of internal state.
  *
