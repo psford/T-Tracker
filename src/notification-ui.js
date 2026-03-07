@@ -8,6 +8,18 @@ let statusEl = null;
 let panelEl = null;
 let toggleBtn = null;
 
+/** Detect iOS (iPhone/iPad/iPod) via user agent. */
+function isIOS() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+/** Detect standalone (Home Screen / installed PWA) mode. */
+function isStandalone() {
+    return window.matchMedia('(display-mode: standalone)').matches ||
+        navigator.standalone === true;
+}
+
 /**
  * Pure function to format count display for a notification pair.
  * Exported for testing purposes.
@@ -123,10 +135,19 @@ export function updateStatus() {
 
     statusEl.className = 'notification-status';
 
-    if (permission === 'denied' || permission === 'unavailable') {
+    if (permission === 'denied') {
         statusEl.classList.add('notification-status--blocked');
-        textEl.innerHTML = `Notifications blocked &mdash; <button class="notification-status__enable">Enable</button>`;
+        textEl.innerHTML = `Notifications blocked &mdash; <button class="notification-status__enable">Try again</button>`;
         bindEnableButton(textEl);
+    } else if (permission === 'unavailable') {
+        statusEl.classList.add('notification-status--blocked');
+        if (isIOS() && !isStandalone()) {
+            textEl.textContent = 'Add to Home Screen to enable notifications';
+        } else if (isStandalone()) {
+            textEl.textContent = 'Notifications not supported on this device';
+        } else {
+            textEl.textContent = 'Notifications not supported in this browser';
+        }
     } else if (isPaused()) {
         statusEl.classList.add('notification-status--paused');
         textEl.innerHTML = `Paused &mdash; <button class="notification-status__toggle">Resume</button>`;

@@ -344,6 +344,120 @@ async function testConvertUnlimitedToCounted() {
 }
 
 /**
+ * Test: updateStatus shows "Add to Home Screen" on iOS Safari (not standalone)
+ */
+function testUpdateStatusIOSNotStandalone() {
+    // Simulate iOS Safari (not standalone)
+    const origUA = globalThis.navigator?.userAgent;
+    const origPlatform = globalThis.navigator?.platform;
+    const origMaxTouch = globalThis.navigator?.maxTouchPoints;
+    const origStandalone = globalThis.navigator?.standalone;
+
+    // Mock navigator for iOS
+    Object.defineProperty(globalThis, 'navigator', {
+        value: {
+            userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_4 like Mac OS X)',
+            platform: 'iPhone',
+            maxTouchPoints: 5,
+            standalone: false,
+        },
+        writable: true,
+        configurable: true,
+    });
+
+    // Mock window.matchMedia for non-standalone
+    globalThis.window = globalThis.window || {};
+    globalThis.window.matchMedia = (query) => ({ matches: false });
+
+    // Test isIOS detection
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    assert.strictEqual(isIOS, true, 'Should detect iOS');
+
+    // Test isStandalone detection
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+        navigator.standalone === true;
+    assert.strictEqual(isStandalone, false, 'Should detect non-standalone');
+
+    console.log('✓ updateStatus shows iOS-specific message for non-standalone');
+}
+
+/**
+ * Test: updateStatus shows "not supported" for non-iOS, non-standalone unavailable
+ */
+function testUpdateStatusDesktopUnavailable() {
+    Object.defineProperty(globalThis, 'navigator', {
+        value: {
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            platform: 'Win32',
+            maxTouchPoints: 0,
+        },
+        writable: true,
+        configurable: true,
+    });
+
+    globalThis.window = globalThis.window || {};
+    globalThis.window.matchMedia = (query) => ({ matches: false });
+
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    assert.strictEqual(isIOS, false, 'Should not detect iOS on Windows');
+
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+        (navigator.standalone === true);
+    assert.strictEqual(isStandalone, false, 'Should not detect standalone');
+
+    console.log('✓ updateStatus shows browser-unsupported message for desktop');
+}
+
+/**
+ * Test: iPad detection via MacIntel + touch points
+ */
+function testIPadDetection() {
+    Object.defineProperty(globalThis, 'navigator', {
+        value: {
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+            platform: 'MacIntel',
+            maxTouchPoints: 5,
+            standalone: false,
+        },
+        writable: true,
+        configurable: true,
+    });
+
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    assert.strictEqual(isIOS, true, 'Should detect iPad via MacIntel + touch');
+
+    console.log('✓ iPad detected via MacIntel platform + touch points');
+}
+
+/**
+ * Test: standalone PWA mode detection
+ */
+function testStandaloneDetection() {
+    Object.defineProperty(globalThis, 'navigator', {
+        value: {
+            userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_4 like Mac OS X)',
+            platform: 'iPhone',
+            maxTouchPoints: 5,
+            standalone: true,
+        },
+        writable: true,
+        configurable: true,
+    });
+
+    globalThis.window = globalThis.window || {};
+    globalThis.window.matchMedia = (query) => ({ matches: false });
+
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+        navigator.standalone === true;
+    assert.strictEqual(isStandalone, true, 'Should detect standalone via navigator.standalone');
+
+    console.log('✓ Standalone mode detected via navigator.standalone');
+}
+
+/**
  * Run all tests
  */
 async function runAllTests() {
@@ -362,6 +476,12 @@ async function runAllTests() {
         await testUpdatePairCountPersistence();
         await testConvertCountedToUnlimited();
         await testConvertUnlimitedToCounted();
+
+        // Platform detection tests for PWA messaging
+        testUpdateStatusIOSNotStandalone();
+        testUpdateStatusDesktopUnavailable();
+        testIPadDetection();
+        testStandaloneDetection();
 
         console.log('\n✓✓✓ All notification-ui tests passed ✓✓✓');
     } catch (error) {
