@@ -208,12 +208,27 @@ export function initStopMarkers(map, apiEventsTarget = null) {
     }
 
     // Set up popup event delegation for alert button clicks and hover persistence
+    // AbortController prevents listener stacking across repeated popupopen events
+    let popupAbort = null;
+
+    mapInstance.on('popupclose', () => {
+        if (popupAbort) {
+            popupAbort.abort();
+            popupAbort = null;
+        }
+    });
+
     mapInstance.on('popupopen', (e) => {
         const container = e.popup.getElement();
         if (!container) return;
 
         // Only handle stop popups (check for stop-popup class)
         if (!container.querySelector('.stop-popup')) return;
+
+        // Abort any stale listeners from a previous popup
+        if (popupAbort) popupAbort.abort();
+        popupAbort = new AbortController();
+        const { signal } = popupAbort;
 
         // Keep popup open when mouse enters popup area (cancel marker's mouseout timer)
         const sourceMarker = e.popup._source;
@@ -223,16 +238,21 @@ export function initStopMarkers(map, apiEventsTarget = null) {
                     clearTimeout(sourceMarker._hoverCloseTimer);
                     sourceMarker._hoverCloseTimer = null;
                 }
-            });
+            }, { signal });
             container.addEventListener('mouseleave', () => {
+                // Don't auto-close if user has engaged with chip picker
+                if (sourceMarker._popupSticky) return;
                 mapInstance.closePopup();
-            });
+            }, { signal });
         }
 
         // Handle direction button clicks — reveal chip picker
         container.addEventListener('click', async (e) => {
             const showChipsBtn = e.target.closest('[data-action="show-chips"]');
             if (showChipsBtn) {
+                // Make popup sticky — only dismissible by click-away, not mouseout
+                if (sourceMarker) sourceMarker._popupSticky = true;
+
                 const stopId = showChipsBtn.dataset.stopId;
                 const routeId = showChipsBtn.dataset.routeId;
                 const directionId = parseInt(showChipsBtn.dataset.directionId, 10);
@@ -259,62 +279,60 @@ export function initStopMarkers(map, apiEventsTarget = null) {
                 chip.classList.add('chip-picker__chip--selected');
 
                 const countValue = chip.dataset.count;
-                const customDiv = picker.querySelector('.chip-picker__custom');
+                const hashChip = picker.querySelector('[data-count="custom"]');
+                const morphInput = picker.querySelector('.chip-picker__morph-input');
                 const createBtn = picker.querySelector('[data-action="create-alert"]');
 
                 if (countValue === 'custom') {
-                    // Show custom input
-                    customDiv.style.display = 'flex';
-                    customDiv.querySelector('.chip-picker__input').focus();
+                    // Morph # chip into inline input
+                    hashChip.classList.add('chip-picker__chip--morphed');
+                    morphInput.classList.add('chip-picker__morph-input--active');
+                    morphInput.focus();
                 } else {
-                    customDiv.style.display = 'none';
-                    if (countValue === 'unlimited') {
-                        createBtn.dataset.count = 'unlimited';
-                    } else {
-                        createBtn.dataset.count = countValue;
+                    // Restore # chip, collapse input
+                    if (hashChip) hashChip.classList.remove('chip-picker__chip--morphed');
+                    if (morphInput) {
+                        morphInput.classList.remove('chip-picker__morph-input--active');
+                        morphInput.value = '';
                     }
+                    createBtn.dataset.count = countValue;
                 }
-                return;
-            }
-
-            // Handle custom input confirm — directly create the alert (AC1.5: "confirming creates pair")
-            const confirmBtn = e.target.closest('.chip-picker__confirm');
-            if (confirmBtn) {
-                const picker = confirmBtn.closest('.chip-picker');
-                const input = picker.querySelector('.chip-picker__input');
-                const value = parseInt(input.value, 10);
-
-                // Validate: AC1.6 — reject non-numeric, 0, negative, >99
-                if (isNaN(value) || value < 1 || value > 99) {
-                    input.classList.add('chip-picker__input--error');
-                    input.value = '';
-                    input.placeholder = '1-99';
-                    return;
-                }
-
-                // Directly create the alert with custom count (3 taps: direction → # → OK)
-                const stopId = picker.dataset.stopId;
-                const routeId = picker.dataset.routeId;
-                const directionId = parseInt(picker.dataset.directionId, 10);
-
-                const result = await addNotificationPair(stopId, routeId, directionId, value);
-                handleAlertResult(result, stopId, container);
                 return;
             }
 
             // Handle "Set Alert" button click — create the pair
             const createBtn = e.target.closest('[data-action="create-alert"]');
             if (createBtn) {
+                const picker = createBtn.closest('.chip-picker') || container.querySelector('.chip-picker');
+                const selectedChip = picker?.querySelector('.chip-picker__chip--selected');
+                const customInput = picker?.querySelector('.chip-picker__morph-input');
+
+                let count;
+                // If # chip is selected, read from morph input
+                if (selectedChip?.dataset.count === 'custom') {
+                    const value = parseInt(customInput?.value, 10);
+                    if (isNaN(value) || value < 1 || value > 99) {
+                        if (customInput) {
+                            customInput.classList.add('chip-picker__morph-input--error');
+                            customInput.value = '';
+                            customInput.placeholder = '1-99';
+                        }
+                        return;
+                    }
+                    count = value;
+                } else {
+                    const countStr = createBtn.dataset.count;
+                    count = countStr === 'unlimited' ? null : parseInt(countStr, 10);
+                }
+
                 const stopId = createBtn.dataset.stopId;
                 const routeId = createBtn.dataset.routeId;
                 const directionId = parseInt(createBtn.dataset.directionId, 10);
-                const countStr = createBtn.dataset.count;
-                const count = countStr === 'unlimited' ? null : parseInt(countStr, 10);
 
                 const result = await addNotificationPair(stopId, routeId, directionId, count);
                 handleAlertResult(result, stopId, container);
             }
-        });
+        }, { signal });
     });
 
     // Restore highlights for any already-configured stops from localStorage
@@ -403,7 +421,7 @@ export function updateVisibleStops(routeIds) {
                 autoPan: false,
             });
 
-            // Desktop: hover to show popup with delayed close for button interaction
+            // Desktop: hover to show popup, stays open while cursor is over marker OR popup
             if (hasHover) {
                 marker.on('mouseover', function () {
                     if (this._hoverCloseTimer) {
@@ -413,11 +431,18 @@ export function updateVisibleStops(routeIds) {
                     this.openPopup();
                 });
                 marker.on('mouseout', function () {
+                    // Don't auto-close if user engaged with chip picker
+                    if (this._popupSticky) return;
                     const self = this;
                     self._hoverCloseTimer = setTimeout(() => {
                         self.closePopup();
                         self._hoverCloseTimer = null;
                     }, 300);
+                });
+
+                // Reset sticky flag when popup closes
+                marker.on('popupclose', function () {
+                    this._popupSticky = false;
                 });
             }
 

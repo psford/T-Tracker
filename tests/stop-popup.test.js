@@ -392,7 +392,7 @@ function testBuildChipPickerHtml() {
     // Verify structure
     assert.ok(html.includes('class="chip-picker"'), 'Should have chip-picker container');
     assert.ok(html.includes('class="chip-picker__chips"'), 'Should have chips container');
-    assert.ok(html.includes('class="chip-picker__custom"'), 'Should have custom input container');
+    assert.ok(html.includes('class="chip-picker__morph-input"'), 'Should have morph input');
 
     // Verify data attributes
     assert.ok(html.includes('data-stop-id="stop1"'), 'Should have stop ID in data attribute');
@@ -423,15 +423,16 @@ function testBuildChipPickerHtml() {
 
     console.log('✓ buildChipPickerHtml chip 1 pre-selected');
 
-    // Test 4: Verify custom input area
-    assert.ok(html.includes('type="number"'), 'Should have number input');
-    assert.ok(html.includes('class="chip-picker__input"'), 'Should have input with chip-picker__input class');
-    assert.ok(html.includes('min="1"'), 'Input should have min="1"');
-    assert.ok(html.includes('max="99"'), 'Input should have max="99"');
-    assert.ok(html.includes('placeholder="1-99"'), 'Input should have placeholder');
-    assert.ok(html.includes('class="chip-picker__confirm"'), 'Should have confirm button');
+    // Test 4: Verify morph input inline with chips
+    assert.ok(html.includes('class="chip-picker__morph-input"'), 'Should have morph input');
+    assert.ok(html.includes('type="text"'), 'Morph input should be type text');
+    assert.ok(html.includes('inputmode="numeric"'), 'Morph input should have numeric inputmode');
+    assert.ok(html.includes('placeholder="1-99"'), 'Should have placeholder');
+    assert.ok(html.includes('maxlength="2"'), 'Should have maxlength 2');
+    assert.ok(!html.includes('chip-picker__custom'), 'Should not have separate custom div');
+    assert.ok(!html.includes('chip-picker__confirm'), 'Should not have confirm button');
 
-    console.log('✓ buildChipPickerHtml custom input area');
+    console.log('✓ buildChipPickerHtml morph input inline');
 
     // Test 5: Verify "Set Alert" button
     assert.ok(html.includes('data-action="create-alert"'), 'Should have create-alert action');

@@ -175,18 +175,15 @@ function buildPanelChipPickerHtml(pairId, currentCount) {
     const isCustomCount = !isUnlimited && !isStandardCount;
 
     // If current count is not 1/2/3/unlimited (e.g. 4 remaining from original 5),
-    // pre-select the # chip and show the custom input pre-populated
+    // pre-select the # chip and show the morph input pre-populated
     return `<div class="chip-picker chip-picker--panel" data-pair-id="${escapeHtml(pairId)}">
         <div class="chip-picker__chips">
             <button class="chip-picker__chip${isStandardCount && currentCount === 1 ? ' chip-picker__chip--selected' : ''}" data-count="1">1</button>
             <button class="chip-picker__chip${isStandardCount && currentCount === 2 ? ' chip-picker__chip--selected' : ''}" data-count="2">2</button>
             <button class="chip-picker__chip${isStandardCount && currentCount === 3 ? ' chip-picker__chip--selected' : ''}" data-count="3">3</button>
-            <button class="chip-picker__chip${isCustomCount ? ' chip-picker__chip--selected' : ''}" data-count="custom">#</button>
+            <button class="chip-picker__chip${isCustomCount ? ' chip-picker__chip--selected chip-picker__chip--morphed' : ''}" data-count="custom">#</button>
+            <input class="chip-picker__morph-input${isCustomCount ? ' chip-picker__morph-input--active' : ''}" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="1-99" maxlength="2" ${isCustomCount ? `value="${currentCount}"` : ''}>
             <button class="chip-picker__chip${isUnlimited ? ' chip-picker__chip--selected' : ''}" data-count="unlimited">∞</button>
-        </div>
-        <div class="chip-picker__custom" style="display: ${isCustomCount ? 'flex' : 'none'};">
-            <input type="number" class="chip-picker__input" min="1" max="99" placeholder="1-99" ${isCustomCount ? `value="${currentCount}"` : ''}>
-            <button class="chip-picker__confirm">OK</button>
         </div>
         <button class="chip-picker__apply" data-action="apply-count" data-pair-id="${escapeHtml(pairId)}"${isStandardCount ? ` data-count="${currentCount}"` : ''}${isUnlimited ? ' data-count="unlimited"' : ''}${isCustomCount ? ` data-count="${currentCount}"` : ''}>Apply</button>
     </div>`;
@@ -207,45 +204,51 @@ function bindPanelChipPicker(picker, pairId) {
             chip.classList.add('chip-picker__chip--selected');
 
             const countValue = chip.dataset.count;
-            const customDiv = picker.querySelector('.chip-picker__custom');
+            const hashChip = picker.querySelector('[data-count="custom"]');
+            const morphInput = picker.querySelector('.chip-picker__morph-input');
             const applyBtn = picker.querySelector('[data-action="apply-count"]');
 
             if (countValue === 'custom') {
-                customDiv.style.display = 'flex';
-                customDiv.querySelector('.chip-picker__input').focus();
+                hashChip.classList.add('chip-picker__chip--morphed');
+                morphInput.classList.add('chip-picker__morph-input--active');
+                morphInput.focus();
             } else {
-                customDiv.style.display = 'none';
+                if (hashChip) hashChip.classList.remove('chip-picker__chip--morphed');
+                if (morphInput) {
+                    morphInput.classList.remove('chip-picker__morph-input--active');
+                    morphInput.value = '';
+                }
                 applyBtn.dataset.count = countValue;
             }
         });
     });
 
-    // Custom input confirm
-    const confirmBtn = picker.querySelector('.chip-picker__confirm');
-    if (confirmBtn) {
-        confirmBtn.addEventListener('click', () => {
-            const input = picker.querySelector('.chip-picker__input');
-            const value = parseInt(input.value, 10);
-            if (isNaN(value) || value < 1 || value > 99) {
-                input.classList.add('chip-picker__input--error');
-                input.value = '';
-                input.placeholder = '1-99';
-                return;
-            }
-            input.classList.remove('chip-picker__input--error');
-            const applyBtn = picker.querySelector('[data-action="apply-count"]');
-            applyBtn.dataset.count = String(value);
-        });
-    }
-
     // Apply button — update pair count
     const applyBtn = picker.querySelector('[data-action="apply-count"]');
     if (applyBtn) {
         applyBtn.addEventListener('click', () => {
-            const countStr = applyBtn.dataset.count;
-            if (!countStr) return; // No chip selected yet
+            const selectedChip = picker.querySelector('.chip-picker__chip--selected');
+            const customInput = picker.querySelector('.chip-picker__morph-input');
 
-            const count = countStr === 'unlimited' ? null : parseInt(countStr, 10);
+            let count;
+            // If # chip is selected, read from morph input
+            if (selectedChip?.dataset.count === 'custom') {
+                const value = parseInt(customInput?.value, 10);
+                if (isNaN(value) || value < 1 || value > 99) {
+                    if (customInput) {
+                        customInput.classList.add('chip-picker__morph-input--error');
+                        customInput.value = '';
+                        customInput.placeholder = '1-99';
+                    }
+                    return;
+                }
+                count = value;
+            } else {
+                const countStr = applyBtn.dataset.count;
+                if (!countStr) return; // No chip selected yet
+                count = countStr === 'unlimited' ? null : parseInt(countStr, 10);
+            }
+
             updatePairCount(pairId, count);
             updateStatus();
             renderPanel(); // Re-render to show updated count

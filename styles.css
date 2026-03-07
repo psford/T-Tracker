@@ -614,45 +614,55 @@ html, body {
     color: #fff;
 }
 
-.chip-picker__custom {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 6px;
-    align-items: center;
+/* # chip hidden when morphed into input */
+.chip-picker__chip--morphed {
+    display: none;
 }
 
-.chip-picker__input {
-    background: #2a2a3e;
-    border: 1px solid #444;
+/* Morph input — expands from zero in place of # chip */
+.chip-picker__morph-input {
+    background: #1a1a2e;
+    border: 1px solid #4a9eff;
     color: #e0e0e0;
-    padding: 4px 8px;
-    border-radius: 4px;
-    width: 60px;
+    padding: 4px 0;
+    border-radius: 12px;
     font-size: 13px;
-}
-
-.chip-picker__input--error {
-    border-color: #ff6b6b;
-}
-
-.chip-picker__input:focus {
+    text-align: center;
+    display: none;
+    width: 0;
+    min-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    border-width: 0;
+    -moz-appearance: textfield;
     outline: none;
-    border-color: #4a9eff;
 }
 
-.chip-picker__confirm {
-    background: #4a9eff;
-    border: none;
-    color: #fff;
-    padding: 4px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 13px;
+.chip-picker__morph-input::-webkit-outer-spin-button,
+.chip-picker__morph-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 
-.chip-picker__confirm:hover {
-    background: #3a8ede;
+.chip-picker__morph-input--active {
+    display: inline-block;
+    width: 60px;
+    min-width: 60px;
+    opacity: 1;
+    padding: 4px 8px;
+    border-width: 1px;
+    box-shadow: 0 0 10px rgba(74, 158, 255, 0.25);
 }
+
+.chip-picker__morph-input--error {
+    border-color: #ff6b6b;
+    box-shadow: 0 0 10px rgba(255, 107, 107, 0.25);
+}
+
+.chip-picker__morph-input:focus {
+    box-shadow: 0 0 12px rgba(74, 158, 255, 0.4);
+}
+
 
 .chip-picker__create {
     background: #2d8659;
@@ -736,10 +746,8 @@ html, body {
 
 /* Individual notification pair in the list */
 .notification-pair {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 6px 0;
+    position: relative;
+    padding: 6px 55px 6px 0;
     border-bottom: 1px solid rgba(15, 52, 96, 0.3);
 }
 
@@ -758,6 +766,9 @@ html, body {
 }
 
 .notification-pair__delete {
+    position: absolute;
+    top: 6px;
+    right: 0;
     background: none;
     border: 1px solid rgba(255, 107, 107, 0.5);
     color: #ff6b6b;
@@ -765,7 +776,6 @@ html, body {
     padding: 1px 6px;
     font-size: 10px;
     cursor: pointer;
-    flex-shrink: 0;
 }
 
 .notification-pair__delete:hover {
@@ -785,25 +795,33 @@ html, body {
     text-decoration: underline;
 }
 
-/* Panel chip picker variant */
+/* Panel chip picker variant — extends into parent's right padding (reserved for Delete) */
 .chip-picker--panel {
-    padding: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
     margin-top: 6px;
+    margin-right: -55px;
     background: #1a1a2e;
     border-radius: 6px;
     border: 1px solid #333;
+    flex-wrap: wrap;
+}
+
+.chip-picker--panel .chip-picker__chips {
+    margin-bottom: 0;
 }
 
 .chip-picker__apply {
     background: #4a9eff;
     border: none;
     color: #fff;
-    padding: 6px 14px;
+    padding: 6px 10px;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 13px;
-    width: 100%;
-    margin-top: 6px;
+    font-size: 12px;
+    white-space: nowrap;
 }
 
 .chip-picker__apply:hover {

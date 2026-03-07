@@ -90,11 +90,8 @@ export function buildChipPickerHtml(stopId, routeId, directionId) {
             <button class="chip-picker__chip" data-count="2">2</button>
             <button class="chip-picker__chip" data-count="3">3</button>
             <button class="chip-picker__chip" data-count="custom">#</button>
+            <input class="chip-picker__morph-input" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="1-99" maxlength="2">
             <button class="chip-picker__chip" data-count="unlimited">∞</button>
-        </div>
-        <div class="chip-picker__custom" style="display: none;">
-            <input type="number" class="chip-picker__input" min="1" max="99" placeholder="1-99">
-            <button class="chip-picker__confirm">OK</button>
         </div>
         <button class="chip-picker__create" data-action="create-alert" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="${directionId}" data-count="1">Set Alert</button>
     </div>`;
