@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notification Panel Visual Review</title>
+    <link rel="stylesheet" href="../../styles.css">
+    <style>
+        /* Force static positioning for mock testing */
+        .notification-panel {
+            position: static !important;
+            top: auto !important;
+            left: auto !important;
+            margin: 20px;
+            max-height: none !important;
+        }
+
+        .notification-panel-toggle {
+            position: static !important;
+            top: auto !important;
+            left: auto !important;
+            margin: 20px;
+            margin-bottom: 10px;
+        }
+
+        body {
+            padding: 20px;
+        }
+
+        .test-case {
+            margin-bottom: 40px;
+        }
+
+        .test-case-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #e0e0e0;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #0f3460;
+        }
+
+        .test-case-subtitle {
+            font-size: 12px;
+            color: #8888aa;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="color: #e0e0e0; margin-bottom: 20px;">Notification Panel Visual Review</h1>
+
+    <!-- Test Case 1: Normal notification panel with 2-3 active notifications -->
+    <div class="test-case">
+        <div class="test-case-title">Test Case 1: Normal Notification Panel (2-3 notifications)</div>
+        <div class="test-case-subtitle">Shows typical active notifications for monitored stops/directions</div>
+
+        <button class="notification-panel-toggle">Notifications</button>
+
+        <div class="notification-panel">
+            <div class="notification-panel__header">
+                <div class="notification-panel__title">Active Alerts</div>
+                <button class="notification-panel__close">×</button>
+            </div>
+
+            <div class="notification-pair">
+                <div class="notification-pair__info">Red Line - Southbound</div>
+                <div class="notification-pair__route">Stops: Ashmont, Shawmut, Fields Corner</div>
+                <div class="notification-pair__count">Expires in 45 minutes</div>
+                <button class="notification-pair__delete">Delete</button>
+            </div>
+
+            <div class="notification-pair">
+                <div class="notification-pair__info">Green Line B - Northbound</div>
+                <div class="notification-pair__route">Boston College to Park Street</div>
+                <div class="notification-pair__count">Expires in 30 minutes</div>
+                <button class="notification-pair__delete">Delete</button>
+            </div>
+
+            <div class="notification-pair">
+                <div class="notification-pair__info">Blue Line - Westbound</div>
+                <div class="notification-pair__route">Government Center to Wonderland</div>
+                <div class="notification-pair__count">Expires in 60 minutes</div>
+                <button class="notification-pair__delete">Delete</button>
+            </div>
+
+            <div class="notification-panel__count">3 active notifications</div>
+        </div>
+    </div>
+
+    <!-- Test Case 2: Long notification text that might overflow -->
+    <div class="test-case">
+        <div class="test-case-title">Test Case 2: Long Notification Text</div>
+        <div class="test-case-subtitle">Tests text wrapping and overflow handling in narrow panel</div>
+
+        <button class="notification-panel-toggle">Notifications</button>
+
+        <div class="notification-panel">
+            <div class="notification-panel__header">
+                <div class="notification-panel__title">Active Alerts</div>
+                <button class="notification-panel__close">×</button>
+            </div>
+
+            <div class="notification-pair">
+                <div class="notification-pair__info">Purple Line Express (Weekday Morning Peak)</div>
+                <div class="notification-pair__route">Northgate to Downtown Transit Center via Express Highway</div>
+                <div class="notification-pair__count">Expires in 120 minutes</div>
+                <button class="notification-pair__delete">Delete</button>
+            </div>
+
+            <div class="notification-panel__count">1 active notification</div>
+        </div>
+    </div>
+
+    <!-- Test Case 3: Empty state (no notifications) -->
+    <div class="test-case">
+        <div class="test-case-title">Test Case 3: Empty State</div>
+        <div class="test-case-subtitle">Shows message when no notifications are configured</div>
+
+        <button class="notification-panel-toggle">Notifications</button>
+
+        <div class="notification-panel">
+            <div class="notification-panel__header">
+                <div class="notification-panel__title">Active Alerts</div>
+                <button class="notification-panel__close">×</button>
+            </div>
+
+            <div class="notification-panel__empty">
+                No notifications configured.
+                <br>
+                Click stops on the map to set up alerts.
+            </div>
+
+            <div class="notification-panel__count">0 active notifications</div>
+        </div>
+    </div>
+
+    <!-- Test Case 4: Panel with many notifications (scrolling test) -->
+    <div class="test-case">
+        <div class="test-case-title">Test Case 4: Many Notifications (Scrolling)</div>
+        <div class="test-case-subtitle">Tests overflow and scrollable behavior with many items</div>
+
+        <button class="notification-panel-toggle">Notifications</button>
+
+        <div class="notification-panel" style="max-height: 400px;">
+            <div class="notification-panel__header">
+                <div class="notification-panel__title">Active Alerts</div>
+                <button class="notification-panel__close">×</button>
+            </div>
+
+            <div class="notification-pair">
+                <div class="notification-pair__info">Red Line - Northbound</div>
+                <div class="notification-pair__route">Alewife to Downtown Crossing</div>
+                <div class="notification-pair__count">Expires in 30 minutes</div>
+                <button class="notification-pair__delete">Delete</button>
+            </div>
+
+            <div class="notification-pair">
+                <div class="notification-pair__info">Red Line - Southbound</div>
+                <div class="notification-pair__route">Downtown Crossing to Ashmont</div>
+                <div class="notification-pair__count">Expires in 30 minutes</div>
+                <button class="notification-pair__delete">Delete</button>
+            </div>
+
+            <div class="notification-pair">
+                <div class="notification-pair__info">Green Line A - Northbound</div>
+                <div class="notification-pair__route">Forest Hills to Park Street</div>
+                <div class="notification-pair__count">Expires in 45 minutes</div>
+                <button class="notification-pair__delete">Delete</button>
+            </div>
+
+            <div class="notification-pair">
+                <div class="notification-pair__info">Green Line B - Northbound</div>
+                <div class="notification-pair__route">Boston College to Park Street</div>
+                <div class="notification-pair__count">Expires in 45 minutes</div>
+                <button class="notification-pair__delete">Delete</button>
+            </div>
+
+            <div class="notification-pair">
+                <div class="notification-pair__info">Green Line C - Northbound</div>
+                <div class="notification-pair__route">Cleveland Circle to Park Street</div>
+                <div class="notification-pair__count">Expires in 45 minutes</div>
+                <button class="notification-pair__delete">Delete</button>
+            </div>
+
+            <div class="notification-pair">
+                <div class="notification-pair__info">Green Line D - Northbound</div>
+                <div class="notification-pair__route">Riverside to Park Street</div>
+                <div class="notification-pair__count">Expires in 45 minutes</div>
+                <button class="notification-pair__delete">Delete</button>
+            </div>
+
+            <div class="notification-pair">
+                <div class="notification-pair__info">Blue Line - Westbound</div>
+                <div class="notification-pair__route">Wonderland to Bowdoin</div>
+                <div class="notification-pair__count">Expires in 60 minutes</div>
+                <button class="notification-pair__delete">Delete</button>
+            </div>
+
+            <div class="notification-pair">
+                <div class="notification-pair__info">Orange Line - Northbound</div>
+                <div class="notification-pair__route">Forest Hills to Oak Grove</div>
+                <div class="notification-pair__count">Expires in 75 minutes</div>
+                <button class="notification-pair__delete">Delete</button>
+            </div>
+
+            <div class="notification-panel__count">8 active notifications</div>
+        </div>
+    </div>
+</body>
+</html>

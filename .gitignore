@@ -28,3 +28,6 @@ nul
 
 # Git worktrees
 .worktrees/
+
+# Visual review screenshots (generated, not committed)
+.visual-review/screenshots/
