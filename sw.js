@@ -10,7 +10,11 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  event.respondWith(fetch(event.request));
+  // Only handle same-origin requests. Let cross-origin (MBTA API SSE) pass through
+  // natively — intercepting SSE streams with respondWith(fetch()) breaks streaming.
+  if (new URL(event.request.url).origin === self.location.origin) {
+    event.respondWith(fetch(event.request));
+  }
 });
 
 self.addEventListener('notificationclick', (event) => {
