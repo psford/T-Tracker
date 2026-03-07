@@ -36,8 +36,8 @@ All data flows through dedicated modules with clear responsibilities:
 - `ui.js`: Route selection UI, localStorage persistence, grouping/sorting orchestration
 - `stop-markers.js`: Stop marker rendering on map, notification pair config workflow
 - `stop-popup.js`: Stop popup HTML formatting with notification config states
-- `notifications.js`: Notification engine, pair management, localStorage persistence, direction detection
-- `notification-ui.js`: Notification status indicator, config panel, permission management UI
+- `notifications.js`: Notification engine, pair management, localStorage persistence, direction detection, SW showNotification with fallback
+- `notification-ui.js`: Notification status indicator, config panel, permission management UI, platform-specific messaging (iOS/Android/desktop)
 
 ## Tech Stack
 - Language: JavaScript (ES6 modules, no build tools)
@@ -59,10 +59,13 @@ All data flows through dedicated modules with clear responsibilities:
 - ES6 modules require HTTP server; `file://` protocol will not work
 
 ## Project Structure
-- `index.html` -- Entry point, wires modules together, loads Leaflet CDN, notification DOM elements
+- `index.html` -- Entry point, wires modules together, loads Leaflet CDN, notification DOM elements, SW registration
 - `styles.css` -- Dark theme, responsive layout, vehicle marker styles, stop/notification styles
 - `config.js` -- All configuration (API key, map center, animation timing, route defaults)
 - `config.example.js` -- Template for config.js (committed; config.js is gitignored)
+- `manifest.json` -- PWA manifest (app name, icons, theme color, display: standalone)
+- `sw.js` -- Minimal service worker (no caching, notification click handler)
+- `icons/` -- PWA icons (192x192, 512x512, 180x180 apple-touch-icon)
 - `src/` -- 14 application modules (see `src/CLAUDE.md` for contracts)
 - `tests/` -- 12 unit test files for pure functions and data modules
 - `docs/` -- Design plans and implementation phase docs

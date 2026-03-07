@@ -285,8 +285,9 @@ export function shouldNotify(vehicle, pair, notifiedSet, stopsData = null, termi
 }
 
 /**
- * Fire a browser notification for a vehicle at checkpoint.
- * Check permission state before each notification attempt.
+ * Fire a notification for a vehicle at checkpoint.
+ * Uses ServiceWorker showNotification() when available (required for iOS PWA),
+ * falls back to new Notification() for desktop browsers without SW.
  *
  * @param {Object} vehicle — vehicle state
  * @param {Object} pair — notification pair config
@@ -325,12 +326,21 @@ function fireNotification(vehicle, pair, stopsData) {
         }
     }
 
-    const body = directionLabel ? `→ ${directionLabel}` : '';
-
-    new Notification(`${vehicleTypeLabel} approaching ${checkpointName}`, {
-        body,
+    const title = `${vehicleTypeLabel} approaching ${checkpointName}`;
+    const options = {
+        body: directionLabel ? `→ ${directionLabel}` : '',
         tag: `ttracker-${vehicle.id}-${pair.id}`,
-    });
+        icon: '/icons/icon-192.png',
+        badge: '/icons/icon-192.png',
+    };
+
+    // Prefer SW showNotification (required for iOS PWA, works everywhere)
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.ready.then(reg => reg.showNotification(title, options))
+            .catch(err => console.warn('SW notification failed:', err.message));
+    } else if (typeof Notification !== 'undefined') {
+        new Notification(title, options);
+    }
 }
 
 // Session-scoped Set, cleared on page reload

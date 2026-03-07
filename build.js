@@ -20,9 +20,17 @@ fs.mkdirSync(DIST, { recursive: true });
 fs.mkdirSync(path.join(DIST, 'src'), { recursive: true });
 
 // Copy static files
-const rootFiles = ['index.html', 'styles.css', 'favicon.svg'];
+const rootFiles = ['index.html', 'styles.css', 'favicon.svg', 'manifest.json', 'sw.js'];
 rootFiles.forEach(file => {
     fs.copyFileSync(path.join(__dirname, file), path.join(DIST, file));
+});
+
+// Copy icons directory
+const iconsDir = path.join(__dirname, 'icons');
+const distIcons = path.join(DIST, 'icons');
+fs.mkdirSync(distIcons, { recursive: true });
+fs.readdirSync(iconsDir).filter(f => f.endsWith('.png')).forEach(file => {
+    fs.copyFileSync(path.join(iconsDir, file), path.join(distIcons, file));
 });
 
 // Copy all src/*.js files
