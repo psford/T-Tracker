@@ -100,6 +100,13 @@ All data flows through dedicated modules with clear responsibilities:
 
 **Rationale**: Throwaway files create technical debt, confusion, and merge conflicts. Feature branches provide isolation without duplication.
 
+## Worktrees
+- After creating a worktree, **copy `config.js`** from main repo root into the worktree (it's gitignored, so worktrees get a placeholder with a dummy API key)
+- Dummy API keys cause silent SSE failures ("Rate limited — retrying...") that look like rate limits but are actually auth failures
+
+## Retrospective
+- Retro items are logged in `docs/retro-items.md` (not `.claude/retrospective-log.md`)
+
 ## Configuration
 - `config.js` holds API key, map settings, animation timing, route defaults
 - Gitignored (contains API key); copy `config.example.js` to create
