@@ -147,9 +147,10 @@ function highlightConfiguredStop(stopId) {
     const marker = stopMarkers.get(stopId);
     if (marker) {
         marker.setStyle({
-            radius: 8,
+            radius: 10,
             fillOpacity: 1.0,
-            weight: 2,
+            weight: 3,
+            color: '#ff6b6b',
         });
     }
 }
@@ -169,16 +170,18 @@ function restoreConfiguredHighlights() {
  * Reset all stop markers to default style and re-apply highlights for current pairs.
  * Called when a notification pair is deleted to remove stale visual highlights.
  *
- * Resets: radius → 6, fillOpacity → 0.6, weight → 1
- * Then re-applies highlights (radius → 8, fillOpacity → 1.0, weight → 2) for stops in current pairs.
+ * Resets: radius → 6, fillOpacity → 0.6, weight → 1, color → original route color
+ * Then re-applies highlights (radius → 10, fillOpacity → 1.0, weight → 3, color → #ff6b6b) for stops in current pairs.
  */
 export function refreshAllHighlights() {
-    // First reset all markers to default style
+    // First reset all markers to default style (restore original route color)
     stopMarkers.forEach((marker) => {
+        const originalColor = marker.options.fillColor || '#888888';
         marker.setStyle({
             radius: 6,
             fillOpacity: 0.6,
             weight: 1,
+            color: originalColor,
         });
     });
 
