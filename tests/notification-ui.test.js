@@ -1,6 +1,23 @@
 // tests/notification-ui.test.js — Unit tests for notification UI pure functions
 import assert from 'assert';
 
+// Mock localStorage before importing notifications.js
+globalThis.localStorage = {
+    _store: {},
+    getItem(key) {
+        return this._store[key] ?? null;
+    },
+    setItem(key, value) {
+        this._store[key] = String(value);
+    },
+    removeItem(key) {
+        delete this._store[key];
+    },
+    clear() {
+        this._store = {};
+    },
+};
+
 /**
  * Mock data for testing
  */
@@ -172,18 +189,186 @@ function testFormatPairWithEmptyMaps() {
 }
 
 /**
+ * Helper: Escape HTML for test verification (matches implementation in stop-popup.js)
+ */
+function escapeHtmlTest(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+    };
+    return String(text).replace(/[&<>"']/g, m => map[m]);
+}
+
+/**
+ * Test: AC4.1 — formatCountDisplay returns "N remaining" for counted pairs
+ */
+async function testCountDisplayForCountedPair() {
+    const { formatCountDisplay } = await import('../src/notification-ui.js');
+
+    const countDisplay = formatCountDisplay(3);
+    assert.strictEqual(countDisplay, '3 remaining', 'Should display "3 remaining"');
+    console.log('✓ AC4.1 — Counted pair displays "N remaining"');
+}
+
+/**
+ * Test: AC4.1 — formatCountDisplay returns "∞ unlimited" for unlimited pairs
+ */
+async function testCountDisplayForUnlimitedPair() {
+    const { formatCountDisplay } = await import('../src/notification-ui.js');
+
+    const countDisplay = formatCountDisplay(null);
+    assert.strictEqual(countDisplay, '∞ unlimited', 'Should display "∞ unlimited"');
+    console.log('✓ AC4.1 — Unlimited pair displays "∞ unlimited"');
+}
+
+/**
+ * Test: AC4.3 — updatePairCount updates remainingCount and totalCount, persists to localStorage
+ */
+async function testUpdatePairCountPersistence() {
+    // Setup: Mock Notification and initialize
+    globalThis.Notification = {
+        permission: 'granted',
+        requestPermission: async function() { return 'granted'; },
+    };
+
+    localStorage.clear();
+
+    // Import after setup
+    const { initNotifications, addNotificationPair, updatePairCount, getNotificationPairs } = await import('../src/notifications.js');
+
+    initNotifications(new EventTarget(), new Map());
+
+    // Add a pair with count=2
+    const { pair: addedPair } = await addNotificationPair('stop1', 'Red', 0, 2);
+    const pairId = addedPair.id;
+
+    // Verify initial state
+    let pairs = getNotificationPairs();
+    let storedPair = pairs.find(p => p.id === pairId);
+    assert.strictEqual(storedPair.remainingCount, 2, 'Initial remainingCount should be 2');
+    assert.strictEqual(storedPair.totalCount, 2, 'Initial totalCount should be 2');
+
+    // Update to count=5
+    const updated = updatePairCount(pairId, 5);
+    assert.strictEqual(updated, true, 'updatePairCount should return true');
+
+    // Verify updated in-memory state
+    pairs = getNotificationPairs();
+    storedPair = pairs.find(p => p.id === pairId);
+    assert.strictEqual(storedPair.remainingCount, 5, 'remainingCount should be 5 after update');
+    assert.strictEqual(storedPair.totalCount, 5, 'totalCount should be 5 after update');
+
+    // Verify persisted to localStorage
+    const stored = localStorage.getItem('ttracker-notifications-config');
+    const config = JSON.parse(stored);
+    const persistedPair = config.find(p => p.id === pairId);
+    assert.strictEqual(persistedPair.remainingCount, 5, 'Persisted remainingCount should be 5');
+    assert.strictEqual(persistedPair.totalCount, 5, 'Persisted totalCount should be 5');
+
+    console.log('✓ AC4.3 — updatePairCount updates pair and persists to localStorage');
+}
+
+/**
+ * Test: AC4.4 — Converting counted pair to unlimited by calling updatePairCount(pairId, null)
+ */
+async function testConvertCountedToUnlimited() {
+    globalThis.Notification = {
+        permission: 'granted',
+        requestPermission: async function() { return 'granted'; },
+    };
+
+    localStorage.clear();
+
+    const { initNotifications, addNotificationPair, updatePairCount, getNotificationPairs } = await import('../src/notifications.js');
+
+    initNotifications(new EventTarget(), new Map());
+
+    // Add a pair with count=3
+    const { pair: addedPair } = await addNotificationPair('stop1', 'Red', 0, 3);
+    const pairId = addedPair.id;
+
+    // Verify initial state is counted
+    let pairs = getNotificationPairs();
+    let storedPair = pairs.find(p => p.id === pairId);
+    assert.strictEqual(storedPair.remainingCount, 3, 'Initial remainingCount should be 3');
+
+    // Convert to unlimited
+    updatePairCount(pairId, null);
+
+    // Verify converted to unlimited
+    pairs = getNotificationPairs();
+    storedPair = pairs.find(p => p.id === pairId);
+    assert.strictEqual(storedPair.remainingCount, null, 'remainingCount should be null (unlimited)');
+    assert.strictEqual(storedPair.totalCount, null, 'totalCount should be null (unlimited)');
+
+    console.log('✓ AC4.4 — Converting counted pair to unlimited sets remainingCount to null');
+}
+
+/**
+ * Test: AC4.5 — Converting unlimited pair to counted by calling updatePairCount(pairId, 2)
+ */
+async function testConvertUnlimitedToCounted() {
+    globalThis.Notification = {
+        permission: 'granted',
+        requestPermission: async function() { return 'granted'; },
+    };
+
+    localStorage.clear();
+
+    const { initNotifications, addNotificationPair, updatePairCount, getNotificationPairs } = await import('../src/notifications.js');
+
+    initNotifications(new EventTarget(), new Map());
+
+    // Add a pair with unlimited (count=null)
+    const { pair: addedPair } = await addNotificationPair('stop1', 'Red', 0, null);
+    const pairId = addedPair.id;
+
+    // Verify initial state is unlimited
+    let pairs = getNotificationPairs();
+    let storedPair = pairs.find(p => p.id === pairId);
+    assert.strictEqual(storedPair.remainingCount, null, 'Initial remainingCount should be null (unlimited)');
+
+    // Convert to counted
+    updatePairCount(pairId, 2);
+
+    // Verify converted to counted
+    pairs = getNotificationPairs();
+    storedPair = pairs.find(p => p.id === pairId);
+    assert.strictEqual(storedPair.remainingCount, 2, 'remainingCount should be 2');
+    assert.strictEqual(storedPair.totalCount, 2, 'totalCount should be 2');
+
+    console.log('✓ AC4.5 — Converting unlimited pair to counted sets remainingCount to 2');
+}
+
+/**
  * Run all tests
  */
-try {
-    testFormatPairResolvesStopNames();
-    testFormatPairReturnsDirectionLabel();
-    testFormatPairUsesLongNameForRail();
-    testFormatPairFallsBackToRouteId();
-    testFormatPairFallsBackToStopId();
-    testFormatPairWithEmptyMaps();
+async function runAllTests() {
+    try {
+        // Sync tests
+        testFormatPairResolvesStopNames();
+        testFormatPairReturnsDirectionLabel();
+        testFormatPairUsesLongNameForRail();
+        testFormatPairFallsBackToRouteId();
+        testFormatPairFallsBackToStopId();
+        testFormatPairWithEmptyMaps();
 
-    console.log('\n✓✓✓ All notification-ui tests passed ✓✓✓');
-} catch (error) {
-    console.error('Test failed:', error.message);
-    process.exit(1);
+        // Async tests for count display and updatePairCount
+        await testCountDisplayForCountedPair();
+        await testCountDisplayForUnlimitedPair();
+        await testUpdatePairCountPersistence();
+        await testConvertCountedToUnlimited();
+        await testConvertUnlimitedToCounted();
+
+        console.log('\n✓✓✓ All notification-ui tests passed ✓✓✓');
+    } catch (error) {
+        console.error('Test failed:', error.message);
+        console.error(error.stack);
+        process.exit(1);
+    }
 }
+
+runAllTests();

@@ -9,6 +9,7 @@ let pairs = []; // In-memory cache, synced with localStorage
 let paused = false; // In-memory pause state, synced with localStorage
 
 // Injected dependencies from initNotifications
+let _apiEventsTarget = null; // EventTarget for dispatching notification:pair-expired events
 let _terminusChecker = null; // (stopId, routeId) => boolean
 let _directionLabelFn = null; // (routeId) => [dir0Label, dir1Label]
 let _routeMetadataFn = null; // () => Array<{id, type, ...}>
@@ -32,7 +33,13 @@ function readConfig() {
             return [];
         }
         // Migration: filter out old-format pairs that have myStopId
-        return data.filter(p => !p.myStopId);
+        return data
+            .filter(p => !p.myStopId)
+            .map(p => ({
+                ...p,
+                remainingCount: p.remainingCount !== undefined ? p.remainingCount : null,
+                totalCount: p.totalCount !== undefined ? p.totalCount : null,
+            }));
     } catch (error) {
         console.error('Failed to parse notification config, starting fresh:', error.message);
         return [];
@@ -110,9 +117,10 @@ export function getPermissionState() {
  * @param {string} checkpointStopId — checkpoint stop ID
  * @param {string} routeId — route ID (e.g., "Red", "Green-D", "39")
  * @param {number} directionId — direction ID (0 or 1), user-chosen
+ * @param {number|null} [count=null] — max notifications before expiry (null for unlimited)
  * @returns {Promise<Object>} — { pair: {...}, permissionState: string } or { error: string }
  */
-export async function addNotificationPair(checkpointStopId, routeId, directionId) {
+export async function addNotificationPair(checkpointStopId, routeId, directionId, count = null) {
     const validation = validatePair(checkpointStopId, routeId, directionId, pairs);
     if (validation.error) {
         return { error: validation.error };
@@ -128,6 +136,8 @@ export async function addNotificationPair(checkpointStopId, routeId, directionId
         checkpointStopId,
         routeId,
         directionId,
+        remainingCount: count,
+        totalCount: count,
     };
 
     pairs.push(newPair);
@@ -148,6 +158,24 @@ export function removeNotificationPair(pairId) {
     if (index === -1) return false;
 
     pairs.splice(index, 1);
+    writeConfig(pairs);
+    return true;
+}
+
+/**
+ * Update the remaining/total count for a notification pair.
+ * Used by the alerts panel to allow editing expiry count.
+ *
+ * @param {string} pairId — pair ID to update
+ * @param {number|null} count — new count (null for unlimited)
+ * @returns {boolean} — true if updated, false if pair not found
+ */
+export function updatePairCount(pairId, count) {
+    const pair = pairs.find(p => p.id === pairId);
+    if (!pair) return false;
+
+    pair.remainingCount = count;
+    pair.totalCount = count;
     writeConfig(pairs);
     return true;
 }
@@ -316,11 +344,33 @@ const notifiedVehicles = new Set();
  */
 function checkAllPairs(vehicle, stopsData) {
     if (paused) return;
-    for (const pair of pairs) {
+    // Iterate over a copy of pairs since we may remove elements during iteration
+    for (const pair of [...pairs]) {
         if (shouldNotify(vehicle, pair, notifiedVehicles, stopsData, _terminusChecker)) {
             console.log(`[Notify] Vehicle ${vehicle.label || vehicle.id} at stop ${vehicle.stopId} matched checkpoint ${pair.checkpointStopId}`);
             fireNotification(vehicle, pair, stopsData);
             notifiedVehicles.add(`${vehicle.id}:${pair.id}`);
+
+            // Decrement remaining count for counted pairs
+            if (pair.remainingCount !== null && pair.remainingCount !== undefined) {
+                pair.remainingCount -= 1;
+                if (pair.remainingCount <= 0) {
+                    // Auto-delete expired pair
+                    const index = pairs.indexOf(pair);
+                    if (index !== -1) {
+                        pairs.splice(index, 1);
+                    }
+                    console.log(`[Notify] Pair ${pair.id} expired (count reached 0), auto-deleted`);
+
+                    // Notify UI of auto-delete
+                    if (_apiEventsTarget) {
+                        _apiEventsTarget.dispatchEvent(new CustomEvent('notification:pair-expired', {
+                            detail: { pairId: pair.id, checkpointStopId: pair.checkpointStopId }
+                        }));
+                    }
+                }
+                writeConfig(pairs);
+            }
         }
     }
 }
@@ -338,6 +388,7 @@ function checkAllPairs(vehicle, stopsData) {
  */
 export function initNotifications(apiEventsTarget, stopsData, terminusChecker = null, directionLabelFn = null, routeMetadataFn = null) {
     // Store injected dependencies
+    _apiEventsTarget = apiEventsTarget;
     _terminusChecker = terminusChecker;
     _directionLabelFn = directionLabelFn;
     _routeMetadataFn = routeMetadataFn;

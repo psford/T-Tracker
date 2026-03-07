@@ -1,6 +1,6 @@
 # T-Tracker -- MBTA Real-Time Transit Tracker
 
-Last verified: 2026-03-04
+Last verified: 2026-03-07
 
 ## Data Flow Architecture
 
@@ -17,7 +17,7 @@ MBTA API (SSE) → api.js (parse + validate) → vehicles.js (interpolate + anim
                                             (group/sort)        stop-popup.js (format)
                                                               vehicle-popup.js (format)
                       |
-                      +→ notifications.js (monitor vehicles → fire alerts)
+                      +→ notifications.js (monitor vehicles → fire alerts → countdown expiry)
                                ↓
                          notification-ui.js (status indicator + config panel)
 ```

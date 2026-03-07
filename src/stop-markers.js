@@ -1,6 +1,6 @@
 // src/stop-markers.js — Renders stop markers on map for visible routes
 import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, snapToRoutePolyline, isTerminusStop, getDirectionDestinations } from './map.js';
-import { formatStopPopup, escapeHtml } from './stop-popup.js';
+import { formatStopPopup, escapeHtml, buildChipPickerHtml } from './stop-popup.js';
 import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';
 import { updateStatus as updateNotificationStatus, renderPanel } from './notification-ui.js';
 
@@ -117,6 +117,28 @@ function getStopConfigState(stopId) {
 }
 
 /**
+ * Handle alert creation result: success path (update UI, close popup)
+ * or error path (display inline error message).
+ *
+ * @param {Object} result — result from addNotificationPair() {error?, ...}
+ * @param {string} stopId — stop ID for highlighting on success
+ * @param {HTMLElement} container — popup container for error display
+ */
+function handleAlertResult(result, stopId, container) {
+    if (result.error) {
+        const actionsDiv = container.querySelector('.stop-popup__actions');
+        if (actionsDiv) {
+            actionsDiv.innerHTML = `<div class="stop-popup__alert-configured" style="color: #ff6b6b">${escapeHtml(result.error)}</div>`;
+        }
+    } else {
+        highlightConfiguredStop(stopId);
+        updateNotificationStatus();
+        renderPanel();
+        mapInstance.closePopup();
+    }
+}
+
+/**
  * Highlight a configured stop by increasing marker size and opacity.
  *
  * @param {string} stopId — stop ID to highlight
@@ -172,18 +194,41 @@ export function refreshAllHighlights() {
  * Creates layer group, stores map instance for event delegation, and sets up popup event handling.
  *
  * @param {L.Map} map — Leaflet map instance
+ * @param {EventTarget} [apiEventsTarget=null] — EventTarget for listening to notification:pair-expired events
  */
-export function initStopMarkers(map) {
+export function initStopMarkers(map, apiEventsTarget = null) {
     mapInstance = map;
     stopLayerGroup = L.layerGroup().addTo(map);
 
+    // Listen for pair auto-delete to refresh stop highlights
+    if (apiEventsTarget) {
+        apiEventsTarget.addEventListener('notification:pair-expired', () => {
+            refreshAllHighlights();
+        });
+    }
+
     // Set up popup event delegation for alert button clicks and hover persistence
+    // AbortController prevents listener stacking across repeated popupopen events
+    let popupAbort = null;
+
+    mapInstance.on('popupclose', () => {
+        if (popupAbort) {
+            popupAbort.abort();
+            popupAbort = null;
+        }
+    });
+
     mapInstance.on('popupopen', (e) => {
         const container = e.popup.getElement();
         if (!container) return;
 
         // Only handle stop popups (check for stop-popup class)
         if (!container.querySelector('.stop-popup')) return;
+
+        // Abort any stale listeners from a previous popup
+        if (popupAbort) popupAbort.abort();
+        popupAbort = new AbortController();
+        const { signal } = popupAbort;
 
         // Keep popup open when mouse enters popup area (cancel marker's mouseout timer)
         const sourceMarker = e.popup._source;
@@ -193,36 +238,101 @@ export function initStopMarkers(map) {
                     clearTimeout(sourceMarker._hoverCloseTimer);
                     sourceMarker._hoverCloseTimer = null;
                 }
-            });
+            }, { signal });
             container.addEventListener('mouseleave', () => {
+                // Don't auto-close if user has engaged with chip picker
+                if (sourceMarker._popupSticky) return;
                 mapInstance.closePopup();
-            });
+            }, { signal });
         }
 
-        // One-click alert: handle all set-alert buttons
-        const alertBtns = container.querySelectorAll('[data-action="set-alert"]');
-        alertBtns.forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const stopId = btn.dataset.stopId;
-                const routeId = btn.dataset.routeId;
-                const directionId = parseInt(btn.dataset.directionId, 10);
+        // Handle direction button clicks — reveal chip picker
+        container.addEventListener('click', async (e) => {
+            const showChipsBtn = e.target.closest('[data-action="show-chips"]');
+            if (showChipsBtn) {
+                // Make popup sticky — only dismissible by click-away, not mouseout
+                if (sourceMarker) sourceMarker._popupSticky = true;
 
-                const result = await addNotificationPair(stopId, routeId, directionId);
-                if (result.error) {
-                    // Show error in popup
-                    const actionsDiv = container.querySelector('.stop-popup__actions');
-                    if (actionsDiv) {
-                        actionsDiv.innerHTML = `<div class="stop-popup__alert-configured" style="color: #ff6b6b">${escapeHtml(result.error)}</div>`;
-                    }
-                } else {
-                    // Success — highlight stop, update UI
-                    highlightConfiguredStop(stopId);
-                    updateNotificationStatus();
-                    renderPanel();
-                    mapInstance.closePopup();
+                const stopId = showChipsBtn.dataset.stopId;
+                const routeId = showChipsBtn.dataset.routeId;
+                const directionId = parseInt(showChipsBtn.dataset.directionId, 10);
+
+                // Collapse any existing chip picker in this popup (AC1.7)
+                container.querySelectorAll('.chip-picker').forEach(el => el.remove());
+
+                // Insert chip picker after the clicked button's parent route-alerts div
+                const routeAlertsDiv = showChipsBtn.closest('.stop-popup__route-alerts');
+                if (routeAlertsDiv) {
+                    routeAlertsDiv.insertAdjacentHTML('afterend', buildChipPickerHtml(stopId, routeId, directionId));
                 }
-            });
-        });
+                return;
+            }
+
+            // Handle chip selection
+            const chip = e.target.closest('.chip-picker__chip');
+            if (chip) {
+                const picker = chip.closest('.chip-picker');
+                if (!picker) return;
+
+                // Update selected state
+                picker.querySelectorAll('.chip-picker__chip').forEach(c => c.classList.remove('chip-picker__chip--selected'));
+                chip.classList.add('chip-picker__chip--selected');
+
+                const countValue = chip.dataset.count;
+                const hashChip = picker.querySelector('[data-count="custom"]');
+                const morphInput = picker.querySelector('.chip-picker__morph-input');
+                const createBtn = picker.querySelector('[data-action="create-alert"]');
+
+                if (countValue === 'custom') {
+                    // Morph # chip into inline input
+                    hashChip.classList.add('chip-picker__chip--morphed');
+                    morphInput.classList.add('chip-picker__morph-input--active');
+                    morphInput.focus();
+                } else {
+                    // Restore # chip, collapse input
+                    if (hashChip) hashChip.classList.remove('chip-picker__chip--morphed');
+                    if (morphInput) {
+                        morphInput.classList.remove('chip-picker__morph-input--active');
+                        morphInput.value = '';
+                    }
+                    createBtn.dataset.count = countValue;
+                }
+                return;
+            }
+
+            // Handle "Set Alert" button click — create the pair
+            const createBtn = e.target.closest('[data-action="create-alert"]');
+            if (createBtn) {
+                const picker = createBtn.closest('.chip-picker') || container.querySelector('.chip-picker');
+                const selectedChip = picker?.querySelector('.chip-picker__chip--selected');
+                const customInput = picker?.querySelector('.chip-picker__morph-input');
+
+                let count;
+                // If # chip is selected, read from morph input
+                if (selectedChip?.dataset.count === 'custom') {
+                    const value = parseInt(customInput?.value, 10);
+                    if (isNaN(value) || value < 1 || value > 99) {
+                        if (customInput) {
+                            customInput.classList.add('chip-picker__morph-input--error');
+                            customInput.value = '';
+                            customInput.placeholder = '1-99';
+                        }
+                        return;
+                    }
+                    count = value;
+                } else {
+                    const countStr = createBtn.dataset.count;
+                    count = countStr === 'unlimited' ? null : parseInt(countStr, 10);
+                }
+
+                const stopId = createBtn.dataset.stopId;
+                const routeId = createBtn.dataset.routeId;
+                const directionId = parseInt(createBtn.dataset.directionId, 10);
+
+                const result = await addNotificationPair(stopId, routeId, directionId, count);
+                handleAlertResult(result, stopId, container);
+            }
+        }, { signal });
     });
 
     // Restore highlights for any already-configured stops from localStorage
@@ -311,7 +421,7 @@ export function updateVisibleStops(routeIds) {
                 autoPan: false,
             });
 
-            // Desktop: hover to show popup with delayed close for button interaction
+            // Desktop: hover to show popup, stays open while cursor is over marker OR popup
             if (hasHover) {
                 marker.on('mouseover', function () {
                     if (this._hoverCloseTimer) {
@@ -321,11 +431,18 @@ export function updateVisibleStops(routeIds) {
                     this.openPopup();
                 });
                 marker.on('mouseout', function () {
+                    // Don't auto-close if user engaged with chip picker
+                    if (this._popupSticky) return;
                     const self = this;
                     self._hoverCloseTimer = setTimeout(() => {
                         self.closePopup();
                         self._hoverCloseTimer = null;
                     }, 300);
+                });
+
+                // Reset sticky flag when popup closes
+                marker.on('popupclose', function () {
+                    this._popupSticky = false;
                 });
             }
 

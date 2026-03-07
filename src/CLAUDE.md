@@ -1,6 +1,6 @@
 # T-Tracker Source Modules
 
-Last verified: 2026-03-04
+Last verified: 2026-03-07
 
 ## Purpose
 Fourteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
@@ -66,7 +66,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Expects**: Leaflet `L` global available. `config.map.*`, `config.tiles.*` set.
 
 ### stop-markers.js -- Stop Marker Rendering & Notification Config
-- **Exposes**: `initStopMarkers(map)`, `updateVisibleStops(routeIds)`, `computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap)`
+- **Exposes**: `initStopMarkers(map, apiEventsTarget)`, `updateVisibleStops(routeIds)`, `computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap)`, `refreshAllHighlights()`
 - **Guarantees**: Renders lightweight SVG circle markers for stops on visible routes (AC1.1).
   Creates one marker per unique stop (deduplication for stops on multiple routes, AC1.5).
   First visible route to claim a stop sets its color (no visual stacking).
@@ -74,15 +74,17 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Binds click popups to markers with stop name and routes serving that stop (via `formatStopPopup(configState)`).
   Popups are click-activated and include close button; autoPan ensures full visibility.
   `computeVisibleStops()` is a pure function for testability.
-  Implements Phase 4 two-click notification config workflow: User clicks "Set as Checkpoint" on stop A, then "Set as My Stop" on stop B to create pair.
-  Maintains module-level state for pending checkpoint (stopId + routeId) during workflow.
-  Delegates config button clicks via Leaflet `popupopen` event listener on map instance.
+  Implements Phase 2 two-tap notification alert creation workflow via chip picker: first tap on direction button reveals chip picker with count options below the button (AC1.1), second tap on a chip updates the "Set Alert" button's data-count attribute and visually selects the chip (AC1.3), tapping "Set Alert" button creates the alert (AC1.3, AC1.4, AC1.5).
+  Delegates chip picker interactions via event delegation on popupopen Leaflet event listener.
   On successful pair creation, calls `highlightConfiguredStop()` to visually enlarge configured stop markers.
   On page load, restores highlights for all previously-configured stops from localStorage.
-  Computes fresh `configState` on each popup open, resolving `pendingCheckpoint` stopId to human-readable `pendingCheckpointName` from stop data (ensures dynamic state like pending checkpoint and pair count are always current, and pending checkpoint displays as "Checkpoint: Park Street" not raw ID).
+  Computes fresh `configState` on each popup open with current pair count, existing alerts, and per-route direction info.
   Imports `MAX_PAIRS` constant from `notifications.js` for consistent limits across all modules.
   Sanitizes error messages with `escapeHtml()` before rendering to DOM (defense-in-depth for unsanitized API strings).
-- **Expects**: Leaflet `L` global available. `map.js` exports for stop data, route-stop mapping, and route colors. `stop-popup.js` for popup content formatting (`formatStopPopup`) and HTML escaping (`escapeHtml`). `notifications.js` for pair management (`addNotificationPair`, `getNotificationPairs`), MAX_PAIRS constant.
+  Imports `buildChipPickerHtml` from `stop-popup.js` for chip picker HTML generation on direction button click.
+  Centralized success/error handling for alert creation: after `addNotificationPair()` resolves, calls `highlightConfiguredStop()`, `updateNotificationStatus()`, `renderPanel()`, and closes popup on success; shows inline error message on failure.
+  Listens for `notification:pair-expired` CustomEvent on apiEventsTarget to refresh stop highlights when pairs auto-delete.
+- **Expects**: Leaflet `L` global available. `map.js` exports for stop data, route-stop mapping, and route colors. `stop-popup.js` for popup content formatting (`formatStopPopup`), chip picker HTML generation (`buildChipPickerHtml`), and HTML escaping (`escapeHtml`). `notifications.js` for pair management (`addNotificationPair`, `getNotificationPairs`), MAX_PAIRS constant. `notification-ui.js` for status/panel updates (`updateStatus`, `renderPanel`). `apiEventsTarget` EventTarget for listening to `notification:pair-expired` events (optional, defaults to null).
 
 ### vehicle-math.js -- Pure Math
 - **Exposes**: `lerp(a, b, t)`, `easeOutCubic(t)`, `lerpAngle(a, b, t)`, `haversineDistance(lat1, lon1, lat2, lon2)`, `darkenHexColor(hex, amount)`, `bearingToTransform(bearing)`
@@ -134,19 +136,21 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Expects**: Vehicle object with {label, routeId, currentStatus, directionId, speed, updatedAt}. Stop name as string or null. Route metadata as {type, shortName, longName, color} or null.
 
 ### stop-popup.js -- Stop Popup Content Formatting
-- **Exposes**: `formatStopPopup(stop, routeInfos, configState = {})`, `escapeHtml(str)`
-- **Guarantees**: Pure functions, no side effects. Returns HTML strings. Gracefully handles null/missing data (omits sections rather than showing empty/broken content). HTML-escapes all user strings to prevent injection. Commuter rail (type 2) uses longName; subway and bus use shortName. Generates 5 popup states based on configState: (1) Default — both "Set as Checkpoint" and "Set as My Stop" buttons, (2) Pending checkpoint selected — shows pending checkpoint's human-readable name via `pendingCheckpointName`, only "Set as My Stop" button (active style), (3) Already configured as checkpoint — shows "Checkpoint for [route]" indicator, no buttons, (4) Already configured as destination — shows "Destination for [route]" indicator, no buttons, (5) Max pairs reached — shows "X/X pairs configured (maximum reached)" message, no buttons. All buttons include `data-stop-id` and `data-route-ids` attributes. Counter shows `pairCount/maxPairs` in default and pending states.
-- **Expects**: Stop object with {id, name, latitude, longitude}. Route infos as Array<{id, shortName, longName, color, type}> or null. Optional configState object with shape {isCheckpoint, isDestination, pairCount, pendingCheckpoint, pendingCheckpointName, maxPairs}.
+- **Exposes**: `formatStopPopup(stop, routeInfos, configState = {})`, `buildChipPickerHtml(stopId, routeId, directionId)`, `escapeHtml(str)`
+- **Guarantees**: Pure functions, no side effects. Returns HTML strings. Gracefully handles null/missing data (omits sections rather than showing empty/broken content). HTML-escapes all user strings to prevent injection. Commuter rail (type 2) uses longName; subway and bus use shortName. Generates popup with direction buttons that trigger two-tap alert creation flow: first tap on direction button reveals inline chip picker with count options `[1] [2] [3] [#] [∞]`, second tap on chip creates the alert with that count. Chip picker with count selection component: `buildChipPickerHtml()` generates div with selectable count chips (1, 2, 3 as presets), custom input option (#), unlimited option (∞), and "Set Alert" button. Chip `1` is pre-selected by default. Custom chip (#) reveals inline number input for values 1-99. Counter shows `pairCount/maxPairs` in actions area. All buttons include `data-stop-id` and `data-route-id` attributes for event delegation.
+- **Expects**: Stop object with {id, name, latitude, longitude}. Route infos as Array<{id, shortName, longName, color, type}> or null. Optional configState object with shape {pairCount, maxPairs, existingAlerts: Array<{routeId, directionId}>, routeDirections: Array<{routeId, routeName, dir0Label, dir1Label, isTerminus}>>}.
 
 ### notifications.js -- Notification Engine
-- **Exposes**: `MAX_PAIRS` (constant: 5), `initNotifications(apiEvents, stopsData)`, `addNotificationPair(checkpointStopId, myStopId, routeId)`, `removeNotificationPair(pairId)`, `getNotificationPairs()`, `validatePair(checkpointStopId, myStopId, existingPairs)`, `shouldNotify(vehicle, pair, notifiedSet)`, `requestPermission()`, `getPermissionState()`, `pauseNotifications()`, `resumeNotifications()`, `togglePause()`, `isPaused()`
-- **Guarantees**: Max 5 notification pairs enforced. Same checkpoint+destination rejected. Config persists to localStorage (key: `ttracker-notifications-config`). Duplicate prevention: same vehicle+pair only notifies once per session. Direction detection: first vehicle at checkpoint sets learned direction; opposite-direction vehicles filtered. Graceful degradation: if Notification API unavailable, config still works. Pairs with invalid stop IDs filtered on init. Storage quota exceeded handled gracefully without crashing. `addNotificationPair()` is async: requests permission on first configuration (AC9.1), returns with permissionState. `requestPermission()` must be called from user gesture context. `getPermissionState()` queries current permission without prompting. Pause state persists to localStorage (key: `ttracker-notifications-paused`). `pauseNotifications()` and `resumeNotifications()` only modify paused flag — pairs array never modified (AC5.5). Paused state skips checkAllPairs processing — notifications do not fire when paused (AC5.1). Paused state restored on `initNotifications()` from localStorage (AC5.3).
-- **Expects**: `apiEvents` EventTarget emitting `vehicles:update` and `vehicles:add` with vehicle detail objects. `stopsData` Map from `map.js` for stop name lookups and AC8.5 validation. Vehicle object must have {id, stopId, routeId, directionId, label} properties.
+- **Exposes**: `MAX_PAIRS` (constant: 5), `initNotifications(apiEventsTarget, stopsData, terminusChecker?, directionLabelFn?, routeMetadataFn?)`, `addNotificationPair(checkpointStopId, routeId, directionId, count = null)`, `removeNotificationPair(pairId)`, `updatePairCount(pairId, count)`, `getNotificationPairs()`, `validatePair(checkpointStopId, routeId, directionId, existingPairs)`, `shouldNotify(vehicle, pair, notifiedSet, stopsData?, terminusChecker?)`, `requestPermission()`, `getPermissionState()`, `pauseNotifications()`, `resumeNotifications()`, `togglePause()`, `isPaused()`
+- **Guarantees**: Max 5 notification pairs enforced. Same checkpoint+route+direction rejected. Config persists to localStorage (key: `ttracker-notifications-config`). Duplicate prevention: same vehicle+pair only notifies once per session. Graceful degradation: if Notification API unavailable, config still works. Pairs with invalid stop IDs filtered on init. Storage quota exceeded handled gracefully without crashing. `addNotificationPair(checkpointStopId, routeId, directionId, count = null)` is async: creates pair with optional `count` parameter (number for limited notifications, null for unlimited). Requests permission on first configuration (AC9.1), returns with permissionState. `updatePairCount(pairId, count)` updates a pair's remaining/total count for the alerts panel. `requestPermission()` must be called from user gesture context. `getPermissionState()` queries current permission without prompting. Pause state persists to localStorage (key: `ttracker-notifications-paused`). `pauseNotifications()` and `resumeNotifications()` only modify paused flag — pairs array never modified (AC5.5). Paused state skips checkAllPairs processing — notifications do not fire when paused (AC5.1). Paused state restored on `initNotifications()` from localStorage (AC5.3). Notification pairs include fields: `id`, `checkpointStopId`, `routeId`, `directionId`, `remainingCount` (number|null), `totalCount` (number|null). On notification fire, if `remainingCount` is not null, it decrements by 1. When `remainingCount` reaches 0, the pair is auto-deleted and removed from localStorage (emits `notification:pair-expired` CustomEvent). Existing pairs without count fields migrate to unlimited (null/null) on load.
+- **CustomEvents emitted**: `notification:pair-expired` (detail: `{pairId, checkpointStopId}`) when a pair's remainingCount reaches 0 and the pair is auto-deleted
+- **Expects**: `apiEventsTarget` EventTarget emitting `vehicles:update` and `vehicles:add` with vehicle detail objects. `stopsData` Map from `map.js` for stop name lookups. Vehicle object must have {id, stopId, routeId, directionId, label} properties. Stores apiEventsTarget reference for dispatching `notification:pair-expired` events. Optional injected dependencies: `terminusChecker(stopId, routeId)` for terminus detection, `directionLabelFn(routeId)` for direction labels, `routeMetadataFn()` for route metadata.
 
 ### notification-ui.js -- Notification Status and Panel UI
-- **Exposes**: `formatPairForDisplay(pair, stopsData, routeMetadata)`, `initNotificationUI(statusElement)`, `updateStatus()`,
+- **Exposes**: `formatCountDisplay(remainingCount)`, `formatPairForDisplay(pair, stopsData, routeMetadata)`, `initNotificationUI(statusElement, apiEventsTarget)`, `updateStatus()`,
   `initNotificationPanel(panelElement, toggleButton)`, `renderPanel()`
-- **Guarantees**: Status indicator shows current state: active (green), blocked (red), default (gray), paused (amber), or hidden.
+- **Guarantees**: `formatCountDisplay(remainingCount)` returns human-readable count string: "N remaining" for numbers, "unlimited" with infinity symbol for null.
+  Status indicator shows current state: active (green), blocked (red), default (gray), paused (amber), or hidden.
   Updates immediately on config or permission changes.
   "Enable" button triggers permission request from user gesture context.
   Detects permission revocation on tab focus via visibilitychange event.
@@ -163,9 +167,19 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Counter shows "X/5 pairs configured" (AC10.3).
   Toggle button shown/hidden based on pair count (AC10.4).
   Empty state shows "No notifications configured" (AC10.5).
+  AC4.1: Each pair displays "N remaining" (or "∞ unlimited") count below route name.
+  AC4.2: Tapping the count text reveals inline chip picker for editing.
+  AC4.3: Selecting a new count updates the pair's remainingCount and totalCount via `updatePairCount()` and persists to localStorage.
+  AC4.4: Selecting ∞ on a counted pair converts it to unlimited (remainingCount = null).
+  AC4.5: Selecting a count on an unlimited pair converts it to counted (remainingCount = count).
+  Helper functions: `buildPanelChipPickerHtml(pairId, currentCount)` generates chip picker HTML for editing pair counts.
+  Helper function: `bindPanelChipPicker(picker, pairId)` binds chip selection, custom input, and apply interactions.
+  Listens for `notification:pair-expired` CustomEvent on apiEventsTarget to update status and panel when pairs auto-delete.
 - **Expects**: `#notification-status` and `#notification-panel` elements in DOM.
-  `notifications.js` functions for state queries (`getNotificationPairs()`, `getPermissionState()`, `requestPermission()`, `isPaused()`, `togglePause()`, `removeNotificationPair()`).
+  `notifications.js` functions for state queries (`getNotificationPairs()`, `getPermissionState()`, `requestPermission()`, `isPaused()`, `togglePause()`, `removeNotificationPair()`, `updatePairCount()`).
   `getStopData()` and `getRouteMetadata()` from `map.js` for name resolution.
+  `escapeHtml()` from `stop-popup.js` for HTML escaping.
+  `apiEventsTarget` EventTarget for listening to `notification:pair-expired` events (optional, defaults to null).
 
 ### route-stops-cache.js -- Route-Stops Cache
 - **Exposes**: `getCachedRouteStops(routeIds, ttlMs)`, `setCachedRouteStops(routeId, stopIds)`, `clearRouteStopsCache()`
