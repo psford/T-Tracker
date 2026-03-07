@@ -1,6 +1,7 @@
 # T-Tracker -- MBTA Real-Time Transit Tracker
 
 Last verified: 2026-03-07
+Last context update: 2026-03-07
 
 ## Data Flow Architecture
 
@@ -65,6 +66,10 @@ All data flows through dedicated modules with clear responsibilities:
 - `src/` -- 14 application modules (see `src/CLAUDE.md` for contracts)
 - `tests/` -- 12 unit test files for pure functions and data modules
 - `docs/` -- Design plans and implementation phase docs
+- `.visual-review/` -- Visual review tooling (config, mock pages, screenshots)
+  - `config.json` -- Theme colors, viewports, stylesheet path, contrast settings
+  - `mocks/` -- Standalone HTML mock pages for CSS visual testing
+  - `screenshots/` -- Generated screenshots (gitignored)
 
 ## Conventions
 - Pure ES6 modules with `import`/`export` (no build step, no npm)
@@ -99,6 +104,20 @@ All data flows through dedicated modules with clear responsibilities:
 - ✅ DO use feature branches to isolate work
 
 **Rationale**: Throwaway files create technical debt, confusion, and merge conflicts. Feature branches provide isolation without duplication.
+
+### Visual Review (CSS Testing)
+- The `visual-review` Claude Code skill captures screenshots of mock pages for CSS review
+- Mock pages live in `.visual-review/mocks/` and load production `styles.css` with `position: static !important` overrides
+- `.visual-review/config.json` defines project theme, viewports (mobile 390x844, desktop 1400x900), and contrast requirements
+- Screenshots are generated into `.visual-review/screenshots/` (gitignored)
+- Mock pages are NOT throwaway prototypes -- they are committed test fixtures for ongoing visual regression
+
+## Worktrees
+- After creating a worktree, **copy `config.js`** from main repo root into the worktree (it's gitignored, so worktrees get a placeholder with a dummy API key)
+- Dummy API keys cause silent SSE failures ("Rate limited — retrying...") that look like rate limits but are actually auth failures
+
+## Retrospective
+- Retro items are logged in `docs/retro-items.md` (not `.claude/retrospective-log.md`)
 
 ## Configuration
 - `config.js` holds API key, map settings, animation timing, route defaults

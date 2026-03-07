@@ -1,0 +1,15 @@
+{
+    "theme": {
+        "background": "#1a1a2e",
+        "text": "#e0e0e0",
+        "accent": "#4a9eff",
+        "danger": "#ff6b6b"
+    },
+    "viewports": {
+        "mobile": { "width": 390, "height": 844 },
+        "desktop": { "width": 1400, "height": 900 }
+    },
+    "stylesheet": "styles.css",
+    "overrideSelectors": [".control-panel", ".drawer-backdrop", ".notification-panel"],
+    "contrastMinRatio": 4.5
+}
