@@ -167,8 +167,8 @@ function restoreConfiguredHighlights() {
  * Reset all stop markers to default style and re-apply highlights for current pairs.
  * Called when a notification pair is deleted to remove stale visual highlights.
  *
- * Resets: radius → 6, fillOpacity → 0.6, weight → 1, color → original route color
- * Then re-applies highlights (radius → 10, fillOpacity → 1.0, weight → 3, color → #ff6b6b) for stops in current pairs.
+ * Removes .stop-dot--configured class from all stop dots, restoring default 12px route-colored appearance.
+ * Then re-applies .stop-dot--configured class for stops in current notification pairs.
  */
 export function refreshAllHighlights() {
     // First reset all markers to default style (remove configured class)
