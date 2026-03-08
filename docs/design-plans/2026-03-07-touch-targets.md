@@ -3,7 +3,7 @@
 ## Summary
 Stop markers on the T-Tracker map are currently rendered as 12px SVG circles using Leaflet's `L.circleMarker`, where the clickable area equals the visual size. On mobile, these are difficult to tap accurately. This design replaces stop markers with DOM-based `L.divIcon` elements inside a 44×44px invisible container, matching platform accessibility guidelines without changing visual appearance.
 
-Vehicle markers currently sit above stop markers in Leaflet's layer stack, allowing vehicles near stops to intercept taps. A custom `stopPane` (z-index 650) places stops above vehicles, guaranteeing stop tap priority. A separate CSS fix addresses notification count chips overflowing their popup container at terminus stops.
+Vehicle markers currently sit above stop markers in Leaflet's layer stack, allowing vehicles near stops to intercept taps. A custom `stopPane` (z-index 625) places stops above vehicles, guaranteeing stop tap priority. A separate CSS fix addresses notification count chips overflowing their popup container at terminus stops.
 
 ## Definition of Done
 1. Stop markers have mobile-friendly touch targets — invisible hit area expanded to ~44px, no visual change to the markers themselves
@@ -30,7 +30,7 @@ Vehicle markers currently sit above stop markers in Leaflet's layer stack, allow
 - **`L.circleMarker`**: Leaflet class rendering a circle as SVG. Visual radius and clickable area are always the same size.
 - **`L.divIcon`**: Leaflet icon type rendering arbitrary HTML. Decouples visual size from clickable area — a transparent 44px container can hold a 12px visible dot.
 - **Leaflet pane**: Named DOM container with a z-index controlling stacking order between map layer types. Custom panes can be created above built-in ones.
-- **`stopPane`**: Custom pane (z-index 650) created by this feature, above vehicle `markerPane` (600) and below `popupPane` (800).
+- **`stopPane`**: Custom pane (z-index 625) created by this feature, above vehicle `markerPane` (600) and below `tooltipPane` (650) and `popupPane` (700).
 - **Touch target**: The tappable area of an interactive element. Apple HIG and Material Design both recommend at least 44×44px.
 - **Terminus stop**: First or last stop on a line. Has a single direction, making the chip overflow bug most visible here.
 - **Configured stop**: A stop with active notification alerts. Visually highlighted with a larger red dot.
@@ -40,7 +40,7 @@ Vehicle markers currently sit above stop markers in Leaflet's layer stack, allow
 
 Stop markers switch from `L.circleMarker` (SVG, 12px visual = 12px click area) to `L.marker` with `L.divIcon` (DOM element, 44×44px invisible container with 12px visual dot centered inside). This decouples the visual size from the touch target size.
 
-A custom Leaflet pane (`stopPane`, z-index 650) places stop markers above vehicle markers (`markerPane`, z-index 600) and below popups (`popupPane`, z-index 800). This guarantees stop taps take priority over vehicle taps at any overlap.
+A custom Leaflet pane (`stopPane`, z-index 625) places stop markers above vehicle markers (`markerPane`, z-index 600) and below tooltips (`tooltipPane`, z-index 650) and popups (`popupPane`, z-index 700). This guarantees stop taps take priority over vehicle taps at any overlap.
 
 The chip overflow fix adds `flex-wrap: wrap` to `.chip-picker__chips`, allowing notification count chips to flow to a second row in narrow popup containers (terminus stops).
 
@@ -59,7 +59,7 @@ The configured/highlighted stop state currently uses `marker.setStyle({ radius: 
 **Goal:** Replace `L.circleMarker` stops with `L.divIcon` stops in a custom pane above vehicles.
 
 **Components:**
-- Custom `stopPane` creation in `src/map.js` — `map.createPane('stopPane')` with z-index 650
+- Custom `stopPane` creation in `src/map.js` — `map.createPane('stopPane')` with z-index 625
 - `createStopMarker()` in `src/stop-markers.js` — switch from `L.circleMarker` to `L.marker` + `L.divIcon` with `iconSize: [44, 44]`, `iconAnchor: [22, 22]`, `pane: 'stopPane'`
 - New CSS classes in `styles.css` — `.stop-marker` (transparent container, replaces Leaflet default icon styling), `.stop-dot` (12px centered circle with route color), `.stop-dot--configured` (20px red highlight state)
 - `highlightConfiguredStop()` and `resetStopHighlight()` in `src/stop-markers.js` — update to toggle CSS class instead of `setStyle()`

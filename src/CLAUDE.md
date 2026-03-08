@@ -1,6 +1,6 @@
 # T-Tracker Source Modules
 
-Last verified: 2026-03-07
+Last verified: 2026-03-08
 
 ## Purpose
 Fourteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
@@ -64,6 +64,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   `hydrateRouteStopsMap(routeId, stopIds)` populates the internal route-stops map from cached data without making network calls,
   accepts stopIds as either an Array or Set and stores as a Set.
 - **Expects**: Leaflet `L` global available. `config.map.*`, `config.tiles.*` set.
+  Creates custom `stopPane` (z-index 625) between markerPane (600) and tooltipPane (650) for stop marker layering.
 
 ### stop-markers.js -- Stop Marker Rendering & Notification Config
 - **Exposes**: `initStopMarkers(map, apiEventsTarget)`, `updateVisibleStops(routeIds)`, `computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap)`, `createStopMarker(lat, lng, color)`, `refreshAllHighlights()`
