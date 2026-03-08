@@ -8,14 +8,14 @@ let statusEl = null;
 let panelEl = null;
 let toggleBtn = null;
 
-/** Detect iOS (iPhone/iPad/iPod) via user agent. */
-function isIOS() {
+/** Detect iOS (iPhone/iPad/iPod) via user agent. Exported for testing. */
+export function isIOS() {
     return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
-/** Detect standalone (Home Screen / installed PWA) mode. */
-function isStandalone() {
+/** Detect standalone (Home Screen / installed PWA) mode. Exported for testing. */
+export function isStandalone() {
     return window.matchMedia('(display-mode: standalone)').matches ||
         navigator.standalone === true;
 }

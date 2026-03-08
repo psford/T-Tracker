@@ -285,6 +285,29 @@ export function shouldNotify(vehicle, pair, notifiedSet, stopsData = null, termi
 }
 
 /**
+ * Determines which notification pathway is available.
+ * Pure function — no side effects, injectable dependencies for testability.
+ *
+ * Returns:
+ *   'sw'          — ServiceWorker is active and should be used (required for iOS PWA)
+ *   'constructor' — Notification constructor is available (desktop fallback)
+ *   'none'        — Neither pathway available
+ *
+ * @param {Object} [nav=navigator] — navigator object (injectable for tests)
+ * @param {Function|undefined} [NotificationClass=globalThis.Notification] — Notification constructor
+ * @returns {'sw'|'constructor'|'none'}
+ */
+export function selectNotificationPathway(nav = navigator, NotificationClass = globalThis.Notification) {
+    if (nav.serviceWorker && nav.serviceWorker.controller) {
+        return 'sw';
+    }
+    if (typeof NotificationClass !== 'undefined' && NotificationClass !== null) {
+        return 'constructor';
+    }
+    return 'none';
+}
+
+/**
  * Fire a notification for a vehicle at checkpoint.
  * Uses ServiceWorker showNotification() when available (required for iOS PWA),
  * falls back to new Notification() for desktop browsers without SW.
@@ -334,11 +357,11 @@ function fireNotification(vehicle, pair, stopsData) {
         badge: '/icons/icon-192.png',
     };
 
-    // Prefer SW showNotification (required for iOS PWA, works everywhere)
-    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+    const pathway = selectNotificationPathway();
+    if (pathway === 'sw') {
         navigator.serviceWorker.ready.then(reg => reg.showNotification(title, options))
             .catch(err => console.warn('SW notification failed:', err.message));
-    } else if (typeof Notification !== 'undefined') {
+    } else if (pathway === 'constructor') {
         new Notification(title, options);
     }
 }

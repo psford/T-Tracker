@@ -36,7 +36,7 @@ All data flows through dedicated modules with clear responsibilities:
 - `ui.js`: Route selection UI, localStorage persistence, grouping/sorting orchestration
 - `stop-markers.js`: Stop marker rendering on map, notification pair config workflow
 - `stop-popup.js`: Stop popup HTML formatting with notification config states
-- `notifications.js`: Notification engine, pair management, localStorage persistence, direction detection, SW showNotification with fallback
+- `notifications.js`: Notification engine, pair management, localStorage persistence, direction detection, SW showNotification with fallback, testable pathway selection
 - `notification-ui.js`: Notification status indicator, config panel, permission management UI, platform-specific messaging (iOS/Android/desktop)
 
 ## Tech Stack
@@ -56,6 +56,10 @@ All data flows through dedicated modules with clear responsibilities:
 - `node tests/notification-ui.test.js` -- run notification UI tests
 - `node tests/route-stops-cache.test.js` -- run route-stops cache unit tests
 - `node tests/map-hydrate.test.js` -- run map hydration unit tests
+- `node tests/sw.test.js` -- run service worker fetch handler tests
+- `node tests/fire-notification.test.js` -- run notification pathway selection tests
+- `node tests/sse-notification-integration.test.js` -- run SSE→notification integration tests
+- `node tests/vehicles-state.test.js` -- run vehicle state management tests
 - ES6 modules require HTTP server; `file://` protocol will not work
 
 ## Project Structure
@@ -67,7 +71,7 @@ All data flows through dedicated modules with clear responsibilities:
 - `sw.js` -- Minimal service worker (no caching, notification click handler)
 - `icons/` -- PWA icons (192x192, 512x512, 180x180 apple-touch-icon)
 - `src/` -- 14 application modules (see `src/CLAUDE.md` for contracts)
-- `tests/` -- 12 unit test files for pure functions and data modules
+- `tests/` -- 16 test files (unit tests, integration tests, pathway tests)
 - `docs/` -- Design plans and implementation phase docs
 - `.visual-review/` -- Visual review tooling (config, mock pages, screenshots)
   - `config.json` -- Theme colors, viewports, stylesheet path, contrast settings

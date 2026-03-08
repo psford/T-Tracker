@@ -344,117 +344,100 @@ async function testConvertUnlimitedToCounted() {
 }
 
 /**
- * Test: updateStatus shows "Add to Home Screen" on iOS Safari (not standalone)
+ * Test: isIOS() detects iPhone via user agent (calls real exported function)
  */
-function testUpdateStatusIOSNotStandalone() {
-    // Simulate iOS Safari (not standalone)
-    const origUA = globalThis.navigator?.userAgent;
-    const origPlatform = globalThis.navigator?.platform;
-    const origMaxTouch = globalThis.navigator?.maxTouchPoints;
-    const origStandalone = globalThis.navigator?.standalone;
-
-    // Mock navigator for iOS
+async function testIsIOSiPhone() {
+    const { isIOS } = await import('../src/notification-ui.js');
     Object.defineProperty(globalThis, 'navigator', {
-        value: {
-            userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_4 like Mac OS X)',
-            platform: 'iPhone',
-            maxTouchPoints: 5,
-            standalone: false,
-        },
-        writable: true,
-        configurable: true,
+        value: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_4 like Mac OS X)', platform: 'iPhone', maxTouchPoints: 5, standalone: false },
+        writable: true, configurable: true,
     });
-
-    // Mock window.matchMedia for non-standalone
-    globalThis.window = globalThis.window || {};
-    globalThis.window.matchMedia = (query) => ({ matches: false });
-
-    // Test isIOS detection
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    assert.strictEqual(isIOS, true, 'Should detect iOS');
-
-    // Test isStandalone detection
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-        navigator.standalone === true;
-    assert.strictEqual(isStandalone, false, 'Should detect non-standalone');
-
-    console.log('✓ updateStatus shows iOS-specific message for non-standalone');
+    assert.strictEqual(isIOS(), true, 'isIOS() should return true for iPhone UA');
+    console.log('✓ isIOS() detects iPhone');
 }
 
 /**
- * Test: updateStatus shows "not supported" for non-iOS, non-standalone unavailable
+ * Test: isIOS() detects iPad via MacIntel + touch points (calls real exported function)
  */
-function testUpdateStatusDesktopUnavailable() {
+async function testIsIOSiPad() {
+    const { isIOS } = await import('../src/notification-ui.js');
     Object.defineProperty(globalThis, 'navigator', {
-        value: {
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            platform: 'Win32',
-            maxTouchPoints: 0,
-        },
-        writable: true,
-        configurable: true,
+        value: { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', platform: 'MacIntel', maxTouchPoints: 5, standalone: false },
+        writable: true, configurable: true,
     });
-
-    globalThis.window = globalThis.window || {};
-    globalThis.window.matchMedia = (query) => ({ matches: false });
-
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    assert.strictEqual(isIOS, false, 'Should not detect iOS on Windows');
-
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-        (navigator.standalone === true);
-    assert.strictEqual(isStandalone, false, 'Should not detect standalone');
-
-    console.log('✓ updateStatus shows browser-unsupported message for desktop');
+    assert.strictEqual(isIOS(), true, 'isIOS() should detect iPad via MacIntel + touch');
+    console.log('✓ isIOS() detects iPad via MacIntel + touch points');
 }
 
 /**
- * Test: iPad detection via MacIntel + touch points
+ * Test: isIOS() returns false for Windows desktop (calls real exported function)
  */
-function testIPadDetection() {
+async function testIsIOSDesktop() {
+    const { isIOS } = await import('../src/notification-ui.js');
     Object.defineProperty(globalThis, 'navigator', {
-        value: {
-            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-            platform: 'MacIntel',
-            maxTouchPoints: 5,
-            standalone: false,
-        },
-        writable: true,
-        configurable: true,
+        value: { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', platform: 'Win32', maxTouchPoints: 0 },
+        writable: true, configurable: true,
     });
-
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    assert.strictEqual(isIOS, true, 'Should detect iPad via MacIntel + touch');
-
-    console.log('✓ iPad detected via MacIntel platform + touch points');
+    assert.strictEqual(isIOS(), false, 'isIOS() should return false on Windows');
+    console.log('✓ isIOS() returns false for Windows desktop');
 }
 
 /**
- * Test: standalone PWA mode detection
+ * Test: isIOS() returns false for Android (calls real exported function)
  */
-function testStandaloneDetection() {
+async function testIsIOSAndroid() {
+    const { isIOS } = await import('../src/notification-ui.js');
     Object.defineProperty(globalThis, 'navigator', {
-        value: {
-            userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_4 like Mac OS X)',
-            platform: 'iPhone',
-            maxTouchPoints: 5,
-            standalone: true,
-        },
-        writable: true,
-        configurable: true,
+        value: { userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7)', platform: 'Linux armv81', maxTouchPoints: 5 },
+        writable: true, configurable: true,
     });
+    assert.strictEqual(isIOS(), false, 'isIOS() should return false on Android');
+    console.log('✓ isIOS() returns false for Android');
+}
 
+/**
+ * Test: isStandalone() detects via navigator.standalone (calls real exported function)
+ */
+async function testIsStandaloneViaNative() {
+    const { isStandalone } = await import('../src/notification-ui.js');
+    Object.defineProperty(globalThis, 'navigator', {
+        value: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_4 like Mac OS X)', platform: 'iPhone', maxTouchPoints: 5, standalone: true },
+        writable: true, configurable: true,
+    });
     globalThis.window = globalThis.window || {};
-    globalThis.window.matchMedia = (query) => ({ matches: false });
+    globalThis.window.matchMedia = () => ({ matches: false });
+    assert.strictEqual(isStandalone(), true, 'isStandalone() should detect navigator.standalone');
+    console.log('✓ isStandalone() detects navigator.standalone = true');
+}
 
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-        navigator.standalone === true;
-    assert.strictEqual(isStandalone, true, 'Should detect standalone via navigator.standalone');
+/**
+ * Test: isStandalone() detects via matchMedia display-mode (calls real exported function)
+ */
+async function testIsStandaloneViaMatchMedia() {
+    const { isStandalone } = await import('../src/notification-ui.js');
+    Object.defineProperty(globalThis, 'navigator', {
+        value: { userAgent: 'Mozilla/5.0 (Linux; Android 10)', platform: 'Linux', maxTouchPoints: 5 },
+        writable: true, configurable: true,
+    });
+    globalThis.window = globalThis.window || {};
+    globalThis.window.matchMedia = (query) => ({ matches: query === '(display-mode: standalone)' });
+    assert.strictEqual(isStandalone(), true, 'isStandalone() should detect matchMedia standalone');
+    console.log('✓ isStandalone() detects matchMedia display-mode: standalone');
+}
 
-    console.log('✓ Standalone mode detected via navigator.standalone');
+/**
+ * Test: isStandalone() returns false in regular browser tab (calls real exported function)
+ */
+async function testIsStandaloneFalseInBrowser() {
+    const { isStandalone } = await import('../src/notification-ui.js');
+    Object.defineProperty(globalThis, 'navigator', {
+        value: { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', platform: 'Win32', maxTouchPoints: 0, standalone: false },
+        writable: true, configurable: true,
+    });
+    globalThis.window = globalThis.window || {};
+    globalThis.window.matchMedia = () => ({ matches: false });
+    assert.strictEqual(isStandalone(), false, 'isStandalone() should return false in regular browser');
+    console.log('✓ isStandalone() returns false in regular browser tab');
 }
 
 /**
@@ -477,11 +460,14 @@ async function runAllTests() {
         await testConvertCountedToUnlimited();
         await testConvertUnlimitedToCounted();
 
-        // Platform detection tests for PWA messaging
-        testUpdateStatusIOSNotStandalone();
-        testUpdateStatusDesktopUnavailable();
-        testIPadDetection();
-        testStandaloneDetection();
+        // Platform detection tests — call real exported isIOS/isStandalone functions
+        await testIsIOSiPhone();
+        await testIsIOSiPad();
+        await testIsIOSDesktop();
+        await testIsIOSAndroid();
+        await testIsStandaloneViaNative();
+        await testIsStandaloneViaMatchMedia();
+        await testIsStandaloneFalseInBrowser();
 
         console.log('\n✓✓✓ All notification-ui tests passed ✓✓✓');
     } catch (error) {
