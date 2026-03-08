@@ -39,6 +39,27 @@ function buildStopRoutesMap() {
 }
 
 /**
+ * Create a stop marker with divIcon and stopPane assignment.
+ * Extracted for testability (touch-targets.AC1.1, AC1.2, AC2.1, AC4.1).
+ *
+ * @param {number} lat — latitude
+ * @param {number} lng — longitude
+ * @param {string} color — hex color string (e.g., '#DA291C')
+ * @returns {L.Marker} — marker with divIcon and stopPane set
+ */
+export function createStopMarker(lat, lng, color) {
+    return L.marker([lat, lng], {
+        icon: L.divIcon({
+            className: 'stop-marker',
+            iconSize: [44, 44],
+            iconAnchor: [22, 22],
+            html: `<div class="stop-dot" style="--stop-color: ${color}"></div>`,
+        }),
+        pane: 'stopPane',
+    });
+}
+
+/**
  * Pure logic: Compute visible stops and their colors based on visible routes.
  * Extracted for testability (AC1.1, AC1.5).
  *
@@ -384,15 +405,7 @@ export function updateVisibleStops(routeIds) {
                 : { lat: stop.latitude, lng: stop.longitude };
 
             const color = stopColorMap.get(stopId) || '#888888';
-            const marker = L.marker([snapped.lat, snapped.lng], {
-                icon: L.divIcon({
-                    className: 'stop-marker',
-                    iconSize: [44, 44],
-                    iconAnchor: [22, 22],
-                    html: `<div class="stop-dot" style="--stop-color: ${color}"></div>`,
-                }),
-                pane: 'stopPane',
-            });
+            const marker = createStopMarker(snapped.lat, snapped.lng, color);
 
             // Build popup content dynamically on each popup open
             // This ensures config state is always fresh
