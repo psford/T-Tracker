@@ -202,7 +202,7 @@ function testCreateStopMarkerAssignsPane() {
  * Test createStopMarker HTML contains stop-dot--configured class structure
  * Verifies touch-targets.AC1.2 (configured visual state CSS contract)
  */
-function testCreateStopMarkerHTMLStructure() {
+function testCreateStopMarkerHTMLSupportsClassModifier() {
     mockDivIconCalls.length = 0;
 
     createStopMarker(42.35, -71.06, '#ED8936');
@@ -221,7 +221,7 @@ function testCreateStopMarkerHTMLStructure() {
     const hasValidStructure = html.includes('class="stop-dot"') && html.includes('style="--stop-color:');
     assert(hasValidStructure, 'HTML structure should support adding stop-dot--configured class');
 
-    console.log('✓ createStopMarker HTML contains stop-dot--configured class structure');
+    console.log('✓ createStopMarker HTML supports class modifier (structural prerequisite for stop-dot--configured)');
 }
 
 /**
@@ -270,7 +270,7 @@ try {
     testCreateStopMarkerUsesMarkerNotCircle();
     testCreateStopMarkerDivIconConfig();
     testCreateStopMarkerAssignsPane();
-    testCreateStopMarkerHTMLStructure();
+    testCreateStopMarkerHTMLSupportsClassModifier();
     testCreateStopMarkerLatLng();
     testCreateStopMarkerColors();
     console.log('\n✓ All stop markers tests passed\n');

@@ -66,8 +66,8 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Expects**: Leaflet `L` global available. `config.map.*`, `config.tiles.*` set.
 
 ### stop-markers.js -- Stop Marker Rendering & Notification Config
-- **Exposes**: `initStopMarkers(map, apiEventsTarget)`, `updateVisibleStops(routeIds)`, `computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap)`, `refreshAllHighlights()`
-- **Guarantees**: Renders lightweight SVG circle markers for stops on visible routes (AC1.1).
+- **Exposes**: `initStopMarkers(map, apiEventsTarget)`, `updateVisibleStops(routeIds)`, `computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap)`, `createStopMarker(lat, lng, color)`, `refreshAllHighlights()`
+- **Guarantees**: Renders stop markers as `L.marker` + `L.divIcon` with 44×44px touch targets in a custom `stopPane` (z-index 625) above vehicles.
   Creates one marker per unique stop (deduplication for stops on multiple routes, AC1.5).
   First visible route to claim a stop sets its color (no visual stacking).
   Only creates/removes markers on route visibility changes, not on every update (AC1.4 performance).
