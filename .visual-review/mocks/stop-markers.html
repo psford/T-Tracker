@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stop Markers Visual Review</title>
+    <link rel="stylesheet" href="../../styles.css">
+    <style>
+        body {
+            background: #1a1a2e;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        .test-case {
+            margin-bottom: 40px;
+        }
+
+        .test-case-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #e0e0e0;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #0f3460;
+        }
+
+        .test-case-subtitle {
+            font-size: 12px;
+            color: #8888aa;
+            margin-bottom: 15px;
+        }
+
+        /* Override Leaflet positioning for static display */
+        .stop-marker {
+            position: static !important;
+            display: inline-block !important;
+            margin: 10px;
+        }
+
+        /* Show marker boundary for visual verification */
+        .stop-marker-debug {
+            outline: 1px dashed rgba(255, 255, 255, 0.3);
+        }
+
+        .markers-container {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-start;
+            gap: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="color: #e0e0e0; margin-bottom: 30px;">Stop Markers Visual Review</h1>
+
+    <!-- Test Case 1: Default stop markers (various route colors) -->
+    <div class="test-case">
+        <div class="test-case-title">Test Case 1: Default Stop Markers (Various Route Colors)</div>
+        <div class="test-case-subtitle">12px colored dots centered in 44×44px containers (dashed outline shows touch target)</div>
+
+        <div class="markers-container">
+            <!-- Red Line -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot" style="--stop-color: #DA291C"></div>
+            </div>
+
+            <!-- Blue Line -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot" style="--stop-color: #003DA5"></div>
+            </div>
+
+            <!-- Orange Line -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot" style="--stop-color: #ED8936"></div>
+            </div>
+
+            <!-- Green Line -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot" style="--stop-color: #00843D"></div>
+            </div>
+
+            <!-- Silver Line -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot" style="--stop-color: #7C878E"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Test Case 2: Configured (highlighted) stop markers -->
+    <div class="test-case">
+        <div class="test-case-title">Test Case 2: Configured (Highlighted) Stop Markers</div>
+        <div class="test-case-subtitle">20px red dots for stops with active notifications</div>
+
+        <div class="markers-container">
+            <!-- Red Line - Configured -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot stop-dot--configured" style="--stop-color: #DA291C"></div>
+            </div>
+
+            <!-- Blue Line - Configured -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot stop-dot--configured" style="--stop-color: #003DA5"></div>
+            </div>
+
+            <!-- Orange Line - Configured -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot stop-dot--configured" style="--stop-color: #ED8936"></div>
+            </div>
+
+            <!-- Green Line - Configured -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot stop-dot--configured" style="--stop-color: #00843D"></div>
+            </div>
+
+            <!-- Silver Line - Configured -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot stop-dot--configured" style="--stop-color: #7C878E"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Test Case 3: Mixed state (configured and default side by side) -->
+    <div class="test-case">
+        <div class="test-case-title">Test Case 3: Mixed State (Default and Configured)</div>
+        <div class="test-case-subtitle">Default and configured markers side by side for visual comparison</div>
+
+        <div class="markers-container">
+            <!-- Red Line - Default -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot" style="--stop-color: #DA291C"></div>
+            </div>
+
+            <!-- Red Line - Configured -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot stop-dot--configured" style="--stop-color: #DA291C"></div>
+            </div>
+
+            <!-- Blue Line - Default -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot" style="--stop-color: #003DA5"></div>
+            </div>
+
+            <!-- Blue Line - Configured -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot stop-dot--configured" style="--stop-color: #003DA5"></div>
+            </div>
+
+            <!-- Orange Line - Default -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot" style="--stop-color: #ED8936"></div>
+            </div>
+
+            <!-- Orange Line - Configured -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot stop-dot--configured" style="--stop-color: #ED8936"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Test Case 4: Dense stop cluster simulation -->
+    <div class="test-case">
+        <div class="test-case-title">Test Case 4: Dense Stop Cluster</div>
+        <div class="test-case-subtitle">Simulated dense stop area — each marker should be visually distinct</div>
+
+        <div class="markers-container" style="gap: 2px; flex-wrap: wrap;">
+            <!-- 10 markers in a tight grid -->
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot" style="--stop-color: #DA291C"></div>
+            </div>
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot stop-dot--configured" style="--stop-color: #DA291C"></div>
+            </div>
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot" style="--stop-color: #003DA5"></div>
+            </div>
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot" style="--stop-color: #ED8936"></div>
+            </div>
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot stop-dot--configured" style="--stop-color: #ED8936"></div>
+            </div>
+
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot" style="--stop-color: #00843D"></div>
+            </div>
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot" style="--stop-color: #7C878E"></div>
+            </div>
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot stop-dot--configured" style="--stop-color: #003DA5"></div>
+            </div>
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot" style="--stop-color: #DA291C"></div>
+            </div>
+            <div class="stop-marker stop-marker-debug" style="width: 44px; height: 44px; position: relative; display: inline-block;">
+                <div class="stop-dot stop-dot--configured" style="--stop-color: #00843D"></div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

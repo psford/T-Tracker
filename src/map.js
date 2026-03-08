@@ -49,6 +49,10 @@ export function initMap(containerId) {
         zoomControl: true,
     });
 
+    // Custom pane for stop markers — above vehicle markerPane (600), below tooltipPane (650)
+    map.createPane('stopPane');
+    map.getPane('stopPane').style.zIndex = 625;
+
     const tileLayer = L.tileLayer(config.tiles.url, {
         attribution: config.tiles.attribution,
         subdomains: config.tiles.subdomains,
