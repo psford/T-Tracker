@@ -4,7 +4,7 @@ import { formatStopPopup, escapeHtml, buildChipPickerHtml } from './stop-popup.j
 import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';
 import { updateStatus as updateNotificationStatus, renderPanel } from './notification-ui.js';
 
-// Map<stopId, L.CircleMarker> — tracks active stop markers on the map
+// Map<stopId, L.Marker> — tracks active stop markers on the map
 const stopMarkers = new Map();
 
 // L.LayerGroup for stop markers — organized as layer for batch show/hide
@@ -145,14 +145,11 @@ function handleAlertResult(result, stopId, container) {
  */
 function highlightConfiguredStop(stopId) {
     const marker = stopMarkers.get(stopId);
-    if (marker) {
-        marker.setStyle({
-            radius: 10,
-            fillOpacity: 1.0,
-            weight: 3,
-            color: '#ff6b6b',
-        });
-    }
+    if (!marker) return;
+    const el = marker.getElement();
+    if (!el) return;
+    const dot = el.querySelector('.stop-dot');
+    if (dot) dot.classList.add('stop-dot--configured');
 }
 
 /**
@@ -174,15 +171,12 @@ function restoreConfiguredHighlights() {
  * Then re-applies highlights (radius → 10, fillOpacity → 1.0, weight → 3, color → #ff6b6b) for stops in current pairs.
  */
 export function refreshAllHighlights() {
-    // First reset all markers to default style (restore original route color)
+    // First reset all markers to default style (remove configured class)
     stopMarkers.forEach((marker) => {
-        const originalColor = marker.options.fillColor || '#888888';
-        marker.setStyle({
-            radius: 6,
-            fillOpacity: 0.6,
-            weight: 1,
-            color: originalColor,
-        });
+        const el = marker.getElement();
+        if (!el) return;
+        const dot = el.querySelector('.stop-dot');
+        if (dot) dot.classList.remove('stop-dot--configured');
     });
 
     // Then re-apply highlights for stops in current pairs
@@ -390,14 +384,14 @@ export function updateVisibleStops(routeIds) {
                 : { lat: stop.latitude, lng: stop.longitude };
 
             const color = stopColorMap.get(stopId) || '#888888';
-            const marker = L.circleMarker([snapped.lat, snapped.lng], {
-                radius: 6,
-                color: color,
-                fillColor: color,
-                fillOpacity: 0.6,
-                weight: 1,
-                opacity: 0.8,
-                pane: 'overlayPane',
+            const marker = L.marker([snapped.lat, snapped.lng], {
+                icon: L.divIcon({
+                    className: 'stop-marker',
+                    iconSize: [44, 44],
+                    iconAnchor: [22, 22],
+                    html: `<div class="stop-dot" style="--stop-color: ${color}"></div>`,
+                }),
+                pane: 'stopPane',
             });
 
             // Build popup content dynamically on each popup open
