@@ -67,14 +67,14 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Creates custom `stopPane` (z-index 625) between markerPane (600) and tooltipPane (650) for stop marker layering.
 
 ### stop-markers.js -- Stop Marker Rendering & Notification Config
-- **Exposes**: `initStopMarkers(map, apiEventsTarget)`, `updateVisibleStops(routeIds)`, `computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap)`, `createStopMarker(lat, lng, color)`, `refreshAllHighlights()`
+- **Exposes**: `initStopMarkers(map, apiEventsTarget)`, `updateVisibleStops(routeIds)`, `computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap, stopsData = null)`, `createStopMarker(lat, lng, color)`, `refreshAllHighlights()`
 - **Guarantees**: Renders stop markers as `L.marker` + `L.divIcon` with 44×44px touch targets in a custom `stopPane` (z-index 625) above vehicles.
   Creates one marker per unique stop (deduplication for stops on multiple routes, AC1.5).
   First visible route to claim a stop sets its color (no visual stacking).
   Only creates/removes markers on route visibility changes, not on every update (AC1.4 performance).
   Binds click popups to markers with stop name and routes serving that stop (via `formatStopPopup(configState)`).
   Popups are click-activated and include close button; autoPan ensures full visibility.
-  `computeVisibleStops()` is a pure function for testability.
+  `computeVisibleStops()` is a pure function for testability. Returns object with fields: `visibleStopIds` (Set), `stopColorMap` (Map), `stopRouteMap` (Map), and `mergedStops` (Map with merged parent station data when stopsData provided).
   Implements Phase 2 two-tap notification alert creation workflow via chip picker: first tap on direction button reveals chip picker with count options below the button (AC1.1), second tap on a chip updates the "Set Alert" button's data-count attribute and visually selects the chip (AC1.3), tapping "Set Alert" button creates the alert (AC1.3, AC1.4, AC1.5).
   Delegates chip picker interactions via event delegation on popupopen Leaflet event listener.
   On successful pair creation, calls `highlightConfiguredStop()` to visually enlarge configured stop markers.
