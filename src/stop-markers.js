@@ -177,40 +177,63 @@ export function computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMa
 /**
  * Compute config state for a stop popup.
  * Builds per-route direction info with labels and terminus status.
+ * Extended to support merged markers: aggregates route info and config state across multiple child stops.
  *
- * @param {string} stopId — stop ID
+ * @param {string} stopId — stop ID (used as parent ID for merged markers)
+ * @param {Array<string>} [childStopIds=null] — optional array of child stop IDs for merged marker aggregation
  * @returns {Object} — {pairCount, maxPairs, existingAlerts, routeDirections}
+ *   When childStopIds provided: aggregates routes from all children, adds stopId field to each routeDirection
  */
-function getStopConfigState(stopId) {
+function getStopConfigState(stopId, childStopIds = null) {
     const pairs = getNotificationPairs();
     const routeMetadata = getRouteMetadata();
 
-    // Find which alerts already exist at this stop
+    // When childStopIds provided, aggregate across all child stops; otherwise single stop
+    const stopsToCheck = childStopIds || [stopId];
+
+    // Find which alerts already exist at any of these stops
     const existingAlerts = pairs
-        .filter(p => p.checkpointStopId === stopId)
+        .filter(p => stopsToCheck.includes(p.checkpointStopId))
         .map(p => ({ routeId: p.routeId, directionId: p.directionId }));
 
-    // Build route directions for each route serving this stop
+    // Build route directions aggregated from all stops
     if (!stopRoutesMap) {
         stopRoutesMap = buildStopRoutesMap();
     }
-    const stopRouteIds = stopRoutesMap.get(stopId) || [];
 
-    const routeDirections = stopRouteIds.map(routeId => {
+    // Collect all unique routes serving any child stop, tracking which child serves each route
+    const routeToChildMap = new Map(); // routeId -> childStopId that serves it
+    stopsToCheck.forEach(cid => {
+        const stopRouteIds = stopRoutesMap.get(cid) || [];
+        stopRouteIds.forEach(routeId => {
+            if (!routeToChildMap.has(routeId)) {
+                routeToChildMap.set(routeId, cid);
+            }
+        });
+    });
+
+    const routeDirections = Array.from(routeToChildMap.entries()).map(([routeId, childStopIdForRoute]) => {
         const meta = routeMetadata.find(m => m.id === routeId);
         const routeName = meta
             ? (meta.type === 2 ? meta.longName : meta.shortName)
             : routeId;
         const labels = getDirectionDestinations(routeId);
-        const terminus = isTerminusStop(stopId, routeId);
+        const terminus = isTerminusStop(childStopIdForRoute, routeId);
 
-        return {
+        const result = {
             routeId,
             routeName,
             dir0Label: labels[0],
             dir1Label: labels[1],
             isTerminus: terminus,
         };
+
+        // For merged stops (childStopIds provided), add stopId field to indicate which child to use for alert creation
+        if (childStopIds) {
+            result.stopId = childStopIdForRoute;
+        }
+
+        return result;
     });
 
     return {
@@ -542,15 +565,32 @@ export function updateVisibleStops(routeIds) {
             marker._childStopIds = childStopIds;
             marker._isMerged = true;
 
-            // Bind popup with placeholder content (Phase 3 replaces with aggregating popup)
-            // Use first child stop's name
-            const firstChildId = childStopIds[0];
-            const firstChildStop = stopsData.get(firstChildId);
-            const placeholderName = firstChildStop ? firstChildStop.name : firstChildId;
-
-            // TODO (Phase 3): Replace with aggregating popup showing all child stops and direction chips
+            // Bind popup with aggregating content for merged marker
             const popupFunction = () => {
-                return `<div class="stop-popup"><div class="stop-popup__header"><h3>${escapeHtml(placeholderName)} (merged station)</h3></div><p style="font-size: 12px; color: #aaa;">Tap to configure alerts for this station</p></div>`;
+                if (!stopRoutesMap) {
+                    stopRoutesMap = buildStopRoutesMap();
+                }
+
+                // Aggregate routes from all child stops
+                const allRouteIds = new Set();
+                const allRouteInfos = [];
+                const routeMetadata = getRouteMetadata();
+
+                childStopIds.forEach(cid => {
+                    const childRouteIds = stopRoutesMap.get(cid) || [];
+                    childRouteIds.forEach(rid => {
+                        if (!allRouteIds.has(rid)) {
+                            allRouteIds.add(rid);
+                            const meta = routeMetadata.find(m => m.id === rid);
+                            if (meta) allRouteInfos.push(meta);
+                        }
+                    });
+                });
+
+                // Use parent stop data for popup header (name)
+                const parentStop = stopsData.get(parentId) || stopsData.get(childStopIds[0]);
+                const configState = getStopConfigState(parentId, childStopIds);
+                return formatStopPopup(parentStop, allRouteInfos, configState);
             };
 
             marker.bindPopup(popupFunction, {
