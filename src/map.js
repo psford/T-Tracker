@@ -491,14 +491,14 @@ export async function loadRoutes() {
                 }
             }
 
-            // Merge parallel polylines for subway/rail only (types 0, 1).
-            // Rail runs on the same physical track both directions — averaging works perfectly.
-            // Bus routes (type 3) use genuinely different streets inbound/outbound, so averaging
-            // would create a phantom line that follows neither actual street.
-            if (polylines.length === 2 && (type === 0 || type === 1)) {
+            // Merge parallel polylines into one averaged line.
+            // Rail (types 0, 1): always merge — both directions use the same physical track.
+            // Bus (type 3): merge only when the two shapes are mostly parallel (median separation
+            // ≤50m). This handles divided-road bus routes correctly while keeping genuinely
+            // divergent routes (different streets inbound/outbound) as two separate lines.
+            if (polylines.length === 2) {
                 const c1 = polylines[0].getLatLngs();
                 const c2raw = polylines[1].getLatLngs();
-
 
                 if (c1.length >= 2 && c2raw.length >= 2) {
                     // Orient c2 in the same direction as c1 (compare start-to-start vs start-to-end)
@@ -506,18 +506,37 @@ export async function loadRoutes() {
                     const dFlip = haversineDistance(c1[0].lat, c1[0].lng, c2raw[c2raw.length - 1].lat, c2raw[c2raw.length - 1].lng);
                     const c2 = dFlip < dSame ? [...c2raw].reverse() : c2raw;
 
-                    // Always merge 2 typical-pattern shapes into one averaged polyline.
-                    // Riders see one route; showing inbound/outbound as separate lines is confusing.
-                    const n = Math.max(c1.length, c2.length);
-                    const merged = [];
-                    for (let i = 0; i < n; i++) {
-                        const t = i / (n - 1);
-                        const p1 = sampleAtT(c1, t);
-                        const p2 = sampleAtT(c2, t);
-                        merged.push(L.latLng((p1.lat + p2.lat) / 2, (p1.lng + p2.lng) / 2));
+                    // For bus routes, check median separation before merging.
+                    // Rail always merges (type 0 or 1).
+                    const MERGE_MEDIAN_THRESHOLD = 50; // meters
+                    const SAMPLES = 30;
+                    let shouldMerge = (type === 0 || type === 1);
+
+                    if (!shouldMerge) {
+                        const distances = [];
+                        for (let i = 0; i < SAMPLES; i++) {
+                            const t = i / (SAMPLES - 1);
+                            const p1 = sampleAtT(c1, t);
+                            const p2 = sampleAtT(c2, t);
+                            distances.push(haversineDistance(p1.lat, p1.lng, p2.lat, p2.lng));
+                        }
+                        distances.sort((a, b) => a - b);
+                        const median = distances[Math.floor(SAMPLES / 2)];
+                        shouldMerge = median <= MERGE_MEDIAN_THRESHOLD;
                     }
-                    polylines[0].setLatLngs(merged);
-                    polylines.splice(1, 1);
+
+                    if (shouldMerge) {
+                        const n = Math.max(c1.length, c2.length);
+                        const merged = [];
+                        for (let i = 0; i < n; i++) {
+                            const t = i / (n - 1);
+                            const p1 = sampleAtT(c1, t);
+                            const p2 = sampleAtT(c2, t);
+                            merged.push(L.latLng((p1.lat + p2.lat) / 2, (p1.lng + p2.lng) / 2));
+                        }
+                        polylines[0].setLatLngs(merged);
+                        polylines.splice(1, 1);
+                    }
                 }
             }
 
