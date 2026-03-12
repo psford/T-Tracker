@@ -715,6 +715,67 @@ function testGetStopConfigStateMergedMarkerWithAlerts() {
 }
 
 /**
+ * Proximity-based grouping for bus stops without a shared parentStopId.
+ * Two stops on the same route within 40m should merge even if they have no parent.
+ */
+function testProximityGrouping() {
+    // Two stops on the same route, ~25m apart (divided road scenario), no parentStopId
+    // Boston area: 1 degree lat ≈ 111km, so 25m ≈ 0.000225 degrees lat
+    const stopsData = new Map([
+        ['bus-stop-inbound',  { id: 'bus-stop-inbound',  name: 'Main St',        latitude: 42.3300, longitude: -71.0800, parentStopId: null }],
+        ['bus-stop-outbound', { id: 'bus-stop-outbound', name: 'Main St',        latitude: 42.3302, longitude: -71.0800, parentStopId: null }], // ~22m north
+    ]);
+    const routeStopsMap = new Map([
+        ['39', new Set(['bus-stop-inbound', 'bus-stop-outbound'])],
+    ]);
+    const routeColorMap = new Map([['39', '#FFC72C']]);
+
+    const { mergedStops, visibleStopIds } = computeVisibleStops(['39'], routeStopsMap, routeColorMap, stopsData);
+
+    assert.strictEqual(mergedStops.size, 1, 'Proximity: two close same-route stops should merge');
+    const [key, group] = [...mergedStops.entries()][0];
+    assert.strictEqual(group.childStopIds.length, 2, 'Proximity: merged group should contain both stops');
+    assert.ok(group.childStopIds.includes('bus-stop-inbound'), 'Proximity: inbound stop in group');
+    assert.ok(group.childStopIds.includes('bus-stop-outbound'), 'Proximity: outbound stop in group');
+    // Averaged lat should be between the two stops
+    assert.ok(group.lat > 42.3300 && group.lat < 42.3302, 'Proximity: averaged lat between the two stops');
+    console.log('✓ Proximity grouping: two close same-route stops merge into one');
+}
+
+function testProximityGroupingDifferentRoutes() {
+    // Two stops within 40m but on DIFFERENT routes — must NOT merge (different services)
+    const stopsData = new Map([
+        ['stop-route-A', { id: 'stop-route-A', name: 'Corner St', latitude: 42.3300, longitude: -71.0800, parentStopId: null }],
+        ['stop-route-B', { id: 'stop-route-B', name: 'Corner St', latitude: 42.3302, longitude: -71.0800, parentStopId: null }],
+    ]);
+    const routeStopsMap = new Map([
+        ['39', new Set(['stop-route-A'])],
+        ['66', new Set(['stop-route-B'])],
+    ]);
+    const routeColorMap = new Map([['39', '#FFC72C'], ['66', '#FFC72C']]);
+
+    const { mergedStops } = computeVisibleStops(['39', '66'], routeStopsMap, routeColorMap, stopsData);
+
+    assert.strictEqual(mergedStops.size, 0, 'Proximity: stops on different routes must not merge');
+    console.log('✓ Proximity grouping: stops on different routes stay separate');
+}
+
+function testProximityGroupingTooFar() {
+    // Two stops on the same route but >40m apart — must NOT merge
+    const stopsData = new Map([
+        ['far-stop-1', { id: 'far-stop-1', name: 'Park St', latitude: 42.3300, longitude: -71.0800, parentStopId: null }],
+        ['far-stop-2', { id: 'far-stop-2', name: 'Park St', latitude: 42.3310, longitude: -71.0800, parentStopId: null }], // ~111m away
+    ]);
+    const routeStopsMap = new Map([['39', new Set(['far-stop-1', 'far-stop-2'])]]);
+    const routeColorMap = new Map([['39', '#FFC72C']]);
+
+    const { mergedStops } = computeVisibleStops(['39'], routeStopsMap, routeColorMap, stopsData);
+
+    assert.strictEqual(mergedStops.size, 0, 'Proximity: stops >40m apart must not merge');
+    console.log('✓ Proximity grouping: stops >40m apart stay separate');
+}
+
+/**
  * Run all tests
  */
 console.log('\n=== Stop Markers Tests ===\n');
@@ -741,6 +802,10 @@ try {
     console.log('');
     testGetStopConfigStateMergedMarker();
     testGetStopConfigStateMergedMarkerWithAlerts();
+    console.log('');
+    testProximityGrouping();
+    testProximityGroupingDifferentRoutes();
+    testProximityGroupingTooFar();
     console.log('\n✓ All stop markers tests passed\n');
 } catch (err) {
     console.error('✗ Stop markers tests failed:', err.message);

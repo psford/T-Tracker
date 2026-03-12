@@ -5,6 +5,26 @@ import { formatVehiclePopup } from './vehicle-popup.js';
 import { darkenHexColor, bearingToTransform, haversineDistance, nearestPointOnSegment } from './vehicle-math.js';
 import { VEHICLE_ICONS, DEFAULT_ICON } from './vehicle-icons.js';
 
+/**
+ * Sample a point along a polyline at parameter t in [0, 1].
+ * t=0 → first coordinate, t=1 → last coordinate.
+ * @param {L.LatLng[]} coords
+ * @param {number} t
+ * @returns {{lat: number, lng: number}}
+ */
+function sampleAtT(coords, t) {
+    if (coords.length === 1) return coords[0];
+    const idx = t * (coords.length - 1);
+    const lo = Math.floor(idx);
+    const hi = Math.ceil(idx);
+    if (lo === hi) return coords[lo];
+    const frac = idx - lo;
+    return {
+        lat: coords[lo].lat + frac * (coords[hi].lat - coords[lo].lat),
+        lng: coords[lo].lng + frac * (coords[hi].lng - coords[lo].lng),
+    };
+}
+
 let map = null;
 
 // Map<vehicleId, L.Marker> — tracks active vehicle markers on the map
@@ -468,6 +488,48 @@ export async function loadRoutes() {
                     }
 
                     snapped.add(i);
+                }
+            }
+
+            // Merge parallel polylines (inbound/outbound on divided roads).
+            // When a route has exactly 2 typical-pattern shapes that run within
+            // PARALLEL_THRESHOLD of each other throughout, replace them with a single
+            // averaged polyline at the midpoint — showing one line to riders.
+            const PARALLEL_THRESHOLD = 50; // meters
+            if (polylines.length === 2) {
+                const c1 = polylines[0].getLatLngs();
+                const c2raw = polylines[1].getLatLngs();
+
+                if (c1.length >= 2 && c2raw.length >= 2) {
+                    // Orient c2 in the same direction as c1 (compare start-to-start vs start-to-end)
+                    const dSame = haversineDistance(c1[0].lat, c1[0].lng, c2raw[0].lat, c2raw[0].lng);
+                    const dFlip = haversineDistance(c1[0].lat, c1[0].lng, c2raw[c2raw.length - 1].lat, c2raw[c2raw.length - 1].lng);
+                    const c2 = dFlip < dSame ? [...c2raw].reverse() : c2raw;
+
+                    // Sample 10 evenly-spaced points and measure max separation
+                    const SAMPLES = 10;
+                    let maxDist = 0;
+                    for (let i = 0; i < SAMPLES; i++) {
+                        const t = i / (SAMPLES - 1);
+                        const p1 = sampleAtT(c1, t);
+                        const p2 = sampleAtT(c2, t);
+                        const d = haversineDistance(p1.lat, p1.lng, p2.lat, p2.lng);
+                        if (d > maxDist) maxDist = d;
+                    }
+
+                    if (maxDist <= PARALLEL_THRESHOLD) {
+                        // Average the two shapes into one polyline
+                        const n = Math.max(c1.length, c2.length);
+                        const merged = [];
+                        for (let i = 0; i < n; i++) {
+                            const t = i / (n - 1);
+                            const p1 = sampleAtT(c1, t);
+                            const p2 = sampleAtT(c2, t);
+                            merged.push(L.latLng((p1.lat + p2.lat) / 2, (p1.lng + p2.lng) / 2));
+                        }
+                        polylines[0].setLatLngs(merged);
+                        polylines.splice(1, 1); // drop second polyline — not added to map yet
+                    }
                 }
             }
 

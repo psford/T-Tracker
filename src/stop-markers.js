@@ -169,6 +169,41 @@ export function computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMa
                 });
             }
         });
+
+        // Proximity-based grouping: catches divided-road bus stops that share no parentStopId.
+        // Two stops on the same primary route within PROXIMITY_THRESHOLD meters are merged.
+        // Using the same-route requirement prevents merging unrelated stops at busy intersections.
+        const PROXIMITY_THRESHOLD = 40; // meters — covers typical divided-road widths
+        const mergedChildIds = new Set([...mergedStops.values()].flatMap(g => g.childStopIds));
+        const ungrouped = [...visibleStopIds].filter(id => !mergedChildIds.has(id));
+        const proximityGrouped = new Set();
+
+        ungrouped.forEach((stopId) => {
+            if (proximityGrouped.has(stopId)) return;
+            const stop = stopsData.get(stopId);
+            if (!stop || !stop.latitude || !stop.longitude) return;
+            const stopRoute = stopRouteMap.get(stopId);
+
+            const nearby = ungrouped.filter((otherId) => {
+                if (otherId === stopId || proximityGrouped.has(otherId)) return false;
+                if (stopRouteMap.get(otherId) !== stopRoute) return false;
+                const other = stopsData.get(otherId);
+                if (!other || !other.latitude || !other.longitude) return false;
+                return haversineDistance(stop.latitude, stop.longitude, other.latitude, other.longitude) <= PROXIMITY_THRESHOLD;
+            });
+
+            if (nearby.length > 0) {
+                const group = [stopId, ...nearby];
+                group.forEach(id => proximityGrouped.add(id));
+
+                const coords = group.map(id => stopsData.get(id));
+                const lat = coords.reduce((sum, s) => sum + s.latitude, 0) / coords.length;
+                const lng = coords.reduce((sum, s) => sum + s.longitude, 0) / coords.length;
+                const color = stopColorMap.get(stopId) || '#888888';
+
+                mergedStops.set(stopId, { lat, lng, childStopIds: group, color });
+            }
+        });
     }
 
     return { visibleStopIds, stopColorMap, stopRouteMap, mergedStops };
