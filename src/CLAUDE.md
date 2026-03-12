@@ -1,6 +1,6 @@
 # T-Tracker Source Modules
 
-Last verified: 2026-03-08
+Last verified: 2026-03-11
 
 ## Purpose
 Fourteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
@@ -67,7 +67,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Creates custom `stopPane` (z-index 625) between markerPane (600) and tooltipPane (650) for stop marker layering.
 
 ### stop-markers.js -- Stop Marker Rendering & Notification Config
-- **Exposes**: `initStopMarkers(map, apiEventsTarget)`, `updateVisibleStops(routeIds)`, `computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap, stopsData = null)`, `createStopMarker(lat, lng, color)`, `refreshAllHighlights()`
+- **Exposes**: `initStopMarkers(map, apiEventsTarget)`, `updateVisibleStops(routeIds)`, `computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap, stopsData = null)`, `createStopMarker(lat, lng, color)`, `refreshAllHighlights()`, `resolveMarkerKey(stopId)`, `getStopConfigState(stopId, childStopIds = null)`
 - **Guarantees**: Renders stop markers as `L.marker` + `L.divIcon` with 44×44px touch targets in a custom `stopPane` (z-index 625) above vehicles.
   Creates one marker per unique stop (deduplication for stops on multiple routes, AC1.5).
   First visible route to claim a stop sets its color (no visual stacking).
@@ -79,6 +79,8 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Implements parent station merging: stops sharing a `parentStopId` within 200m render as one marker at their averaged position (stop-marker-merging.AC1.1).
   Merged markers keyed by parentId in `stopMarkers` Map. Stores `marker._childStopIds` and `marker._isMerged` metadata for highlight and popup context.
   Module-level `childToParentMap` (Map<childStopId, parentStopId>) enables highlight resolution for merged groups (stop-marker-merging.AC6.1, AC6.2).
+  `resolveMarkerKey(stopId)` returns the marker key for a stop ID: the stopId itself if it has a direct marker, or the parentId via childToParentMap if merged. Returns undefined if not found.
+  `getStopConfigState(stopId, childStopIds)` computes popup config state. When childStopIds is provided, aggregates routes and existing alerts across all children; adds `stopId` field to each routeDirection entry identifying which child stop to configure.
   `highlightConfiguredStop()` resolves child stop IDs to parent-keyed markers via childToParentMap, applying stop-dot--configured class to merged markers when any child has a configured alert.
   Implements Phase 2 two-tap notification alert creation workflow via chip picker: first tap on direction button reveals chip picker with count options below the button (AC1.1), second tap on a chip updates the "Set Alert" button's data-count attribute and visually selects the chip (AC1.3), tapping "Set Alert" button creates the alert (AC1.3, AC1.4, AC1.5).
   Delegates chip picker interactions via event delegation on popupopen Leaflet event listener.
@@ -92,7 +94,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Imports `buildChipPickerHtml` from `stop-popup.js` for chip picker HTML generation on direction button click.
   Centralized success/error handling for alert creation: after `addNotificationPair()` resolves, calls `highlightConfiguredStop()`, `updateNotificationStatus()`, `renderPanel()`, and closes popup on success; shows inline error message on failure.
   Listens for `notification:pair-expired` CustomEvent on apiEventsTarget to refresh stop highlights when pairs auto-delete.
-- **Expects**: Leaflet `L` global available. `map.js` exports for stop data, route-stop mapping, and route colors. `stop-popup.js` for popup content formatting (`formatStopPopup`), chip picker HTML generation (`buildChipPickerHtml`), and HTML escaping (`escapeHtml`). `notifications.js` for pair management (`addNotificationPair`, `getNotificationPairs`), MAX_PAIRS constant. `notification-ui.js` for status/panel updates (`updateStatus`, `renderPanel`). `apiEventsTarget` EventTarget for listening to `notification:pair-expired` events (optional, defaults to null).
+- **Expects**: Leaflet `L` global available. `map.js` exports for stop data, route-stop mapping, and route colors. `stop-popup.js` for popup content formatting (`formatStopPopup`), chip picker HTML generation (`buildChipPickerHtml`), and HTML escaping (`escapeHtml`). `notifications.js` for pair management (`addNotificationPair`, `getNotificationPairs`), MAX_PAIRS constant. `notification-ui.js` for status/panel updates (`updateStatus`, `renderPanel`). `vehicle-math.js` for `haversineDistance()` (200m proximity check for parent station merging). `apiEventsTarget` EventTarget for listening to `notification:pair-expired` events (optional, defaults to null).
   `stopsData` Map must contain stop objects with `parentStopId`, `latitude`, `longitude`, and `name` properties for merged marker support.
 
 ### vehicle-math.js -- Pure Math
