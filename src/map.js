@@ -491,14 +491,14 @@ export async function loadRoutes() {
                 }
             }
 
-            // Merge parallel polylines (inbound/outbound on divided roads).
-            // When a route has exactly 2 typical-pattern shapes that run within
-            // PARALLEL_THRESHOLD of each other throughout, replace them with a single
-            // averaged polyline at the midpoint — showing one line to riders.
-            const PARALLEL_THRESHOLD = 50; // meters
-            if (polylines.length === 2) {
+            // Merge parallel polylines for subway/rail only (types 0, 1).
+            // Rail runs on the same physical track both directions — averaging works perfectly.
+            // Bus routes (type 3) use genuinely different streets inbound/outbound, so averaging
+            // would create a phantom line that follows neither actual street.
+            if (polylines.length === 2 && (type === 0 || type === 1)) {
                 const c1 = polylines[0].getLatLngs();
                 const c2raw = polylines[1].getLatLngs();
+
 
                 if (c1.length >= 2 && c2raw.length >= 2) {
                     // Orient c2 in the same direction as c1 (compare start-to-start vs start-to-end)
@@ -774,6 +774,31 @@ export async function fetchRouteStops(routeIds) {
                     });
                 }
             });
+
+            // Filter stops that are too far from the route's polylines.
+            // The MBTA API returns stops for all route variants/patterns, including
+            // rarely-run variants that don't appear on the official schedule.
+            // Exclude any stop >150m from the nearest vertex on any polyline for this route.
+            const STOP_PROXIMITY_THRESHOLD = 150; // meters
+            const routePls = routePolylines.get(routeId);
+            if (routePls && routePls.length > 0) {
+                const vertices = routePls.flatMap(pl => pl.getLatLngs());
+                if (vertices.length > 0) {
+                    for (const stopId of [...stopIds]) {
+                        const stop = stopsData.get(stopId);
+                        if (!stop || !stop.latitude || !stop.longitude) continue;
+                        let minDist = Infinity;
+                        for (const v of vertices) {
+                            const d = haversineDistance(stop.latitude, stop.longitude, v.lat, v.lng);
+                            if (d < minDist) minDist = d;
+                            if (minDist <= STOP_PROXIMITY_THRESHOLD) break; // early exit
+                        }
+                        if (minDist > STOP_PROXIMITY_THRESHOLD) {
+                            stopIds.delete(stopId);
+                        }
+                    }
+                }
+            }
 
             routeStopsMap.set(routeId, stopIds);
         } catch (error) {

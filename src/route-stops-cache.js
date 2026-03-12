@@ -2,7 +2,7 @@
 // Pure cache module for route-stops mapping. No DOM, no network, no app imports.
 
 const STORAGE_KEY = 'ttracker-route-stops-cache';
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2; // bumped to invalidate caches with unfiltered variant stops
 const DEFAULT_TTL_MS = 86_400_000; // 24 hours
 
 function readCache() {
