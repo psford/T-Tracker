@@ -572,7 +572,7 @@ export function updateVisibleStops(routeIds) {
                 }
 
                 // Aggregate routes from all child stops.
-                // Note: Similar route aggregation logic exists in getStopConfigState (lines 204-213);
+                // Note: Similar route aggregation logic exists in getStopConfigState;
                 // both iterate childStopIds and collect unique routes from stopRoutesMap.
                 const allRouteIds = new Set();
                 const allRouteInfos = [];
