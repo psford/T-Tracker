@@ -3,6 +3,7 @@ import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, snap
 import { formatStopPopup, escapeHtml, buildChipPickerHtml } from './stop-popup.js';
 import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';
 import { updateStatus as updateNotificationStatus, renderPanel } from './notification-ui.js';
+import { haversineDistance } from './vehicle-math.js';
 
 // Map<stopId, L.Marker> — tracks active stop markers on the map
 const stopMarkers = new Map();
@@ -61,14 +62,16 @@ export function createStopMarker(lat, lng, color) {
 
 /**
  * Pure logic: Compute visible stops and their colors based on visible routes.
- * Extracted for testability (AC1.1, AC1.5).
+ * Extends to group child stops by parent station and return merged stop data.
+ * Extracted for testability (AC1.1, AC1.5, stop-marker-merging.AC1.1-5).
  *
  * @param {Set<string>|Array<string>} visibleRouteIds — route IDs that should be visible
  * @param {Map<string, Set<string>>} routeStopsMap — route ID to set of stop IDs
  * @param {Map<string, string>} routeColorMap — route ID to hex color string
- * @returns {Object} — {visibleStopIds: Set<string>, stopColorMap: Map<string, string>, stopRouteMap: Map<string, string>}
+ * @param {Map<string, Object>} stopsData — stop ID to stop object with {parentStopId, latitude, longitude}. Optional; null for backwards compat.
+ * @returns {Object} — {visibleStopIds: Set<string>, stopColorMap: Map<string, string>, stopRouteMap: Map<string, string>, mergedStops: Map<string, {lat, lng, childStopIds, color}>}
  */
-export function computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap) {
+export function computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap, stopsData = null) {
     const visibleStopIds = new Set();
     const stopColorMap = new Map();
     const stopRouteMap = new Map();
@@ -87,7 +90,84 @@ export function computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMa
         }
     });
 
-    return { visibleStopIds, stopColorMap, stopRouteMap };
+    const mergedStops = new Map();
+
+    // If stopsData is provided, compute parent grouping
+    if (stopsData) {
+        // Build parentGroups: Map<parentId, string[]>
+        const parentGroups = new Map();
+
+        visibleStopIds.forEach((stopId) => {
+            const stop = stopsData.get(stopId);
+            if (stop && stop.parentStopId && stopsData.has(stop.parentStopId)) {
+                if (!parentGroups.has(stop.parentStopId)) {
+                    parentGroups.set(stop.parentStopId, []);
+                }
+                parentGroups.get(stop.parentStopId).push(stopId);
+            }
+        });
+
+        // For each group with 2+ children: check all pairwise distances
+        parentGroups.forEach((childStopIds, parentId) => {
+            // Single child in parent group → don't merge
+            if (childStopIds.length < 2) {
+                return;
+            }
+
+            // Check all pairwise distances using haversineDistance
+            let shouldMerge = true;
+            for (let i = 0; i < childStopIds.length && shouldMerge; i++) {
+                for (let j = i + 1; j < childStopIds.length && shouldMerge; j++) {
+                    const stop1 = stopsData.get(childStopIds[i]);
+                    const stop2 = stopsData.get(childStopIds[j]);
+
+                    if (stop1 && stop2) {
+                        const distance = haversineDistance(
+                            stop1.latitude,
+                            stop1.longitude,
+                            stop2.latitude,
+                            stop2.longitude
+                        );
+
+                        // If any pair exceeds 200m, skip merging this group
+                        if (distance > 200) {
+                            shouldMerge = false;
+                        }
+                    }
+                }
+            }
+
+            // If merge is valid, compute averaged lat/lng and store in mergedStops
+            if (shouldMerge) {
+                let sumLat = 0;
+                let sumLng = 0;
+
+                childStopIds.forEach((stopId) => {
+                    const stop = stopsData.get(stopId);
+                    if (stop) {
+                        sumLat += stop.latitude;
+                        sumLng += stop.longitude;
+                    }
+                });
+
+                const avgLat = sumLat / childStopIds.length;
+                const avgLng = sumLng / childStopIds.length;
+
+                // Use first child stop's color (deterministic based on route iteration order)
+                const firstChildId = childStopIds[0];
+                const color = stopColorMap.get(firstChildId) || '#888888';
+
+                mergedStops.set(parentId, {
+                    lat: avgLat,
+                    lng: avgLng,
+                    childStopIds,
+                    color,
+                });
+            }
+        });
+    }
+
+    return { visibleStopIds, stopColorMap, stopRouteMap, mergedStops };
 }
 
 /**
@@ -368,7 +448,7 @@ export function updateVisibleStops(routeIds) {
     const routeStopsMap = getRouteStopsMap();
     const routeColorMap = getRouteColorMap();
 
-    const { visibleStopIds, stopColorMap, stopRouteMap } = computeVisibleStops(routeIds, routeStopsMap, routeColorMap);
+    const { visibleStopIds, stopColorMap, stopRouteMap, mergedStops } = computeVisibleStops(routeIds, routeStopsMap, routeColorMap, stopsData);
 
     // Detect hover support (desktop vs touch)
     const hasHover = window.matchMedia('(hover: hover)').matches;
