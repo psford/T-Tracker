@@ -464,7 +464,7 @@ function testBuildChipPickerHtml() {
  * AC2.2, AC3.1: Each routeDirection entry can have optional stopId field
  * formatStopPopup uses rd.stopId || stop.id for data-stop-id attributes
  */
-function testPerRoutionDirectionStopId() {
+function testPerRouteDirectionStopId() {
     // Test 1: routeDirections without stopId falls back to stop.id
     const stop = { id: 'parent-station', name: 'Park Street' };
     const routes = [{ id: 'Red', shortName: 'Red', color: '#DA291C', type: 1 }];
@@ -573,7 +573,7 @@ function runTests() {
     testFormatStopPopup();
     testDirectionButtons();
     testBuildChipPickerHtml();
-    testPerRoutionDirectionStopId();
+    testPerRouteDirectionStopId();
 
     console.log('\n✓ All tests passed!');
 }

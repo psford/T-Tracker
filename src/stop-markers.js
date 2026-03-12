@@ -184,7 +184,7 @@ export function computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMa
  * @returns {Object} — {pairCount, maxPairs, existingAlerts, routeDirections}
  *   When childStopIds provided: aggregates routes from all children, adds stopId field to each routeDirection
  */
-function getStopConfigState(stopId, childStopIds = null) {
+export function getStopConfigState(stopId, childStopIds = null) {
     const pairs = getNotificationPairs();
     const routeMetadata = getRouteMetadata();
 
@@ -571,7 +571,9 @@ export function updateVisibleStops(routeIds) {
                     stopRoutesMap = buildStopRoutesMap();
                 }
 
-                // Aggregate routes from all child stops
+                // Aggregate routes from all child stops.
+                // Note: Similar route aggregation logic exists in getStopConfigState (lines 204-213);
+                // both iterate childStopIds and collect unique routes from stopRoutesMap.
                 const allRouteIds = new Set();
                 const allRouteInfos = [];
                 const routeMetadata = getRouteMetadata();
