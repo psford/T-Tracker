@@ -460,6 +460,110 @@ function testBuildChipPickerHtml() {
 }
 
 /**
+ * Test per-route-direction stopId field in popups (for merged markers)
+ * AC2.2, AC3.1: Each routeDirection entry can have optional stopId field
+ * formatStopPopup uses rd.stopId || stop.id for data-stop-id attributes
+ */
+function testPerRoutionDirectionStopId() {
+    // Test 1: routeDirections without stopId falls back to stop.id
+    const stop = { id: 'parent-station', name: 'Park Street' };
+    const routes = [{ id: 'Red', shortName: 'Red', color: '#DA291C', type: 1 }];
+
+    const configStateNoStopId = {
+        pairCount: 0,
+        maxPairs: 5,
+        existingAlerts: [],
+        routeDirections: [
+            { routeId: 'Red', routeName: 'Red', dir0Label: 'Ashmont', dir1Label: 'Alewife', isTerminus: false },
+            // No stopId field — should fall back to stop.id
+        ],
+    };
+
+    const htmlNoStopId = formatStopPopup(stop, routes, configStateNoStopId);
+    assert.ok(htmlNoStopId.includes('data-stop-id="parent-station"'), 'Should use stop.id when rd.stopId not provided');
+    console.log('✓ Backward compat: routeDirections without stopId uses stop.id');
+
+    // Test 2: routeDirections with stopId uses that instead of stop.id (merged marker case)
+    const configStateWithStopId = {
+        pairCount: 0,
+        maxPairs: 5,
+        existingAlerts: [],
+        routeDirections: [
+            { routeId: 'Red', routeName: 'Red', dir0Label: 'Ashmont', dir1Label: 'Alewife', isTerminus: false, stopId: 'child-stop-a' },
+            { routeId: 'Green-B', routeName: 'Green-B', dir0Label: 'Boston College', dir1Label: 'Park', isTerminus: false, stopId: 'child-stop-b' },
+        ],
+    };
+
+    const multiRoutes = [
+        { id: 'Red', shortName: 'Red', color: '#DA291C', type: 1 },
+        { id: 'Green-B', shortName: 'Green-B', color: '#00843D', type: 1 },
+    ];
+
+    const htmlWithStopId = formatStopPopup(stop, multiRoutes, configStateWithStopId);
+
+    // Red route should have child-stop-a as data-stop-id
+    const childStopAMatches = htmlWithStopId.match(/data-stop-id="child-stop-a"/g);
+    assert.ok(childStopAMatches && childStopAMatches.length > 0, 'Should have at least one button with data-stop-id="child-stop-a" for Red route');
+
+    // Green-B route should have child-stop-b as data-stop-id
+    const childStopBMatches = htmlWithStopId.match(/data-stop-id="child-stop-b"/g);
+    assert.ok(childStopBMatches && childStopBMatches.length > 0, 'Should have at least one button with data-stop-id="child-stop-b" for Green-B route');
+
+    // Verify parent-station does NOT appear in the merged popup (only child stops)
+    const parentStationMatches = htmlWithStopId.match(/data-stop-id="parent-station"/g);
+    assert.ok(!parentStationMatches || parentStationMatches.length === 0, 'Should not have parent-station stopId in merged popup');
+
+    console.log('✓ Merged markers: routeDirections.stopId overrides stop.id in data-stop-id');
+
+    // Test 3: Mixed case — some routeDirections with stopId, some without
+    const configStateMixed = {
+        pairCount: 0,
+        maxPairs: 5,
+        existingAlerts: [],
+        routeDirections: [
+            { routeId: 'Red', routeName: 'Red', dir0Label: 'Ashmont', dir1Label: 'Alewife', isTerminus: false, stopId: 'child-red' },
+            { routeId: 'Blue', routeName: 'Blue', dir0Label: 'Wonderland', dir1Label: 'Bowdoin', isTerminus: false },
+            // Blue has no stopId — should fall back to stop.id
+        ],
+    };
+
+    const mixedRoutes = [
+        { id: 'Red', shortName: 'Red', color: '#DA291C', type: 1 },
+        { id: 'Blue', shortName: 'Blue', color: '#003DA5', type: 1 },
+    ];
+
+    const htmlMixed = formatStopPopup(stop, mixedRoutes, configStateMixed);
+
+    // Red should have child-red
+    const childRedMatches = htmlMixed.match(/data-stop-id="child-red"/g);
+    assert.ok(childRedMatches && childRedMatches.length > 0, 'Red with stopId should use child-red');
+
+    // Blue should fall back to parent-station
+    const parentStationMatches2 = htmlMixed.match(/data-stop-id="parent-station"/g);
+    assert.ok(parentStationMatches2 && parentStationMatches2.length > 0, 'Blue without stopId should use parent-station');
+
+    console.log('✓ Mixed case: some routes use stopId, others fall back to stop.id');
+
+    // Test 4: HTML escaping applied to per-route stopId
+    const configStateEscaped = {
+        pairCount: 0,
+        maxPairs: 5,
+        existingAlerts: [],
+        routeDirections: [
+            { routeId: 'Red', routeName: 'Red', dir0Label: 'Ashmont', dir1Label: 'Alewife', isTerminus: false, stopId: 'stop<xss>' },
+        ],
+    };
+
+    const htmlEscaped = formatStopPopup(stop, routes, configStateEscaped);
+    assert.ok(!htmlEscaped.includes('stop<xss>'), 'Should escape HTML in stopId');
+    assert.ok(htmlEscaped.includes('stop&lt;xss&gt;'), 'Should contain escaped stopId in data-stop-id');
+
+    console.log('✓ Per-route stopId is HTML-escaped');
+
+    console.log('✓ All per-route-direction stopId tests passed');
+}
+
+/**
  * Run all tests
  */
 function runTests() {
@@ -469,6 +573,7 @@ function runTests() {
     testFormatStopPopup();
     testDirectionButtons();
     testBuildChipPickerHtml();
+    testPerRoutionDirectionStopId();
 
     console.log('\n✓ All tests passed!');
 }
