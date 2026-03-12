@@ -460,10 +460,13 @@ export function updateVisibleStops(routeIds) {
     // Detect hover support (desktop vs touch)
     const hasHover = window.matchMedia('(hover: hover)').matches;
 
-    // Collect stops to remove (avoid modifying Map during iteration)
+    // Step 1: Collect stops to remove (avoid modifying Map during iteration)
+    // Parent-keyed markers are not in visibleStopIds, so check against currentMergedParentIds
+    const currentMergedParentIds = new Set(mergedStops.keys());
+
     const stopsToRemove = [];
     stopMarkers.forEach((marker, stopId) => {
-        if (!visibleStopIds.has(stopId)) {
+        if (!visibleStopIds.has(stopId) && !currentMergedParentIds.has(stopId)) {
             stopsToRemove.push(stopId);
         }
     });
@@ -478,8 +481,72 @@ export function updateVisibleStops(routeIds) {
     // Invalidate stopRoutesMap cache on route visibility change
     stopRoutesMap = null;
 
+    // Step 2: Rebuild childToParentMap and collect merged child IDs
+    childToParentMap.clear();
+    const mergedChildIds = new Set();
+    mergedStops.forEach(({ childStopIds }, parentId) => {
+        childStopIds.forEach(cid => {
+            childToParentMap.set(cid, parentId);
+            mergedChildIds.add(cid);
+        });
+    });
+
+    // Step 3: Create merged markers
+    mergedStops.forEach(({ lat, lng, childStopIds, color }, parentId) => {
+        if (!stopMarkers.has(parentId)) {
+            const marker = createStopMarker(lat, lng, color);
+
+            // Store child IDs for popup and highlight lookup
+            marker._childStopIds = childStopIds;
+            marker._isMerged = true;
+
+            // Bind popup with placeholder content (Phase 3 replaces with aggregating popup)
+            // Use first child stop's name
+            const firstChildId = childStopIds[0];
+            const firstChildStop = stopsData.get(firstChildId);
+            const placeholderName = firstChildStop ? firstChildStop.name : firstChildId;
+
+            const popupFunction = () => {
+                return `<div class="stop-popup"><div class="stop-popup__header"><h3>${escapeHtml(placeholderName)}</h3></div></div>`;
+            };
+
+            marker.bindPopup(popupFunction, {
+                className: 'stop-popup-container',
+                closeButton: true,
+                autoPan: false,
+            });
+
+            // Desktop: hover to show popup, stays open while cursor is over marker OR popup
+            if (hasHover) {
+                marker.on('mouseover', function () {
+                    if (this._hoverCloseTimer) {
+                        clearTimeout(this._hoverCloseTimer);
+                        this._hoverCloseTimer = null;
+                    }
+                    this.openPopup();
+                });
+                marker.on('mouseout', function () {
+                    if (this._popupSticky) return;
+                    const self = this;
+                    self._hoverCloseTimer = setTimeout(() => {
+                        self.closePopup();
+                        self._hoverCloseTimer = null;
+                    }, 300);
+                });
+
+                marker.on('popupclose', function () {
+                    this._popupSticky = false;
+                });
+            }
+
+            stopMarkers.set(parentId, marker);
+            stopLayerGroup.addLayer(marker);
+        }
+    });
+
     // Add markers for newly visible stops
     visibleStopIds.forEach((stopId) => {
+        if (mergedChildIds.has(stopId)) return; // Handled by merged marker
         if (!stopMarkers.has(stopId)) {
             const stop = stopsData.get(stopId);
             // Skip stops without coordinates
