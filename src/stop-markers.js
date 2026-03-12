@@ -8,6 +8,10 @@ import { haversineDistance } from './vehicle-math.js';
 // Map<stopId, L.Marker> — tracks active stop markers on the map
 const stopMarkers = new Map();
 
+// Map<childStopId, parentStopId> — reverse lookup for merged stops
+// When a child stop is part of a merged group, this maps child → parent marker key
+const childToParentMap = new Map();
+
 // L.LayerGroup for stop markers — organized as layer for batch show/hide
 let stopLayerGroup = null;
 
@@ -245,7 +249,10 @@ function handleAlertResult(result, stopId, container) {
  * @param {string} stopId — stop ID to highlight
  */
 function highlightConfiguredStop(stopId) {
-    const marker = stopMarkers.get(stopId);
+    // Direct lookup first, then check if this child belongs to a merged parent
+    const markerId = stopMarkers.has(stopId) ? stopId : childToParentMap.get(stopId);
+    if (!markerId) return;
+    const marker = stopMarkers.get(markerId);
     if (!marker) return;
     const el = marker.getElement();
     if (!el) return;
