@@ -74,7 +74,12 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Only creates/removes markers on route visibility changes, not on every update (AC1.4 performance).
   Binds click popups to markers with stop name and routes serving that stop (via `formatStopPopup(configState)`).
   Popups are click-activated and include close button; autoPan ensures full visibility.
-  `computeVisibleStops()` is a pure function for testability. Returns object with fields: `visibleStopIds` (Set), `stopColorMap` (Map), `stopRouteMap` (Map), and `mergedStops` (Map with merged parent station data when stopsData provided).
+  `computeVisibleStops()` is a pure function for testability. Accepts optional 4th parameter `stopsData` (Map<stopId, {parentStopId, latitude, longitude, name, ...}>).
+  Returns object with fields: `visibleStopIds` (Set), `stopColorMap` (Map), `stopRouteMap` (Map), and `mergedStops` (Map<parentId, {lat, lng, childStopIds, color}> with merged parent station data when stopsData provided).
+  Implements parent station merging: stops sharing a `parentStopId` within 200m render as one marker at their averaged position (stop-marker-merging.AC1.1).
+  Merged markers keyed by parentId in `stopMarkers` Map. Stores `marker._childStopIds` and `marker._isMerged` metadata for highlight and popup context.
+  Module-level `childToParentMap` (Map<childStopId, parentStopId>) enables highlight resolution for merged groups (stop-marker-merging.AC6.1, AC6.2).
+  `highlightConfiguredStop()` resolves child stop IDs to parent-keyed markers via childToParentMap, applying stop-dot--configured class to merged markers when any child has a configured alert.
   Implements Phase 2 two-tap notification alert creation workflow via chip picker: first tap on direction button reveals chip picker with count options below the button (AC1.1), second tap on a chip updates the "Set Alert" button's data-count attribute and visually selects the chip (AC1.3), tapping "Set Alert" button creates the alert (AC1.3, AC1.4, AC1.5).
   Delegates chip picker interactions via event delegation on popupopen Leaflet event listener.
   On successful pair creation, calls `highlightConfiguredStop()` to visually enlarge configured stop markers.
@@ -86,6 +91,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Centralized success/error handling for alert creation: after `addNotificationPair()` resolves, calls `highlightConfiguredStop()`, `updateNotificationStatus()`, `renderPanel()`, and closes popup on success; shows inline error message on failure.
   Listens for `notification:pair-expired` CustomEvent on apiEventsTarget to refresh stop highlights when pairs auto-delete.
 - **Expects**: Leaflet `L` global available. `map.js` exports for stop data, route-stop mapping, and route colors. `stop-popup.js` for popup content formatting (`formatStopPopup`), chip picker HTML generation (`buildChipPickerHtml`), and HTML escaping (`escapeHtml`). `notifications.js` for pair management (`addNotificationPair`, `getNotificationPairs`), MAX_PAIRS constant. `notification-ui.js` for status/panel updates (`updateStatus`, `renderPanel`). `apiEventsTarget` EventTarget for listening to `notification:pair-expired` events (optional, defaults to null).
+  `stopsData` Map must contain stop objects with `parentStopId`, `latitude`, `longitude`, and `name` properties for merged marker support.
 
 ### vehicle-math.js -- Pure Math
 - **Exposes**: `lerp(a, b, t)`, `easeOutCubic(t)`, `lerpAngle(a, b, t)`, `haversineDistance(lat1, lon1, lat2, lon2)`, `darkenHexColor(hex, amount)`, `bearingToTransform(bearing)`
