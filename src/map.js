@@ -506,30 +506,18 @@ export async function loadRoutes() {
                     const dFlip = haversineDistance(c1[0].lat, c1[0].lng, c2raw[c2raw.length - 1].lat, c2raw[c2raw.length - 1].lng);
                     const c2 = dFlip < dSame ? [...c2raw].reverse() : c2raw;
 
-                    // Sample 10 evenly-spaced points and measure max separation
-                    const SAMPLES = 10;
-                    let maxDist = 0;
-                    for (let i = 0; i < SAMPLES; i++) {
-                        const t = i / (SAMPLES - 1);
+                    // Always merge 2 typical-pattern shapes into one averaged polyline.
+                    // Riders see one route; showing inbound/outbound as separate lines is confusing.
+                    const n = Math.max(c1.length, c2.length);
+                    const merged = [];
+                    for (let i = 0; i < n; i++) {
+                        const t = i / (n - 1);
                         const p1 = sampleAtT(c1, t);
                         const p2 = sampleAtT(c2, t);
-                        const d = haversineDistance(p1.lat, p1.lng, p2.lat, p2.lng);
-                        if (d > maxDist) maxDist = d;
+                        merged.push(L.latLng((p1.lat + p2.lat) / 2, (p1.lng + p2.lng) / 2));
                     }
-
-                    if (maxDist <= PARALLEL_THRESHOLD) {
-                        // Average the two shapes into one polyline
-                        const n = Math.max(c1.length, c2.length);
-                        const merged = [];
-                        for (let i = 0; i < n; i++) {
-                            const t = i / (n - 1);
-                            const p1 = sampleAtT(c1, t);
-                            const p2 = sampleAtT(c2, t);
-                            merged.push(L.latLng((p1.lat + p2.lat) / 2, (p1.lng + p2.lng) / 2));
-                        }
-                        polylines[0].setLatLngs(merged);
-                        polylines.splice(1, 1); // drop second polyline — not added to map yet
-                    }
+                    polylines[0].setLatLngs(merged);
+                    polylines.splice(1, 1);
                 }
             }
 
