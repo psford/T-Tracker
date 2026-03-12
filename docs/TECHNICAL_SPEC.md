@@ -1,7 +1,7 @@
 # T-Tracker Technical Specification
 
-**Version:** 1.2
-**Last updated:** 2026-03-05
+**Version:** 1.3
+**Last updated:** 2026-03-11
 
 ## Architecture Overview
 
@@ -449,3 +449,4 @@ Existing pairs without count fields are automatically upgraded to unlimited (rem
 | 2026-02-11 | Feature: pulsing directional indicators (headlights/taillights) on vehicle icons |
 | 2026-02-14 | Ferry service support: route type 4 (MBTA aqua #008EAA boat icon), Ferry group in UI (hidden by default), full API integration |
 | 2026-03-05 | Notification expiry: countdown on fire, auto-delete at 0, chip picker UI for count selection, alerts panel count editing, pair-expired event integration, migration of existing pairs |
+| 2026-03-11 | Stop marker merging: parent stations with 2+ child stops within 200m render as single merged marker; merged popup aggregates routes and alerts from all children; per-route-direction stopId routing for correct child stop alerts |
