@@ -244,13 +244,55 @@ function handleAlertResult(result, stopId, container) {
 }
 
 /**
+ * Attach hover/mouseout/popupclose behavior to a marker.
+ * Encapsulates: on hover show popup, on mouseout hide (with delay), on popupclose reset sticky flag.
+ * Shared between merged markers and individual markers (touch-targets.AC2.3).
+ *
+ * @param {L.Marker} marker — marker to attach hover behavior to
+ */
+function attachHoverBehavior(marker) {
+    marker.on('mouseover', function () {
+        if (this._hoverCloseTimer) {
+            clearTimeout(this._hoverCloseTimer);
+            this._hoverCloseTimer = null;
+        }
+        this.openPopup();
+    });
+    marker.on('mouseout', function () {
+        // Don't auto-close if user engaged with chip picker or merged marker popup
+        if (this._popupSticky) return;
+        const self = this;
+        self._hoverCloseTimer = setTimeout(() => {
+            self.closePopup();
+            self._hoverCloseTimer = null;
+        }, 300);
+    });
+
+    // Reset sticky flag when popup closes
+    marker.on('popupclose', function () {
+        this._popupSticky = false;
+    });
+}
+
+/**
+ * Resolve a stop ID to its marker key (direct or via parent mapping).
+ * Encapsulates: if stop has direct marker, return stopId; else check childToParentMap.
+ * Used by highlightConfiguredStop and tests to find the actual marker key.
+ *
+ * @param {string} stopId — stop ID to resolve
+ * @returns {string|undefined} — marker key (stopId or parentId), or undefined if not found
+ */
+export function resolveMarkerKey(stopId) {
+    return stopMarkers.has(stopId) ? stopId : childToParentMap.get(stopId);
+}
+
+/**
  * Highlight a configured stop by increasing marker size and opacity.
  *
  * @param {string} stopId — stop ID to highlight
  */
 function highlightConfiguredStop(stopId) {
-    // Direct lookup first, then check if this child belongs to a merged parent
-    const markerId = stopMarkers.has(stopId) ? stopId : childToParentMap.get(stopId);
+    const markerId = resolveMarkerKey(stopId);
     if (!markerId) return;
     const marker = stopMarkers.get(markerId);
     if (!marker) return;
@@ -506,8 +548,9 @@ export function updateVisibleStops(routeIds) {
             const firstChildStop = stopsData.get(firstChildId);
             const placeholderName = firstChildStop ? firstChildStop.name : firstChildId;
 
+            // TODO (Phase 3): Replace with aggregating popup showing all child stops and direction chips
             const popupFunction = () => {
-                return `<div class="stop-popup"><div class="stop-popup__header"><h3>${escapeHtml(placeholderName)}</h3></div></div>`;
+                return `<div class="stop-popup"><div class="stop-popup__header"><h3>${escapeHtml(placeholderName)} (merged station)</h3></div><p style="font-size: 12px; color: #aaa;">Tap to configure alerts for this station</p></div>`;
             };
 
             marker.bindPopup(popupFunction, {
@@ -518,25 +561,7 @@ export function updateVisibleStops(routeIds) {
 
             // Desktop: hover to show popup, stays open while cursor is over marker OR popup
             if (hasHover) {
-                marker.on('mouseover', function () {
-                    if (this._hoverCloseTimer) {
-                        clearTimeout(this._hoverCloseTimer);
-                        this._hoverCloseTimer = null;
-                    }
-                    this.openPopup();
-                });
-                marker.on('mouseout', function () {
-                    if (this._popupSticky) return;
-                    const self = this;
-                    self._hoverCloseTimer = setTimeout(() => {
-                        self.closePopup();
-                        self._hoverCloseTimer = null;
-                    }, 300);
-                });
-
-                marker.on('popupclose', function () {
-                    this._popupSticky = false;
-                });
+                attachHoverBehavior(marker);
             }
 
             stopMarkers.set(parentId, marker);
@@ -587,27 +612,7 @@ export function updateVisibleStops(routeIds) {
 
             // Desktop: hover to show popup, stays open while cursor is over marker OR popup
             if (hasHover) {
-                marker.on('mouseover', function () {
-                    if (this._hoverCloseTimer) {
-                        clearTimeout(this._hoverCloseTimer);
-                        this._hoverCloseTimer = null;
-                    }
-                    this.openPopup();
-                });
-                marker.on('mouseout', function () {
-                    // Don't auto-close if user engaged with chip picker
-                    if (this._popupSticky) return;
-                    const self = this;
-                    self._hoverCloseTimer = setTimeout(() => {
-                        self.closePopup();
-                        self._hoverCloseTimer = null;
-                    }, 300);
-                });
-
-                // Reset sticky flag when popup closes
-                marker.on('popupclose', function () {
-                    this._popupSticky = false;
-                });
+                attachHoverBehavior(marker);
             }
 
             stopMarkers.set(stopId, marker);
