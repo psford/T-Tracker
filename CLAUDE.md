@@ -34,6 +34,7 @@ All data flows through dedicated modules with clear responsibilities:
 - `map.js`: Leaflet rendering, marker management, route visibility filtering, stop data fetching
 - `route-stops-cache.js`: localStorage caching for route-stops mapping with TTL invalidation
 - `route-sorter.js`: Pure function for grouping and sorting route metadata by type and name
+- `static-data.js`: Static data loader with localStorage caching and background staleness check
 - `ui.js`: Route selection UI, localStorage persistence, grouping/sorting orchestration
 - `stop-markers.js`: Stop marker rendering on map, parent station merging (200m proximity), notification pair config workflow
 - `stop-popup.js`: Stop popup HTML formatting with notification config states
@@ -62,6 +63,7 @@ All data flows through dedicated modules with clear responsibilities:
 - `node tests/fire-notification.test.js` -- run notification pathway selection tests
 - `node tests/sse-notification-integration.test.js` -- run SSE→notification integration tests
 - `node tests/vehicles-state.test.js` -- run vehicle state management tests
+- `node tests/static-data.test.js` -- run static data loader unit tests
 - ES6 modules require HTTP server; `file://` protocol will not work
 
 ## Project Structure
@@ -72,8 +74,8 @@ All data flows through dedicated modules with clear responsibilities:
 - `manifest.json` -- PWA manifest (app name, icons, theme color, display: standalone)
 - `sw.js` -- Minimal service worker (no caching, notification click handler)
 - `icons/` -- PWA icons (192x192, 512x512, 180x180 apple-touch-icon)
-- `src/` -- 15 application modules (see `src/CLAUDE.md` for contracts)
-- `tests/` -- 16 test files (unit tests, integration tests, pathway tests)
+- `src/` -- 16 application modules (see `src/CLAUDE.md` for contracts)
+- `tests/` -- 17 test files (unit tests, integration tests, pathway tests)
 - `docs/` -- Design plans and implementation phase docs
 - `.visual-review/` -- Visual review tooling (config, mock pages, screenshots)
   - `config.json` -- Theme colors, viewports, stylesheet path, contrast settings

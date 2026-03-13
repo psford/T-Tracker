@@ -55,7 +55,8 @@ async function testLocalStorageHit() {
         throw new Error('static file fetch should not be called on cache hit');
     };
 
-    const bundle = await _loadStaticData_withMocks(ls, fetchMock);
+    const { bundle, bgCheckPromise } = await _loadStaticData_withMocks(ls, fetchMock);
+    await bgCheckPromise;
 
     assert.strictEqual(bundle.generatedAt, FIXTURE_BUNDLE.generatedAt, 'Returns cached bundle');
     assert.strictEqual(fetchCalled, false, 'Static file not fetched on cache hit');
@@ -80,7 +81,8 @@ async function testLocalStorageMiss() {
         };
     };
 
-    const bundle = await _loadStaticData_withMocks(ls, fetchMock);
+    const { bundle, bgCheckPromise } = await _loadStaticData_withMocks(ls, fetchMock);
+    await bgCheckPromise;
 
     assert.ok(fileFetched, 'Static file fetched on cache miss');
     assert.strictEqual(bundle.generatedAt, FIXTURE_BUNDLE.generatedAt);
@@ -107,9 +109,9 @@ async function testStalenessCheckMatch() {
         throw new Error('Unexpected fetch: ' + url);
     };
 
-    await _loadStaticData_withMocks(ls, fetchMock);
-    // Wait briefly for background check
-    await new Promise(r => setTimeout(r, 20));
+    const { bgCheckPromise } = await _loadStaticData_withMocks(ls, fetchMock);
+    // Await background check promise instead of arbitrary setTimeout
+    await bgCheckPromise;
 
     const routeIdCalls = fetchCalls.filter(u => u.includes('fields[route]=id'));
     assert.strictEqual(routeIdCalls.length, 1, 'Exactly one lightweight check (AC3.1)');
@@ -139,8 +141,9 @@ async function testStalenessCheckMismatch() {
         throw new Error('Unexpected fetch: ' + url);
     };
 
-    await _loadStaticData_withMocks(ls, fetchMock, (fresh) => { refreshBundle = fresh; });
-    await new Promise(r => setTimeout(r, 20));
+    const { bgCheckPromise } = await _loadStaticData_withMocks(ls, fetchMock, (fresh) => { refreshBundle = fresh; });
+    // Await background check promise instead of arbitrary setTimeout
+    await bgCheckPromise;
 
     assert.ok(fileFetched, 'Re-fetched static file on mismatch (AC3.3)');
     assert.ok(refreshBundle, 'onRefresh callback called (AC3.3)');
@@ -164,8 +167,9 @@ async function testStalenessCheckFailureSilent() {
 
     let threw = false;
     try {
-        await _loadStaticData_withMocks(ls, fetchMock);
-        await new Promise(r => setTimeout(r, 20));
+        const { bgCheckPromise } = await _loadStaticData_withMocks(ls, fetchMock);
+        // Await background check promise — should not throw even on fetch error
+        await bgCheckPromise;
     } catch {
         threw = true;
     }
@@ -207,6 +211,16 @@ async function testGetStaticDataAge() {
 // Because ES module imports are cached, we can't re-import static-data.js per
 // test with different mocks. Instead, we directly invoke the module's logic
 // by inlining the implementation as a testable function below.
+//
+// ⚠️ DRIFT RISK: The functions below (_tryLoadFromStorage, saveToStorage,
+// fetchStaticFile, backgroundStalenessCheck, _loadStaticData_withMocks) duplicate
+// logic from src/static-data.js. Any changes to private function signatures,
+// localStorage structure, or staleness check logic in src/static-data.js MUST be
+// mirrored here to prevent test divergence. Key areas to watch:
+// - STORAGE_KEY and STATIC_DATA_VERSION changes
+// - localStorage JSON structure (version/data wrapper)
+// - Staleness check URL construction and route ID comparison logic
+// - Error handling in _tryLoadFromStorage and _fetchStaticFile
 
 const STORAGE_KEY_INNER = 'ttracker-static-data';
 const VERSION_INNER = 1;
@@ -255,8 +269,9 @@ async function _loadStaticData_withMocks(ls, fetchFn, onRefresh = null) {
         bundle = await fetchStaticFile(fetchFn, 'data/mbta-static.json');
         saveToStorage(ls, bundle);
     }
-    backgroundStalenessCheck(fetchFn, ls, bundle, onRefresh).catch(() => {});
-    return bundle;
+    // Return both bundle and background check promise so tests can await completion
+    const bgCheckPromise = backgroundStalenessCheck(fetchFn, ls, bundle, onRefresh).catch(() => {});
+    return { bundle, bgCheckPromise };
 }
 
 async function runTests() {

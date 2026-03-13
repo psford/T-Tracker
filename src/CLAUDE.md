@@ -3,13 +3,15 @@
 Last verified: 2026-03-11
 
 ## Purpose
-Fifteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
+Sixteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
 rendering (Leaflet markers/polylines/stop markers), user controls (route filtering), polyline decoding,
 polyline merging, route organization, popup content formatting, vehicle icon data, stop popup formatting,
-notification engine, notification UI management, and route-stops cache management.
+notification engine, notification UI management, route-stops cache management, and static data loading.
 
 ## Data Flow
 ```
+static-data.js (localStorage + file cache)
+       ↓
 route-stops-cache.js (localStorage read/write)
        ↕
 index.html (orchestrator — hydrate or fetch)
@@ -202,6 +204,11 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Exposes**: `getCachedRouteStops(routeIds, ttlMs)`, `setCachedRouteStops(routeId, stopIds)`, `clearRouteStopsCache()`
 - **Guarantees**: `getCachedRouteStops` returns `{ cached: Map<routeId, Set<stopId>>, uncached: string[] }`. Per-route TTL (default 24hr / 86,400,000ms). Version field enables cache invalidation on schema changes. Malformed or corrupted localStorage JSON gracefully falls back to empty cache. Quota exceeded on write silently fails (no crash). Single localStorage key: `ttracker-route-stops-cache`.
 - **Expects**: `localStorage` available. Pure module — no DOM access, no network calls, no imports from other app modules.
+
+### static-data.js -- Static Data Loader
+- **Exposes**: `loadStaticData(onRefresh = null, apiKey = '')`, `getStaticDataAge(bundle)`
+- **Guarantees**: Loads MBTA static data from `data/mbta-static.json` with localStorage caching. On fresh visit: fetches file, writes to localStorage with version field. On returning visit: reads from localStorage (version-checked). After hydration, fires background staleness check (non-blocking). Returns bundle `{ generatedAt, routes, stops, routeStops }`. Staleness check fetches only route IDs (lightweight), compares with cached set. If IDs match: no further calls (AC3.2). If IDs differ: re-fetches file (cache-busted), updates localStorage, calls `onRefresh(freshBundle)`. Check failure is silent per AC3.4. Throws if both localStorage and file fetch fail, allowing caller to fall back to live MBTA API (AC2.4). `getStaticDataAge(bundle)` returns seconds since `generatedAt`.
+- **Expects**: `globalThis.localStorage` available. `globalThis.fetch` for HTTP requests. `apiKey` (MBTA API key) to append to staleness check URL (prevents rate limiting).
 
 ## Key Decisions
 - Event-driven (CustomEvent/EventTarget) over direct function calls: enables multiple subscribers
