@@ -753,7 +753,7 @@ export function hydrateRoutes(routes) {
         const { id: routeId, shortName, longName, type, directionNames, directionDestinations } = route;
 
         // Apply same color darkening as loadRoutes() for dark map theme
-        let color = route.color;
+        let color = route.color || '#888888';
         if (type === 1 || type === 2) {
             color = darkenHexColor(color, 0.15);
         }

@@ -10,9 +10,9 @@ MBTA API (SSE) → api.js (parse + validate) → vehicles.js (interpolate + anim
                       |                                ↓
                       |                           vehicle-math.js (pure math)
                       |                                ↓
-         route-stops-cache.js (localStorage)          map.js (render + visibility)
+         static-data.js (bundle + localStorage)       map.js (render + visibility)
                       ↓                                 ↑               ↑
-                  (hydrate/fetch)              ui.js (configure)  vehicle-icons.js (icon data)
+                  (hydrate)                  ui.js (configure)  vehicle-icons.js (icon data)
                                                   ↓                 ↑
                                            route-sorter.js     stop-markers.js (render stops)
                                             (group/sort)        stop-popup.js (format)
@@ -32,7 +32,6 @@ All data flows through dedicated modules with clear responsibilities:
 - `polyline.js`: Pure function for Google polyline decoding
 - `polyline-merge.js`: Pure function for deciding whether two polylines should be merged (arc-length sampling, nearest-vertex distance)
 - `map.js`: Leaflet rendering, marker management, route visibility filtering, stop data fetching
-- `route-stops-cache.js`: localStorage caching for route-stops mapping with TTL invalidation
 - `route-sorter.js`: Pure function for grouping and sorting route metadata by type and name
 - `static-data.js`: Static data loader with localStorage caching and background staleness check
 - `ui.js`: Route selection UI, localStorage persistence, grouping/sorting orchestration
@@ -57,7 +56,6 @@ All data flows through dedicated modules with clear responsibilities:
 - `node tests/stop-popup.test.js` -- run stop popup formatting tests
 - `node tests/notifications.test.js` -- run notification engine tests
 - `node tests/notification-ui.test.js` -- run notification UI tests
-- `node tests/route-stops-cache.test.js` -- run route-stops cache unit tests
 - `node tests/map-hydrate.test.js` -- run map hydration unit tests
 - `node tests/sw.test.js` -- run service worker fetch handler tests
 - `node tests/fire-notification.test.js` -- run notification pathway selection tests
@@ -74,8 +72,8 @@ All data flows through dedicated modules with clear responsibilities:
 - `manifest.json` -- PWA manifest (app name, icons, theme color, display: standalone)
 - `sw.js` -- Minimal service worker (no caching, notification click handler)
 - `icons/` -- PWA icons (192x192, 512x512, 180x180 apple-touch-icon)
-- `src/` -- 16 application modules (see `src/CLAUDE.md` for contracts)
-- `tests/` -- 17 test files (unit tests, integration tests, pathway tests)
+- `src/` -- 15 application modules (see `src/CLAUDE.md` for contracts)
+- `tests/` -- 16 test files (unit tests, integration tests, pathway tests)
 - `docs/` -- Design plans and implementation phase docs
 - `.visual-review/` -- Visual review tooling (config, mock pages, screenshots)
   - `config.json` -- Theme colors, viewports, stylesheet path, contrast settings

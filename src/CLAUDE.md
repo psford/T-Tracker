@@ -3,17 +3,15 @@
 Last verified: 2026-03-11
 
 ## Purpose
-Sixteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
+Fifteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
 rendering (Leaflet markers/polylines/stop markers), user controls (route filtering), polyline decoding,
 polyline merging, route organization, popup content formatting, vehicle icon data, stop popup formatting,
-notification engine, notification UI management, route-stops cache management, and static data loading.
+and notification engine, notification UI management, and static data loading.
 
 ## Data Flow
 ```
 static-data.js (localStorage + file cache)
        ↓
-route-stops-cache.js (localStorage read/write)
-       ↕
 index.html (orchestrator — hydrate or fetch)
        ↓
 MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
@@ -199,11 +197,6 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   `getStopData()` and `getRouteMetadata()` from `map.js` for name resolution.
   `escapeHtml()` from `stop-popup.js` for HTML escaping.
   `apiEventsTarget` EventTarget for listening to `notification:pair-expired` events (optional, defaults to null).
-
-### route-stops-cache.js -- Route-Stops Cache
-- **Exposes**: `getCachedRouteStops(routeIds, ttlMs)`, `setCachedRouteStops(routeId, stopIds)`, `clearRouteStopsCache()`
-- **Guarantees**: `getCachedRouteStops` returns `{ cached: Map<routeId, Set<stopId>>, uncached: string[] }`. Per-route TTL (default 24hr / 86,400,000ms). Version field enables cache invalidation on schema changes. Malformed or corrupted localStorage JSON gracefully falls back to empty cache. Quota exceeded on write silently fails (no crash). Single localStorage key: `ttracker-route-stops-cache`.
-- **Expects**: `localStorage` available. Pure module — no DOM access, no network calls, no imports from other app modules.
 
 ### static-data.js -- Static Data Loader
 - **Exposes**: `loadStaticData(onRefresh = null, apiKey = '')`, `getStaticDataAge(bundle)`
