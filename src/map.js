@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { decodePolyline } from './polyline.js';
 import { formatVehiclePopup } from './vehicle-popup.js';
 import { darkenHexColor, bearingToTransform, haversineDistance, nearestPointOnSegment } from './vehicle-math.js';
+import { shouldMergePolylines } from './polyline-merge.js';
 import { VEHICLE_ICONS, DEFAULT_ICON } from './vehicle-icons.js';
 
 /**
@@ -508,57 +509,10 @@ export async function loadRoutes() {
 
                     // For bus routes, check median separation before merging.
                     // Rail always merges (type 0 or 1).
-                    const MERGE_MEDIAN_THRESHOLD = 50; // meters
-                    const SAMPLES = 30;
                     let shouldMerge = (type === 0 || type === 1);
 
                     if (!shouldMerge) {
-                        // Arc-length-proportional sampling from c1, nearest-vertex distance to c2.
-                        // Parametric (vertex-count) sampling skews results when one shape has more
-                        // vertices in a divergent section. Arc-length sampling distributes samples
-                        // proportionally to geographic distance, and nearest-vertex removes the need
-                        // to align the two shapes parametrically.
-                        const c2verts = polylines[1].getLatLngs();
-
-                        // Build cumulative arc lengths along c1
-                        const arcLengths = [0];
-                        for (let i = 1; i < c1.length; i++) {
-                            arcLengths.push(arcLengths[i - 1] + haversineDistance(
-                                c1[i - 1].lat, c1[i - 1].lng, c1[i].lat, c1[i].lng
-                            ));
-                        }
-                        const totalLen = arcLengths[arcLengths.length - 1];
-
-                        const distances = [];
-                        for (let i = 0; i < SAMPLES; i++) {
-                            const target = (i / (SAMPLES - 1)) * totalLen;
-
-                            // Binary search for segment containing target distance
-                            let lo = 0, hi = arcLengths.length - 1;
-                            while (hi - lo > 1) {
-                                const mid = (lo + hi) >> 1;
-                                if (arcLengths[mid] <= target) lo = mid; else hi = mid;
-                            }
-                            const frac = arcLengths[hi] > arcLengths[lo]
-                                ? (target - arcLengths[lo]) / (arcLengths[hi] - arcLengths[lo])
-                                : 0;
-                            const samplePt = {
-                                lat: c1[lo].lat + frac * (c1[hi].lat - c1[lo].lat),
-                                lng: c1[lo].lng + frac * (c1[hi].lng - c1[lo].lng)
-                            };
-
-                            // Distance to nearest vertex in c2
-                            let minDist = Infinity;
-                            for (const v of c2verts) {
-                                const d = haversineDistance(samplePt.lat, samplePt.lng, v.lat, v.lng);
-                                if (d < minDist) minDist = d;
-                            }
-                            distances.push(minDist);
-                        }
-
-                        distances.sort((a, b) => a - b);
-                        const median = distances[Math.floor(SAMPLES / 2)];
-                        shouldMerge = median <= MERGE_MEDIAN_THRESHOLD;
+                        shouldMerge = shouldMergePolylines(c1, polylines[1].getLatLngs());
                     }
 
                     if (shouldMerge) {
