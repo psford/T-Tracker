@@ -1,7 +1,7 @@
 # T-Tracker -- MBTA Real-Time Transit Tracker
 
-Last verified: 2026-03-11
-Last context update: 2026-03-11
+Last verified: 2026-03-13
+Last context update: 2026-03-13
 
 ## Data Flow Architecture
 
@@ -65,10 +65,12 @@ All data flows through dedicated modules with clear responsibilities:
 - `node tests/notification-ui.test.js` -- run notification UI tests
 - `node tests/map-hydrate.test.js` -- run map hydration unit tests
 - `node tests/sw.test.js` -- run service worker fetch handler tests
+- `node tests/fetch-mbta-data.test.js` -- run MBTA data pipeline tests (AC1.1, AC1.2, AC1.4, AC1.5, AC1.6, AC1.7)
 - `node tests/fire-notification.test.js` -- run notification pathway selection tests
 - `node tests/sse-notification-integration.test.js` -- run SSE→notification integration tests
 - `node tests/vehicles-state.test.js` -- run vehicle state management tests
 - `node tests/static-data.test.js` -- run static data loader unit tests
+- `MBTA_API_KEY=<key> node scripts/fetch-mbta-data.mjs` -- regenerate data/mbta-static.json from MBTA API
 - ES6 modules require HTTP server; `file://` protocol will not work
 
 ## Project Structure
@@ -79,9 +81,14 @@ All data flows through dedicated modules with clear responsibilities:
 - `manifest.json` -- PWA manifest (app name, icons, theme color, display: standalone)
 - `sw.js` -- Minimal service worker (no caching, notification click handler)
 - `icons/` -- PWA icons (192x192, 512x512, 180x180 apple-touch-icon)
+- `scripts/` -- Build/maintenance scripts
+  - `fetch-mbta-data.mjs` -- Node.js ESM script to prebake MBTA static data (routes, stops, shapes) into `data/mbta-static.json`
+- `data/` -- Pre-baked static data files
+  - `mbta-static.json` -- Pre-fetched MBTA routes, stops, and route-stop mappings (regenerated nightly by GitHub Actions)
 - `src/` -- 15 application modules (see `src/CLAUDE.md` for contracts)
 - `tests/` -- 17 test files (unit tests, integration tests, pathway tests)
 - `docs/` -- Design plans and implementation phase docs
+- `.github/workflows/refresh-mbta-data.yml` -- Nightly GitHub Actions workflow to refresh `data/mbta-static.json` from MBTA API
 - `.visual-review/` -- Visual review tooling (config, mock pages, screenshots)
   - `config.json` -- Theme colors, viewports, stylesheet path, contrast settings
   - `mocks/` -- Standalone HTML mock pages for CSS visual testing
@@ -153,7 +160,8 @@ All data flows through dedicated modules with clear responsibilities:
 - **Output directory**: `dist`
 - **Environment variable**: `MBTA_API_KEY` (set in Cloudflare dashboard, encrypted)
 - **Trigger**: Auto-deploy on push to `master`
-- **Build script**: `build.js` copies static files to `dist/`, generates `config.js` from `config.example.js` with API key injected
+- **Build script**: `build.js` copies static files to `dist/`, validates and copies `data/mbta-static.json`, generates `config.js` from `config.example.js` with API key injected
+- **Static data refresh**: GitHub Actions runs nightly at 03:00 UTC to regenerate `data/mbta-static.json` and auto-commit if changed (requires `MBTA_API_KEY` repository secret)
 - **Local dev unchanged**: Copy `config.example.js` to `config.js`, run `python -m http.server 8000`
 
 ## API Rate Limits
