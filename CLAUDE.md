@@ -159,6 +159,6 @@ All data flows through dedicated modules with clear responsibilities:
 ## API Rate Limits
 - MBTA allows 1000 req/min with API key
 - SSE connection counts as 1 request (persistent)
-- Startup fetches: routes list + stops list (~2 requests), then route-stop mapping for visible routes only (~12 subway routes on first visit, 0 on cached visit via route-stops-cache.js with 24hr TTL). Additional routes fetched on-demand when user toggles services. Max 3 concurrent via fetchRouteStops.
+- Startup fetches: 0 MBTA API calls for static data (routes, stops, route-stops loaded from data/mbta-static.json via static-data.js with localStorage cache). One lightweight staleness check (/routes?fields[route]=id) fires in background. Fallback path (if static data unavailable): routes list + stops list (~2 requests), then route-stop mapping on-demand via fetchRouteStops.
 - Exponential backoff on reconnect: 1s, 2s, 4s... max 30s
 - Rapid-close detection triggers aggressive backoff (likely rate limited)
