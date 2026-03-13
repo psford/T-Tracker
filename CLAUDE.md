@@ -73,7 +73,7 @@ All data flows through dedicated modules with clear responsibilities:
 - `sw.js` -- Minimal service worker (no caching, notification click handler)
 - `icons/` -- PWA icons (192x192, 512x512, 180x180 apple-touch-icon)
 - `src/` -- 15 application modules (see `src/CLAUDE.md` for contracts)
-- `tests/` -- 16 test files (unit tests, integration tests, pathway tests)
+- `tests/` -- 17 test files (unit tests, integration tests, pathway tests)
 - `docs/` -- Design plans and implementation phase docs
 - `.visual-review/` -- Visual review tooling (config, mock pages, screenshots)
   - `config.json` -- Theme colors, viewports, stylesheet path, contrast settings
