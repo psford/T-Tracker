@@ -63,14 +63,15 @@
 
     <!-- App entry point (ES6 module) -->
     <script type="module">
-        import { initMap, loadRoutes, loadStops, fetchRouteStops, hydrateRouteStopsMap, syncVehicleMarkers, getRouteMetadata, setVisibleRoutes, getStopData, getRouteStopsMap, isTerminusStop, getDirectionDestinations } from './src/map.js';
+        import { initMap, loadRoutes, loadStops, fetchRouteStops, hydrateRoutes, hydrateStops, hydrateRouteStopsMap, syncVehicleMarkers, getRouteMetadata, setVisibleRoutes, getVisibleRoutes, getStopData, getRouteStopsMap, isTerminusStop, getDirectionDestinations } from './src/map.js';
+        import { loadStaticData } from './src/static-data.js';
+        import { config } from './config.js';
         import { connect, apiEvents } from './src/api.js';
         import { initVehicles, onVehicleUpdate } from './src/vehicles.js';
         import { initUI } from './src/ui.js';
         import { initStopMarkers, updateVisibleStops } from './src/stop-markers.js';
         import { initNotifications } from './src/notifications.js';
         import { initNotificationUI, updateStatus as updateNotificationStatus, initNotificationPanel, renderPanel } from './src/notification-ui.js';
-        import { getCachedRouteStops, setCachedRouteStops } from './src/route-stops-cache.js';
 
         const map = initMap('map');
         window._map = map;
@@ -89,47 +90,55 @@
         });
         connect();
 
-        Promise.all([loadRoutes(), loadStops()]).then(() => {
+        // onRefresh: called by background staleness check if route set changed.
+        // Re-hydrates in-memory state and re-renders visible routes/stops so
+        // the current session stays current (AC3.3).
+        function onStaticDataRefresh(freshBundle) {
+            hydrateRoutes(freshBundle.routes);
+            hydrateStops(freshBundle.stops);
+            for (const [routeId, stopIds] of Object.entries(freshBundle.routeStops)) {
+                hydrateRouteStopsMap(routeId, [...stopIds]);
+            }
+            // Re-render map with existing visible routes (hydrateRoutes clears the layer group)
+            const currentlyVisible = getVisibleRoutes();
+            setVisibleRoutes(currentlyVisible);
+            updateVisibleStops(currentlyVisible);
+        }
+
+        async function initFromStaticData() {
+            try {
+                // AC2.1/AC2.2: load from static file or localStorage cache
+                const bundle = await loadStaticData(onStaticDataRefresh, config.api.key);
+                hydrateRoutes(bundle.routes);
+                hydrateStops(bundle.stops);
+                for (const [routeId, stopIds] of Object.entries(bundle.routeStops)) {
+                    hydrateRouteStopsMap(routeId, [...stopIds]);
+                }
+            } catch {
+                // AC2.4: both localStorage and file fetch failed — fall back to live MBTA API
+                console.warn('Static data unavailable — falling back to live MBTA API');
+                await Promise.all([loadRoutes(), loadStops()]);
+            }
+            afterHydration();
+        }
+
+        function afterHydration() {
             const metadata = getRouteMetadata();
             initStopMarkers(map, apiEvents);
 
-            // Cache-first route-stops loader
-            async function loadRouteStopsAndDisplay(routeIds) {
-                const routeIdArray = [...routeIds];
-                const { cached, uncached } = getCachedRouteStops(routeIdArray);
-
-                for (const [routeId, stopIds] of cached) {
-                    hydrateRouteStopsMap(routeId, stopIds);
-                }
-
-                if (uncached.length > 0) {
-                    await fetchRouteStops(uncached);
-                    const routeStopsMap = getRouteStopsMap();
-                    for (const routeId of uncached) {
-                        const stopIds = routeStopsMap.get(routeId);
-                        if (stopIds) {
-                            setCachedRouteStops(routeId, stopIds);
-                        }
-                    }
-                }
-
-                updateVisibleStops(routeIds);
-            }
-
-            // Enhanced visibility callback with on-demand fetching
+            // Visibility callback: normal path has route-stops pre-hydrated from static data.
+            // AC2.4 fallback path (live API) does NOT pre-populate route-stops — fetch on-demand
+            // for any routes whose stops are missing so stop markers still appear.
             initUI(metadata, (routeIds) => {
                 setVisibleRoutes(routeIds);
-
                 const routeStopsMap = getRouteStopsMap();
-                const routeIdArray = [...routeIds];
-                const needsData = routeIdArray.filter(id => !routeStopsMap.has(id));
-
-                if (needsData.length === 0) {
+                const needsFetch = [...routeIds].filter(id => !routeStopsMap.has(id));
+                if (needsFetch.length === 0) {
                     updateVisibleStops(routeIds);
                 } else {
-                    // Routes needing data: fetch via cache-first loader, which calls
-                    // updateVisibleStops after hydration/fetch completes
-                    loadRouteStopsAndDisplay(routeIds).catch(err => console.error('Failed to load route stops:', err.message));
+                    fetchRouteStops(needsFetch)
+                        .then(() => updateVisibleStops(routeIds))
+                        .catch(err => console.error('Failed to load route stops:', err.message));
                 }
             });
 
@@ -140,11 +149,9 @@
             const notificationPanelEl = document.getElementById('notification-panel');
             const notificationToggleBtn = document.getElementById('notification-panel-toggle');
             initNotificationPanel(notificationPanelEl, notificationToggleBtn);
+        }
 
-            // Note: no explicit loadRouteStopsAndDisplay call needed here.
-            // initUI fires the visibility callback synchronously (ui.js:372),
-            // which already triggers loadRouteStopsAndDisplay for initial visible routes.
-        });
+        initFromStaticData();
     </script>
 </body>
 </html>

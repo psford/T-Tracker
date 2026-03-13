@@ -2,6 +2,14 @@
 // Copy to config.js and replace YOUR_API_KEY_HERE with your MBTA API key
 // Get a free key at https://api-v3.mbta.com
 // Streams: Light Rail (Green), Heavy Rail (Red/Orange/Blue), Commuter Rail, Bus, Ferry
+
+// GitHub Actions secret required for CI:
+//   Repository Settings → Secrets and variables → Actions → New repository secret
+//   Name: MBTA_API_KEY
+//   Value: your MBTA V3 API key (get one at https://api-v3.mbta.com/)
+//
+// Local development: copy this file to config.js and replace YOUR_API_KEY_HERE
+
 export const config = {
     api: {
         key: 'YOUR_API_KEY_HERE',

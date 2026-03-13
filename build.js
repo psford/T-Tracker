@@ -18,6 +18,7 @@ if (fs.existsSync(DIST)) {
 }
 fs.mkdirSync(DIST, { recursive: true });
 fs.mkdirSync(path.join(DIST, 'src'), { recursive: true });
+fs.mkdirSync(path.join(DIST, 'data'), { recursive: true });
 
 // Copy static files
 const rootFiles = ['index.html', 'styles.css', 'favicon.svg', 'manifest.json', 'sw.js'];
@@ -91,6 +92,16 @@ if (swContent.includes('respondWith') && !swContent.includes('self.location.orig
     console.error('  The fetch handler must check: new URL(event.request.url).origin === self.location.origin');
     process.exit(1);
 }
+
+// Validate and copy data/mbta-static.json (required for app to function)
+const staticDataSrc = path.join(__dirname, 'data', 'mbta-static.json');
+if (!fs.existsSync(staticDataSrc)) {
+    console.error('ERROR: data/mbta-static.json does not exist.');
+    console.error('  Run: MBTA_API_KEY=<key> node scripts/fetch-mbta-data.mjs');
+    process.exit(1);
+}
+fs.copyFileSync(staticDataSrc, path.join(DIST, 'data', 'mbta-static.json'));
+console.log('Static data: data/mbta-static.json copied to dist/data/');
 
 // Generate config.js from template with API key injected
 const configContent = fs.readFileSync(

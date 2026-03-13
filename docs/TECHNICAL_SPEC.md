@@ -1,7 +1,7 @@
 # T-Tracker Technical Specification
 
 **Version:** 1.3
-**Last updated:** 2026-03-11
+**Last updated:** 2026-03-13
 
 ## Architecture Overview
 
@@ -20,8 +20,14 @@ Browser
        ├── map.js         Leaflet rendering, markers, polylines
        ├── ui.js          Route selection panel, localStorage
        ├── polyline.js    Google polyline decoder
+       ├── polyline-merge.js  Polyline merging (remove duplicates, merge parallel)
        ├── route-sorter.js    Route grouping and sorting
-       └── vehicle-popup.js   Popup HTML formatting
+       ├── static-data.js     Static MBTA data (routes, stops, polylines)
+       ├── vehicle-popup.js   Popup HTML formatting
+       ├── stop-popup.js      Stop popup HTML formatting, chip picker generation
+       ├── stop-markers.js    Stop marker rendering, notification config UI
+       ├── notifications.js   Notification pair management, expiry logic
+       └── notification-ui.js Notification status indicator, alerts panel
 ```
 
 ### Data Flow
@@ -48,11 +54,15 @@ MBTA API (SSE) → api.js (parse + validate) → vehicles.js (interpolate + anim
 index.html
   ├── api.js ← config.js
   ├── vehicles.js ← config.js, vehicle-math.js
-  ├── map.js ← config.js, polyline.js, vehicle-popup.js, vehicle-math.js, vehicle-icons.js
-  └── ui.js ← route-sorter.js
+  ├── map.js ← config.js, static-data.js, polyline.js, polyline-merge.js, vehicle-popup.js, vehicle-math.js, vehicle-icons.js, stop-markers.js, notifications.js
+  ├── ui.js ← route-sorter.js, static-data.js, notification-ui.js
+  ├── stop-markers.js ← static-data.js, notifications.js, stop-popup.js
+  ├── stop-popup.js ← (pure function module)
+  ├── notifications.js ← (pure function module, localStorage)
+  └── notification-ui.js ← notifications.js
 ```
 
-No circular dependencies. Pure modules (`vehicle-math.js`, `vehicle-icons.js`, `polyline.js`, `route-sorter.js`, `vehicle-popup.js`) have no side effects and no imports from other application modules.
+No circular dependencies. Pure modules (`vehicle-math.js`, `vehicle-icons.js`, `polyline.js`, `polyline-merge.js`, `route-sorter.js`, `vehicle-popup.js`, `stop-popup.js`) have no side effects and no imports from other application modules.
 
 ## Technology Stack
 
@@ -175,6 +185,16 @@ MBTA API (data source)
 4. Copies all `src/*.js` files to `dist/src/`
 5. Reads `config.example.js`, replaces all occurrences of `YOUR_API_KEY_HERE` with the real key, writes to `dist/config.js`
 
+### Static Data Pipeline
+
+The application uses a pre-baked static data approach to eliminate heavy API queries on startup:
+
+- **Prebake script:** `scripts/fetch-mbta-data.mjs` fetches MBTA metadata (routes, stops, polylines, stop orders) one time and writes them to `src/static-data.js` as a JavaScript module
+- **Static module:** `src/static-data.js` exports routes, stops, polylines, and stop metadata as ES6 modules, loaded synchronously on startup with no network overhead
+- **Polyline processing:** Routes with 2+ inbound/outbound patterns have polylines merged via `polyline-merge.js` (remove duplicate vertices, arc-length sampling, merge parallel segments)
+- **Stop metadata:** Each stop is enriched with parent station info for marker merging (200m proximity threshold) and route-stop associations for notification pair targeting
+- **Development:** Run `scripts/fetch-mbta-data.mjs` manually when MBTA data changes; `build.js` includes the static data in the dist/ output
+
 ### Environment Variables
 
 | Variable | Where Set | Purpose |
@@ -201,12 +221,14 @@ DNS management is transferred from Hover to Cloudflare. Hover's nameservers are 
 | State | Location | Lifetime |
 |-------|----------|----------|
 | Vehicle positions | `vehicles.js` Map | Session (rebuilt from SSE on each visit) |
-| Route metadata | `map.js` array | Session (fetched once on startup) |
-| Stop data | `map.js` Map | Session (fetched once on startup) |
+| Route metadata | `static-data.js` export | Application lifetime (loaded once at startup) |
+| Stop data | `static-data.js` export | Application lifetime (loaded once at startup) |
 | Route visibility | localStorage (`ttracker-visible-routes`) | Persistent across visits |
 | Service toggles | localStorage (`ttracker-service-toggles`) | Persistent across visits |
+| Notification pairs | localStorage (`ttracker-notifications-config`) | Persistent across visits |
 | Leaflet map instance | `map.js` variable | Session |
 | Vehicle markers | `map.js` Map | Session |
+| Stop markers | `map.js` Map | Session |
 
 ### No Server-Side State
 
@@ -259,10 +281,21 @@ Tests use Node.js `assert` module with `--experimental-vm-modules` for ES module
 | `vehicle-icons.test.js` | vehicle-icons.js | All 5 icon types exist, use currentColor, are visually distinct, fallback works |
 | `api.test.js` | api.js | parseVehicle (JSON:API flattening, null validation) |
 | `polyline.test.js` | polyline.js | decodePolyline (Google encoding algorithm) |
+| `polyline-merge.test.js` | polyline-merge.js | Duplicate vertex removal, arc-length sampling, parallel segment merging |
+| `static-data.test.js` | static-data.js | Data structure validation, route/stop metadata loading |
 | `ui.test.js` | route-sorter.js | groupAndSortRoutes (3-tier grouping, sorting rules) |
 | `vehicle-popup.test.js` | vehicle-popup.js | formatStatus, formatSpeed, formatTimeAgo, formatVehiclePopup |
+| `stop-popup.test.js` | stop-popup.js | buildChipPickerHtml, HTML escaping, data attributes |
+| `stop-markers.test.js` | stop-markers.js | Parent station merging, stop grouping, highlight logic |
+| `notifications.test.js` | notifications.js | Pair management, countdown decrement, auto-delete, direction detection |
+| `notification-ui.test.js` | notification-ui.js | Panel rendering, count display, pair expiry updates |
+| `fire-notification.test.js` | notifications.js | Notification pathway selection, matching logic |
+| `sse-notification-integration.test.js` | notifications.js + api.js | SSE event handling, notification firing |
+| `vehicles-state.test.js` | vehicles.js | Vehicle state management, lifecycle transitions |
+| `map-hydrate.test.js` | map.js | Static data hydration, polyline loading |
+| `sw.test.js` | sw.js | Service worker fetch handler, origin guard validation |
 
-All pure functions have unit tests. Browser-dependent modules (`map.js`, `vehicles.js` animation loop, `ui.js` DOM manipulation) are tested via human test plans.
+All pure functions have unit tests. Browser-dependent modules (DOM manipulation, Leaflet rendering) are tested via human test plans.
 
 ### Running Tests
 
@@ -271,8 +304,19 @@ node tests/vehicles.test.js
 node tests/vehicle-icons.test.js
 node tests/api.test.js
 node tests/polyline.test.js
+node tests/polyline-merge.test.js
+node tests/static-data.test.js
 node tests/ui.test.js
 node tests/vehicle-popup.test.js
+node tests/stop-popup.test.js
+node tests/stop-markers.test.js
+node tests/notifications.test.js
+node tests/notification-ui.test.js
+node tests/fire-notification.test.js
+node tests/sse-notification-integration.test.js
+node tests/vehicles-state.test.js
+node tests/map-hydrate.test.js
+node tests/sw.test.js
 ```
 
 ## Notification Expiry
@@ -431,10 +475,11 @@ Existing pairs without count fields are automatically upgraded to unlimited (rem
 | `src/stop-markers.js` | 419 | Stop marker rendering, notification config UI, event delegation |
 | `src/notifications.js` | 421 | Notification pair management, permission handling, expiry logic |
 | `src/notification-ui.js` | 312 | Notification status indicator, alerts panel |
-| `src/route-stops-cache.js` | 89 | Route-stops mapping cache with localStorage TTL |
-| `tests/` (12 files) | ~1,200 | Unit tests for pure functions and data modules |
+| `src/polyline-merge.js` | 195 | Polyline merging (remove duplicate consecutive vertices, merge parallel segments) |
+| `src/static-data.js` | 89 | Static MBTA data (routes, stops, polylines, stop metadata) loaded at startup |
+| `tests/` (17 files) | ~1,400 | Unit tests for pure functions and data modules |
 
-**Total application code:** ~4,300 lines across 17 files (excluding tests and docs).
+**Total application code:** ~4,500 lines across 15 source modules (excluding tests and docs).
 
 ## Version History
 
@@ -450,3 +495,4 @@ Existing pairs without count fields are automatically upgraded to unlimited (rem
 | 2026-02-14 | Ferry service support: route type 4 (MBTA aqua #008EAA boat icon), Ferry group in UI (hidden by default), full API integration |
 | 2026-03-05 | Notification expiry: countdown on fire, auto-delete at 0, chip picker UI for count selection, alerts panel count editing, pair-expired event integration, migration of existing pairs |
 | 2026-03-11 | Stop marker merging: parent stations with 2+ child stops within 200m render as single merged marker; merged popup aggregates routes and alerts from all children; per-route-direction stopId routing for correct child stop alerts |
+| 2026-03-13 | Static MBTA data pipeline: prebake script (`scripts/fetch-mbta-data.mjs`) fetches routes, stops, polylines, stop metadata; polyline merging removes duplicates and merges parallel segments; static-data.js module eliminates startup API queries |

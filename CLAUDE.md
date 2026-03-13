@@ -1,22 +1,29 @@
 # T-Tracker -- MBTA Real-Time Transit Tracker
 
-Last verified: 2026-03-11
-Last context update: 2026-03-11
+Last verified: 2026-03-13
+Last context update: 2026-03-13
 
 ## Data Flow Architecture
 
 ```
-MBTA API (SSE) → api.js (parse + validate) → vehicles.js (interpolate + animate)
+Static Data Pipeline:
+  MBTA API (HTTP) → scripts/fetch-mbta-data.mjs → data/mbta-static.json
+                                                        ↓
+  data/mbta-static.json → static-data.js (localStorage cache) → (hydrate on startup)
+                                                                        ↓
+Live Data Pipeline:
+  MBTA API (SSE) → api.js (parse + validate) → vehicles.js (interpolate + animate)
                       |                                ↓
                       |                           vehicle-math.js (pure math)
                       |                                ↓
-         route-stops-cache.js (localStorage)          map.js (render + visibility)
-                      ↓                                 ↑               ↑
-                  (hydrate/fetch)              ui.js (configure)  vehicle-icons.js (icon data)
-                                                  ↓                 ↑
-                                           route-sorter.js     stop-markers.js (render stops)
-                                            (group/sort)        stop-popup.js (format)
-                                                              vehicle-popup.js (format)
+                      |                              map.js (render + visibility)
+                      |                               ↑               ↑
+                      |                      ui.js (configure)  vehicle-icons.js (icon data)
+                      |                           ↓                 ↑
+                      |                   route-sorter.js     stop-markers.js (render stops)
+                      |                    (group/sort)        polyline-merge.js (merge decision)
+                      |                                        stop-popup.js (format)
+                      |                                        vehicle-popup.js (format)
                       |
                       +→ notifications.js (monitor vehicles → fire alerts → countdown expiry)
                                ↓
@@ -30,9 +37,10 @@ All data flows through dedicated modules with clear responsibilities:
 - `vehicle-icons.js`: Pure data module with SVG silhouettes for each MBTA vehicle type
 - `vehicle-popup.js`: Pure formatting for vehicle popup content (HTML escaping, status strings)
 - `polyline.js`: Pure function for Google polyline decoding
+- `polyline-merge.js`: Pure function for deciding whether two polylines should be merged (arc-length sampling, nearest-vertex distance)
 - `map.js`: Leaflet rendering, marker management, route visibility filtering, stop data fetching
-- `route-stops-cache.js`: localStorage caching for route-stops mapping with TTL invalidation
 - `route-sorter.js`: Pure function for grouping and sorting route metadata by type and name
+- `static-data.js`: Static data loader with localStorage caching and background staleness check
 - `ui.js`: Route selection UI, localStorage persistence, grouping/sorting orchestration
 - `stop-markers.js`: Stop marker rendering on map, parent station merging (200m proximity), notification pair config workflow
 - `stop-popup.js`: Stop popup HTML formatting with notification config states
@@ -50,16 +58,19 @@ All data flows through dedicated modules with clear responsibilities:
 - `python -m http.server 8000` from project root, then open `http://localhost:8000`
 - `node tests/vehicles.test.js` -- run vehicle/math unit tests
 - `node tests/vehicle-icons.test.js` -- run vehicle icon tests
+- `node tests/polyline-merge.test.js` -- run polyline merge unit tests
 - `node tests/stop-markers.test.js` -- run stop marker unit tests
 - `node tests/stop-popup.test.js` -- run stop popup formatting tests
 - `node tests/notifications.test.js` -- run notification engine tests
 - `node tests/notification-ui.test.js` -- run notification UI tests
-- `node tests/route-stops-cache.test.js` -- run route-stops cache unit tests
 - `node tests/map-hydrate.test.js` -- run map hydration unit tests
 - `node tests/sw.test.js` -- run service worker fetch handler tests
+- `node tests/fetch-mbta-data.test.js` -- run MBTA data pipeline tests (AC1.1, AC1.2, AC1.4, AC1.5, AC1.6, AC1.7)
 - `node tests/fire-notification.test.js` -- run notification pathway selection tests
 - `node tests/sse-notification-integration.test.js` -- run SSE→notification integration tests
 - `node tests/vehicles-state.test.js` -- run vehicle state management tests
+- `node tests/static-data.test.js` -- run static data loader unit tests
+- `MBTA_API_KEY=<key> node scripts/fetch-mbta-data.mjs` -- regenerate data/mbta-static.json from MBTA API
 - ES6 modules require HTTP server; `file://` protocol will not work
 
 ## Project Structure
@@ -70,9 +81,14 @@ All data flows through dedicated modules with clear responsibilities:
 - `manifest.json` -- PWA manifest (app name, icons, theme color, display: standalone)
 - `sw.js` -- Minimal service worker (no caching, notification click handler)
 - `icons/` -- PWA icons (192x192, 512x512, 180x180 apple-touch-icon)
-- `src/` -- 14 application modules (see `src/CLAUDE.md` for contracts)
-- `tests/` -- 16 test files (unit tests, integration tests, pathway tests)
+- `scripts/` -- Build/maintenance scripts
+  - `fetch-mbta-data.mjs` -- Node.js ESM script to prebake MBTA static data (routes, stops, shapes) into `data/mbta-static.json`
+- `data/` -- Pre-baked static data files
+  - `mbta-static.json` -- Pre-fetched MBTA routes, stops, and route-stop mappings (regenerated nightly by GitHub Actions)
+- `src/` -- 15 application modules (see `src/CLAUDE.md` for contracts)
+- `tests/` -- 17 test files (unit tests, integration tests, pathway tests)
 - `docs/` -- Design plans and implementation phase docs
+- `.github/workflows/refresh-mbta-data.yml` -- Nightly GitHub Actions workflow to refresh `data/mbta-static.json` from MBTA API
 - `.visual-review/` -- Visual review tooling (config, mock pages, screenshots)
   - `config.json` -- Theme colors, viewports, stylesheet path, contrast settings
   - `mocks/` -- Standalone HTML mock pages for CSS visual testing
@@ -144,12 +160,13 @@ All data flows through dedicated modules with clear responsibilities:
 - **Output directory**: `dist`
 - **Environment variable**: `MBTA_API_KEY` (set in Cloudflare dashboard, encrypted)
 - **Trigger**: Auto-deploy on push to `master`
-- **Build script**: `build.js` copies static files to `dist/`, generates `config.js` from `config.example.js` with API key injected
+- **Build script**: `build.js` copies static files to `dist/`, validates and copies `data/mbta-static.json`, generates `config.js` from `config.example.js` with API key injected
+- **Static data refresh**: GitHub Actions runs nightly at 03:00 UTC to regenerate `data/mbta-static.json` and auto-commit if changed (requires `MBTA_API_KEY` repository secret)
 - **Local dev unchanged**: Copy `config.example.js` to `config.js`, run `python -m http.server 8000`
 
 ## API Rate Limits
 - MBTA allows 1000 req/min with API key
 - SSE connection counts as 1 request (persistent)
-- Startup fetches: routes list + stops list (~2 requests), then route-stop mapping for visible routes only (~12 subway routes on first visit, 0 on cached visit via route-stops-cache.js with 24hr TTL). Additional routes fetched on-demand when user toggles services. Max 3 concurrent via fetchRouteStops.
+- Startup fetches: 0 MBTA API calls for static data (routes, stops, route-stops loaded from data/mbta-static.json via static-data.js with localStorage cache). One lightweight staleness check (/routes?fields[route]=id) fires in background. Fallback path (if static data unavailable): routes list + stops list (~2 requests), then route-stop mapping on-demand via fetchRouteStops.
 - Exponential backoff on reconnect: 1s, 2s, 4s... max 30s
 - Rapid-close detection triggers aggressive backoff (likely rate limited)

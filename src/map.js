@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { decodePolyline } from './polyline.js';
 import { formatVehiclePopup } from './vehicle-popup.js';
 import { darkenHexColor, bearingToTransform, haversineDistance, nearestPointOnSegment } from './vehicle-math.js';
+import { shouldMergePolylines } from './polyline-merge.js';
 import { VEHICLE_ICONS, DEFAULT_ICON } from './vehicle-icons.js';
 
 /**
@@ -508,57 +509,10 @@ export async function loadRoutes() {
 
                     // For bus routes, check median separation before merging.
                     // Rail always merges (type 0 or 1).
-                    const MERGE_MEDIAN_THRESHOLD = 50; // meters
-                    const SAMPLES = 30;
                     let shouldMerge = (type === 0 || type === 1);
 
                     if (!shouldMerge) {
-                        // Arc-length-proportional sampling from c1, nearest-vertex distance to c2.
-                        // Parametric (vertex-count) sampling skews results when one shape has more
-                        // vertices in a divergent section. Arc-length sampling distributes samples
-                        // proportionally to geographic distance, and nearest-vertex removes the need
-                        // to align the two shapes parametrically.
-                        const c2verts = polylines[1].getLatLngs();
-
-                        // Build cumulative arc lengths along c1
-                        const arcLengths = [0];
-                        for (let i = 1; i < c1.length; i++) {
-                            arcLengths.push(arcLengths[i - 1] + haversineDistance(
-                                c1[i - 1].lat, c1[i - 1].lng, c1[i].lat, c1[i].lng
-                            ));
-                        }
-                        const totalLen = arcLengths[arcLengths.length - 1];
-
-                        const distances = [];
-                        for (let i = 0; i < SAMPLES; i++) {
-                            const target = (i / (SAMPLES - 1)) * totalLen;
-
-                            // Binary search for segment containing target distance
-                            let lo = 0, hi = arcLengths.length - 1;
-                            while (hi - lo > 1) {
-                                const mid = (lo + hi) >> 1;
-                                if (arcLengths[mid] <= target) lo = mid; else hi = mid;
-                            }
-                            const frac = arcLengths[hi] > arcLengths[lo]
-                                ? (target - arcLengths[lo]) / (arcLengths[hi] - arcLengths[lo])
-                                : 0;
-                            const samplePt = {
-                                lat: c1[lo].lat + frac * (c1[hi].lat - c1[lo].lat),
-                                lng: c1[lo].lng + frac * (c1[hi].lng - c1[lo].lng)
-                            };
-
-                            // Distance to nearest vertex in c2
-                            let minDist = Infinity;
-                            for (const v of c2verts) {
-                                const d = haversineDistance(samplePt.lat, samplePt.lng, v.lat, v.lng);
-                                if (d < minDist) minDist = d;
-                            }
-                            distances.push(minDist);
-                        }
-
-                        distances.sort((a, b) => a - b);
-                        const median = distances[Math.floor(SAMPLES / 2)];
-                        shouldMerge = median <= MERGE_MEDIAN_THRESHOLD;
+                        shouldMerge = shouldMergePolylines(c1, polylines[1].getLatLngs());
                     }
 
                     if (shouldMerge) {
@@ -771,6 +725,137 @@ export async function loadStops() {
         console.error('Failed to load stops:', error.message);
         // Do not crash — app continues without stop data
     }
+}
+
+/**
+ * Hydrate route state from pre-baked static data bundle.
+ * Equivalent to loadRoutes() but from pre-decoded data instead of MBTA API.
+ * Safe to call multiple times — clears existing state before repopulating.
+ *
+ * @param {Array<{id, color, shortName, longName, type, directionNames, directionDestinations, polyline: number[][]}>} routes
+ */
+export function hydrateRoutes(routes) {
+    // Clear existing Leaflet layers
+    if (routeLayerGroup) {
+        routeLayerGroup.clearLayers();
+    } else {
+        routeLayerGroup = L.layerGroup().addTo(map);
+    }
+
+    // Clear state maps
+    routeMetadata.length = 0;
+    routeColorMap.clear();
+    routeTypeMap.clear();
+    routePolylines.clear();
+    routeLabels.clear();
+
+    routes.forEach((route) => {
+        const { id: routeId, shortName, longName, type, directionNames, directionDestinations } = route;
+
+        // Apply same color darkening as loadRoutes() for dark map theme
+        let color = route.color || '#888888';
+        if (type === 1 || type === 2) {
+            color = darkenHexColor(color, 0.15);
+        }
+
+        routeMetadata.push({ id: routeId, color, shortName, longName, type, directionNames, directionDestinations });
+        routeColorMap.set(routeId, color);
+        routeTypeMap.set(routeId, type);
+
+        // Create Leaflet polyline from pre-decoded [[lat, lng], ...] array
+        const polyline = L.polyline(route.polyline, { color, weight: 3, opacity: 0.9 });
+        // Don't add to map yet — setVisibleRoutes() adds visible ones after UI init
+        routePolylines.set(routeId, [polyline]);
+
+        // Route name labels along the polyline (same logic as loadRoutes() lines 580–624)
+        const coords = polyline.getLatLngs();
+        if (coords.length >= 20) {
+            const labels = [];
+            const numLabels = Math.max(1, Math.min(5, Math.floor(coords.length / 100)));
+            const interval = Math.floor(coords.length / (numLabels + 1));
+
+            for (let n = 1; n <= numLabels; n++) {
+                const i = n * interval;
+                const point = coords[i];
+                const prev = coords[Math.max(0, i - 5)];
+                const next = coords[Math.min(coords.length - 1, i + 5)];
+
+                const cosLat = Math.cos(point.lat * Math.PI / 180);
+                const dx = (next.lng - prev.lng) * cosLat;
+                const dy = next.lat - prev.lat;
+                let rotation = -Math.atan2(dy, dx) * (180 / Math.PI);
+                if (rotation > 90) rotation -= 180;
+                else if (rotation < -90) rotation += 180;
+
+                const icon = L.divIcon({
+                    html: `<span class="route-label" style="--route-color: ${color}; transform: rotate(${rotation.toFixed(1)}deg)">${shortName}</span>`,
+                    className: '',
+                    iconSize: [0, 0],
+                    iconAnchor: [0, 0],
+                });
+
+                labels.push(L.marker([point.lat, point.lng], {
+                    icon,
+                    interactive: false,
+                    zIndexOffset: -1000,
+                }));
+            }
+
+            routeLabels.set(routeId, labels);
+        }
+    });
+
+    console.log(`Hydrated ${routes.length} routes from static data`);
+}
+
+/**
+ * Returns the current set of visible route IDs.
+ * Used by onStaticDataRefresh in index.html to re-render after re-hydration.
+ * @returns {Set<string>}
+ */
+export function getVisibleRoutes() {
+    return visibleRoutes;
+}
+
+/**
+ * Hydrate stop state from pre-baked static data bundle.
+ * Equivalent to loadStops() but from pre-decoded data instead of MBTA API.
+ * Safe to call multiple times — clears existing state before repopulating.
+ *
+ * @param {Object<string, {id, name, lat, lng, parentStopId}>} stops - keyed by stop ID
+ */
+export function hydrateStops(stops) {
+    stopsData.clear();
+
+    for (const stop of Object.values(stops)) {
+        // Static bundle uses lat/lng; stopsData uses latitude/longitude to match existing consumers
+        stopsData.set(stop.id, {
+            id: stop.id,
+            name: stop.name,
+            latitude: stop.lat,
+            longitude: stop.lng,
+            parentStopId: stop.parentStopId,
+        });
+    }
+
+    // Synthesize parent station entries for any parentStopId not already in stopsData.
+    // Matches the second pass in loadStops() (lines 756–767). stop-markers.js looks up
+    // stops by parent station ID, so these entries must exist even if the static bundle
+    // only includes them as references on child platforms.
+    for (const stop of Object.values(stops)) {
+        const parentId = stop.parentStopId;
+        if (parentId && !stopsData.has(parentId)) {
+            stopsData.set(parentId, {
+                id: parentId,
+                name: stop.name,
+                latitude: stop.lat,
+                longitude: stop.lng,
+                parentStopId: null,
+            });
+        }
+    }
+
+    console.log(`Hydrated ${stopsData.size} stops from static data`);
 }
 
 /**

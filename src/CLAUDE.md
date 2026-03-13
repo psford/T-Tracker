@@ -3,22 +3,23 @@
 Last verified: 2026-03-11
 
 ## Purpose
-Fourteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
+Fifteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
 rendering (Leaflet markers/polylines/stop markers), user controls (route filtering), polyline decoding,
-route organization, popup content formatting, vehicle icon data, stop popup formatting, notification engine,
-notification UI management, and route-stops cache management.
+polyline merging, route organization, popup content formatting, vehicle icon data, stop popup formatting,
+and notification engine, notification UI management, and static data loading.
 
 ## Data Flow
 ```
-route-stops-cache.js (localStorage read/write)
-       ↕
+static-data.js (localStorage + file cache)
+       ↓
 index.html (orchestrator — hydrate or fetch)
        ↓
 MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
                       |                  ^                           ^
                       |               ui.js (configure)      polyline.js (decode)
-                      |                  ^                      stop-markers.js (render stops)
-                      |                  (organize routes)   vehicle-popup.js (format)
+                      |                  ^                      polyline-merge.js (merge decision)
+                      |                  (organize routes)   stop-markers.js (render stops)
+                      |                                      vehicle-popup.js (format)
                       |                                      stop-popup.js (format)
                       |                                      vehicle-icons.js (icon data)
                       |                                      route-sorter.js
@@ -51,6 +52,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 ### map.js -- Leaflet Rendering
 - **Exposes**: `initMap(containerId)`, `loadRoutes()`, `loadStops()`,
   `fetchRouteStops(routeIds)`, `hydrateRouteStopsMap(routeId, stopIds)`,
+  `hydrateRoutes(routes)`, `hydrateStops(stops)`, `getVisibleRoutes()`,
   `syncVehicleMarkers(vehiclesMap)`, `getRouteMetadata()`,
   `setVisibleRoutes(routeIds)`, `getStopData()`, `getRouteColorMap()`, `getRouteStopsMap()`
 - **Guarantees**: Route polylines render below vehicle markers (layer ordering).
@@ -129,6 +131,11 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Handles Google's 5-digit decimal precision encoding algorithm.
 - **Expects**: String input in Google encoded polyline format
 
+### polyline-merge.js -- Polyline Merge Decision
+- **Exposes**: `shouldMergePolylines(coords1, coords2, thresholdMeters = 50)`
+- **Guarantees**: Pure function, no side effects. Samples SAMPLES (30) points along coords1 at equal arc-length intervals using binary search. For each sample, finds the nearest vertex in coords2 via exhaustive search. Returns true if the median of those distances is ≤ thresholdMeters (default 50m). Works in both browser and Node.js (no Leaflet dependency).
+- **Expects**: Two arrays of coordinate objects with {lat, lng} properties. Optional threshold in meters (default 50).
+
 ### route-sorter.js -- Route Sorting and Grouping
 - **Exposes**: `groupAndSortRoutes(routes)`
 - **Guarantees**: Pure function. Returns routes organized into four top-level groups:
@@ -192,10 +199,19 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   `escapeHtml()` from `stop-popup.js` for HTML escaping.
   `apiEventsTarget` EventTarget for listening to `notification:pair-expired` events (optional, defaults to null).
 
-### route-stops-cache.js -- Route-Stops Cache
-- **Exposes**: `getCachedRouteStops(routeIds, ttlMs)`, `setCachedRouteStops(routeId, stopIds)`, `clearRouteStopsCache()`
-- **Guarantees**: `getCachedRouteStops` returns `{ cached: Map<routeId, Set<stopId>>, uncached: string[] }`. Per-route TTL (default 24hr / 86,400,000ms). Version field enables cache invalidation on schema changes. Malformed or corrupted localStorage JSON gracefully falls back to empty cache. Quota exceeded on write silently fails (no crash). Single localStorage key: `ttracker-route-stops-cache`.
-- **Expects**: `localStorage` available. Pure module — no DOM access, no network calls, no imports from other app modules.
+### static-data.js -- Static Data Loader
+- **Exposes**: `loadStaticData(onRefresh = null, apiKey = '')`, `getStaticDataAge(bundle)`
+- **Guarantees**: Loads MBTA static data from `data/mbta-static.json` with localStorage caching. On fresh visit: fetches file, writes to localStorage with version field. On returning visit: reads from localStorage (version-checked). After hydration, fires background staleness check (non-blocking). Returns bundle `{ generatedAt, routes, stops, routeStops }`. Staleness check fetches only route IDs (lightweight), compares with cached set. If IDs match: no further calls (AC3.2). If IDs differ: re-fetches file (cache-busted), updates localStorage, calls `onRefresh(freshBundle)`. Check failure is silent per AC3.4. Throws if both localStorage and file fetch fail, allowing caller to fall back to live MBTA API (AC2.4). `getStaticDataAge(bundle)` returns seconds since `generatedAt`.
+- **Expects**: `globalThis.localStorage` available. `globalThis.fetch` for HTTP requests. `apiKey` (MBTA API key) to append to staleness check URL (prevents rate limiting).
+
+## Build and CI Scripts
+
+### scripts/fetch-mbta-data.mjs -- MBTA Static Data Prebake
+- **Purpose**: Node.js ESM script that fetches routes, shapes, and stops from MBTA V3 API, applies polyline merging and proximity filtering, and writes `data/mbta-static.json`
+- **Usage**: `MBTA_API_KEY=<key> node scripts/fetch-mbta-data.mjs`
+- **Output**: `data/mbta-static.json` with schema `{ generatedAt: timestamp, routes: [], stops: [], routeStops: {routeId: [stopIds]} }`
+- **Processing**: Orientation-aligned polyline merging (rail only), 150m proximity filter for nearby stops, route type and name sorting
+- **Expectations**: `MBTA_API_KEY` environment variable, network access to MBTA V3 API
 
 ## Key Decisions
 - Event-driven (CustomEvent/EventTarget) over direct function calls: enables multiple subscribers
