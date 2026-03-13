@@ -1,6 +1,6 @@
 # T-Tracker Source Modules
 
-Last verified: 2026-03-11
+Last verified: 2026-03-13
 
 ## Purpose
 Fifteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
@@ -222,7 +222,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - Pure formatting modules (stop-popup.js, notification-ui.js) export display helpers separately from init: enables isolated unit testing
 
 ## Invariants
-- api.js is the only module that talks to MBTA API (exception: map.js fetches route shapes and stop data at startup)
+- api.js is the only module that talks to MBTA API for live vehicle data (exceptions: map.js fetches route shapes at startup; static-data.js makes a lightweight staleness check against /routes; scripts/fetch-mbta-data.mjs prebakes static data offline)
 - All MBTA JSON:API parsing happens at the api.js boundary (downstream modules receive flat objects)
 - vehicles.js owns the canonical vehicle state Map; map.js only renders from it
 - config.js is the single source for all tunable parameters (exception: default visibility is derived from service type in ui.js, not config)

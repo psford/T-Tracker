@@ -762,13 +762,58 @@ export function hydrateRoutes(routes) {
         routeColorMap.set(routeId, color);
         routeTypeMap.set(routeId, type);
 
-        // Create Leaflet polyline from pre-decoded [[lat, lng], ...] array
-        const polyline = L.polyline(route.polyline, { color, weight: 3, opacity: 0.9 });
-        // Don't add to map yet — setVisibleRoutes() adds visible ones after UI init
-        routePolylines.set(routeId, [polyline]);
+        // Create Leaflet polylines from pre-decoded [[lat, lng], ...] arrays (one per branch)
+        const polylines = (route.polylines || [route.polyline]).map(
+            pl => L.polyline(pl, { color, weight: 3, opacity: 0.9 })
+        );
 
-        // Route name labels along the polyline (same logic as loadRoutes() lines 580–624)
-        const coords = polyline.getLatLngs();
+        // Snap nearby endpoints to close gaps at branch junctions (same as loadRoutes())
+        const SNAP_THRESHOLD_METERS = 50;
+        if (polylines.length > 1) {
+            const endpoints = [];
+            polylines.forEach((pl) => {
+                const c = pl.getLatLngs();
+                if (c.length > 0) {
+                    endpoints.push({ polyline: pl, index: 0, point: c[0] });
+                    endpoints.push({ polyline: pl, index: c.length - 1, point: c[c.length - 1] });
+                }
+            });
+
+            const snapped = new Set();
+            for (let i = 0; i < endpoints.length; i++) {
+                if (snapped.has(i)) continue;
+                const group = [endpoints[i]];
+                for (let j = i + 1; j < endpoints.length; j++) {
+                    if (snapped.has(j)) continue;
+                    const distance = haversineDistance(
+                        endpoints[i].point.lat, endpoints[i].point.lng,
+                        endpoints[j].point.lat, endpoints[j].point.lng
+                    );
+                    if (distance <= SNAP_THRESHOLD_METERS) {
+                        group.push(endpoints[j]);
+                        snapped.add(j);
+                    }
+                }
+                if (group.length > 1) {
+                    const avgLat = group.reduce((sum, e) => sum + e.point.lat, 0) / group.length;
+                    const avgLng = group.reduce((sum, e) => sum + e.point.lng, 0) / group.length;
+                    group.forEach(({ polyline: pl, index }) => {
+                        const c = pl.getLatLngs();
+                        c[index] = L.latLng(avgLat, avgLng);
+                        pl.setLatLngs(c);
+                    });
+                }
+                snapped.add(i);
+            }
+        }
+
+        // Don't add to map yet — setVisibleRoutes() adds visible ones after UI init
+        routePolylines.set(routeId, polylines);
+
+        // Route name labels along the longest polyline branch
+        const longestPl = polylines.reduce((best, pl) =>
+            pl.getLatLngs().length > best.getLatLngs().length ? pl : best, polylines[0]);
+        const coords = longestPl ? longestPl.getLatLngs() : [];
         if (coords.length >= 20) {
             const labels = [];
             const numLabels = Math.max(1, Math.min(5, Math.floor(coords.length / 100)));

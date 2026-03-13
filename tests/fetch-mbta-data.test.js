@@ -102,7 +102,7 @@ function testOutputStructureAndContent() {
     let violationCount = 0;
 
     for (const route of data.routes) {
-        const polylineCoords = route.polyline.map(([lat, lng]) => ({ lat, lng }));
+        const polylineCoords = (route.polylines || [route.polyline]).flatMap(pl => pl.map(([lat, lng]) => ({ lat, lng })));
         const routeStopIds = data.routeStops[route.id] || [];
 
         for (const stopId of routeStopIds) {
