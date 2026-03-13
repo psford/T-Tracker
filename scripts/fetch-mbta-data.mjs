@@ -109,38 +109,42 @@ async function main() {
             polylines.push(coords);
         }
 
-        // Merge polylines sequentially using shouldMergePolylines (extracted in Phase 1).
-        // This is intentionally more general than map.js's browser path, which only handles
-        // exactly 2 polylines (the two directions of a route). The prebake handles N polylines
-        // iteratively, producing a better single merged line for routes with 3+ typicality=1 shapes.
-        // Rail types (0, 1) always merge (same physical track). Others merge only when
-        // arc-length nearest-vertex check passes. Orient c2 in the same direction as merged
-        // before averaging — parametric averaging of opposite-direction lines produces zigzag.
+        // Merge polylines that represent the same physical path (e.g., inbound/outbound on
+        // shared track). Polylines that diverge (e.g., Red Line Ashmont vs Braintree branches)
+        // are kept separate. Uses shouldMergePolylines threshold check for ALL route types —
+        // even rail can have physically separate branches.
         //
-        // Note: The AC2.4 fallback path uses map.js's loadRoutes() which applies the original
-        // 2-polyline browser behavior. This is acceptable: the fallback is a degraded mode.
-        let merged = polylines[0] || [];
+        // Algorithm: maintain a list of merged polylines. For each new polyline, try to merge
+        // it into the first existing merged polyline that passes the threshold check. If none
+        // match, keep it as a separate branch.
+        const mergedPolylines = polylines.length > 0 ? [polylines[0]] : [];
         for (let i = 1; i < polylines.length; i++) {
             const c2raw = polylines[i];
-            if (merged.length === 0 || c2raw.length === 0) continue;
+            if (c2raw.length === 0) continue;
 
-            // Orient c2 in same direction as merged (compare start-to-start vs start-to-end)
-            const dSame = haversineDistance(merged[0].lat, merged[0].lng, c2raw[0].lat, c2raw[0].lng);
-            const dFlip = haversineDistance(merged[0].lat, merged[0].lng, c2raw[c2raw.length - 1].lat, c2raw[c2raw.length - 1].lng);
-            const c2 = dFlip < dSame ? [...c2raw].reverse() : c2raw;
+            let didMerge = false;
+            for (let j = 0; j < mergedPolylines.length; j++) {
+                const existing = mergedPolylines[j];
+                if (existing.length === 0) continue;
 
-            // Rail (type 0/1) always merges; others use threshold check
-            const doMerge = (attr.type === 0 || attr.type === 1)
-                || shouldMergePolylines(merged, c2, MERGE_THRESHOLD);
+                // Orient c2 in same direction as existing (compare start-to-start vs start-to-end)
+                const dSame = haversineDistance(existing[0].lat, existing[0].lng, c2raw[0].lat, c2raw[0].lng);
+                const dFlip = haversineDistance(existing[0].lat, existing[0].lng, c2raw[c2raw.length - 1].lat, c2raw[c2raw.length - 1].lng);
+                const c2 = dFlip < dSame ? [...c2raw].reverse() : c2raw;
 
-            if (doMerge) {
-                merged = averagePolylines(merged, c2);
+                if (shouldMergePolylines(existing, c2, MERGE_THRESHOLD)) {
+                    mergedPolylines[j] = averagePolylines(existing, c2);
+                    didMerge = true;
+                    break;
+                }
             }
-            // Non-merging shapes are skipped — store one representative line per route
+            if (!didMerge) {
+                mergedPolylines.push(c2raw);
+            }
         }
 
-        // Store as [[lat, lng], ...] per design schema
-        const polylineArr = merged.map(p => [p.lat, p.lng]);
+        // Store as array of [[lat, lng], ...] arrays — one per branch
+        const polylinesArr = mergedPolylines.map(pl => pl.map(p => [p.lat, p.lng]));
 
         routes.push({
             id: routeId,
@@ -150,7 +154,7 @@ async function main() {
             type: attr.type,
             directionNames: attr.direction_names || [],
             directionDestinations: attr.direction_destinations || [],
-            polyline: polylineArr,
+            polylines: polylinesArr,
         });
     }
 
@@ -183,7 +187,8 @@ async function main() {
         const url = `${BASE_URL}/stops?filter[route]=${route.id}&api_key=${API_KEY}`;
         const data = await fetchJSON(url);
 
-        const polylineCoords = route.polyline.map(([lat, lng]) => ({ lat, lng }));
+        // Flatten all branch polylines into one list of vertices for proximity check
+        const polylineCoords = route.polylines.flatMap(pl => pl.map(([lat, lng]) => ({ lat, lng })));
         const filteredIds = [];
 
         for (const stop of data.data) {
@@ -196,7 +201,7 @@ async function main() {
                 continue;
             }
 
-            // Find nearest polyline vertex
+            // Find nearest polyline vertex (across all branches)
             let minDist = Infinity;
             for (const v of polylineCoords) {
                 const d = haversineDistance(stopLat, stopLng, v.lat, v.lng);
