@@ -6,17 +6,24 @@ Last context update: 2026-03-11
 ## Data Flow Architecture
 
 ```
-MBTA API (SSE) → api.js (parse + validate) → vehicles.js (interpolate + animate)
+Static Data Pipeline:
+  MBTA API (HTTP) → scripts/fetch-mbta-data.mjs → data/mbta-static.json
+                                                        ↓
+  data/mbta-static.json → static-data.js (localStorage cache) → (hydrate on startup)
+                                                                        ↓
+Live Data Pipeline:
+  MBTA API (SSE) → api.js (parse + validate) → vehicles.js (interpolate + animate)
                       |                                ↓
                       |                           vehicle-math.js (pure math)
                       |                                ↓
-         static-data.js (bundle + localStorage)       map.js (render + visibility)
-                      ↓                                 ↑               ↑
-                  (hydrate)                  ui.js (configure)  vehicle-icons.js (icon data)
-                                                  ↓                 ↑
-                                           route-sorter.js     stop-markers.js (render stops)
-                                            (group/sort)        stop-popup.js (format)
-                                                              vehicle-popup.js (format)
+                      |                              map.js (render + visibility)
+                      |                               ↑               ↑
+                      |                      ui.js (configure)  vehicle-icons.js (icon data)
+                      |                           ↓                 ↑
+                      |                   route-sorter.js     stop-markers.js (render stops)
+                      |                    (group/sort)        polyline-merge.js (merge decision)
+                      |                                        stop-popup.js (format)
+                      |                                        vehicle-popup.js (format)
                       |
                       +→ notifications.js (monitor vehicles → fire alerts → countdown expiry)
                                ↓

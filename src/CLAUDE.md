@@ -52,6 +52,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 ### map.js -- Leaflet Rendering
 - **Exposes**: `initMap(containerId)`, `loadRoutes()`, `loadStops()`,
   `fetchRouteStops(routeIds)`, `hydrateRouteStopsMap(routeId, stopIds)`,
+  `hydrateRoutes(routes)`, `hydrateStops(stops)`, `getVisibleRoutes()`,
   `syncVehicleMarkers(vehiclesMap)`, `getRouteMetadata()`,
   `setVisibleRoutes(routeIds)`, `getStopData()`, `getRouteColorMap()`, `getRouteStopsMap()`
 - **Guarantees**: Route polylines render below vehicle markers (layer ordering).
@@ -202,6 +203,15 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Exposes**: `loadStaticData(onRefresh = null, apiKey = '')`, `getStaticDataAge(bundle)`
 - **Guarantees**: Loads MBTA static data from `data/mbta-static.json` with localStorage caching. On fresh visit: fetches file, writes to localStorage with version field. On returning visit: reads from localStorage (version-checked). After hydration, fires background staleness check (non-blocking). Returns bundle `{ generatedAt, routes, stops, routeStops }`. Staleness check fetches only route IDs (lightweight), compares with cached set. If IDs match: no further calls (AC3.2). If IDs differ: re-fetches file (cache-busted), updates localStorage, calls `onRefresh(freshBundle)`. Check failure is silent per AC3.4. Throws if both localStorage and file fetch fail, allowing caller to fall back to live MBTA API (AC2.4). `getStaticDataAge(bundle)` returns seconds since `generatedAt`.
 - **Expects**: `globalThis.localStorage` available. `globalThis.fetch` for HTTP requests. `apiKey` (MBTA API key) to append to staleness check URL (prevents rate limiting).
+
+## Build and CI Scripts
+
+### scripts/fetch-mbta-data.mjs -- MBTA Static Data Prebake
+- **Purpose**: Node.js ESM script that fetches routes, shapes, and stops from MBTA V3 API, applies polyline merging and proximity filtering, and writes `data/mbta-static.json`
+- **Usage**: `MBTA_API_KEY=<key> node scripts/fetch-mbta-data.mjs`
+- **Output**: `data/mbta-static.json` with schema `{ generatedAt: timestamp, routes: [], stops: [], routeStops: {routeId: [stopIds]} }`
+- **Processing**: Orientation-aligned polyline merging (rail only), 150m proximity filter for nearby stops, route type and name sorting
+- **Expectations**: `MBTA_API_KEY` environment variable, network access to MBTA V3 API
 
 ## Key Decisions
 - Event-driven (CustomEvent/EventTarget) over direct function calls: enables multiple subscribers
