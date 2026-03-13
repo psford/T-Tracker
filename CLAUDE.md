@@ -1,7 +1,7 @@
 # T-Tracker -- MBTA Real-Time Transit Tracker
 
-Last verified: 2026-03-08
-Last context update: 2026-03-08
+Last verified: 2026-03-11
+Last context update: 2026-03-11
 
 ## Data Flow Architecture
 
@@ -34,7 +34,7 @@ All data flows through dedicated modules with clear responsibilities:
 - `route-stops-cache.js`: localStorage caching for route-stops mapping with TTL invalidation
 - `route-sorter.js`: Pure function for grouping and sorting route metadata by type and name
 - `ui.js`: Route selection UI, localStorage persistence, grouping/sorting orchestration
-- `stop-markers.js`: Stop marker rendering on map, notification pair config workflow
+- `stop-markers.js`: Stop marker rendering on map, parent station merging (200m proximity), notification pair config workflow
 - `stop-popup.js`: Stop popup HTML formatting with notification config states
 - `notifications.js`: Notification engine, pair management, localStorage persistence, direction detection, SW showNotification with fallback, testable pathway selection
 - `notification-ui.js`: Notification status indicator, config panel, permission management UI, platform-specific messaging (iOS/Android/desktop)

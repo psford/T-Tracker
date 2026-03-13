@@ -3,9 +3,14 @@ import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, snap
 import { formatStopPopup, escapeHtml, buildChipPickerHtml } from './stop-popup.js';
 import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';
 import { updateStatus as updateNotificationStatus, renderPanel } from './notification-ui.js';
+import { haversineDistance } from './vehicle-math.js';
 
 // Map<stopId, L.Marker> — tracks active stop markers on the map
 const stopMarkers = new Map();
+
+// Map<childStopId, parentStopId> — reverse lookup for merged stops
+// When a child stop is part of a merged group, this maps child → parent marker key
+const childToParentMap = new Map();
 
 // L.LayerGroup for stop markers — organized as layer for batch show/hide
 let stopLayerGroup = null;
@@ -61,14 +66,16 @@ export function createStopMarker(lat, lng, color) {
 
 /**
  * Pure logic: Compute visible stops and their colors based on visible routes.
- * Extracted for testability (AC1.1, AC1.5).
+ * Extends to group child stops by parent station and return merged stop data.
+ * Extracted for testability (AC1.1, AC1.5, stop-marker-merging.AC1.1-5).
  *
  * @param {Set<string>|Array<string>} visibleRouteIds — route IDs that should be visible
  * @param {Map<string, Set<string>>} routeStopsMap — route ID to set of stop IDs
  * @param {Map<string, string>} routeColorMap — route ID to hex color string
- * @returns {Object} — {visibleStopIds: Set<string>, stopColorMap: Map<string, string>, stopRouteMap: Map<string, string>}
+ * @param {Map<string, Object>} stopsData — stop ID to stop object with {parentStopId, latitude, longitude}. Optional; null for backwards compat.
+ * @returns {Object} — {visibleStopIds: Set<string>, stopColorMap: Map<string, string>, stopRouteMap: Map<string, string>, mergedStops: Map<string, {lat, lng, childStopIds, color}>}
  */
-export function computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap) {
+export function computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap, stopsData = null) {
     const visibleStopIds = new Set();
     const stopColorMap = new Map();
     const stopRouteMap = new Map();
@@ -87,46 +94,181 @@ export function computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMa
         }
     });
 
-    return { visibleStopIds, stopColorMap, stopRouteMap };
+    const mergedStops = new Map();
+
+    // If stopsData is provided, compute parent grouping
+    if (stopsData) {
+        // Build parentGroups: Map<parentId, string[]>
+        const parentGroups = new Map();
+
+        visibleStopIds.forEach((stopId) => {
+            const stop = stopsData.get(stopId);
+            if (stop && stop.parentStopId && stopsData.has(stop.parentStopId)) {
+                if (!parentGroups.has(stop.parentStopId)) {
+                    parentGroups.set(stop.parentStopId, []);
+                }
+                parentGroups.get(stop.parentStopId).push(stopId);
+            }
+        });
+
+        // For each group with 2+ children: check all pairwise distances
+        parentGroups.forEach((childStopIds, parentId) => {
+            // Single child in parent group → don't merge
+            if (childStopIds.length < 2) {
+                return;
+            }
+
+            // Check all pairwise distances using haversineDistance
+            let shouldMerge = true;
+            for (let i = 0; i < childStopIds.length && shouldMerge; i++) {
+                for (let j = i + 1; j < childStopIds.length && shouldMerge; j++) {
+                    const stop1 = stopsData.get(childStopIds[i]);
+                    const stop2 = stopsData.get(childStopIds[j]);
+
+                    if (stop1 && stop2) {
+                        const distance = haversineDistance(
+                            stop1.latitude,
+                            stop1.longitude,
+                            stop2.latitude,
+                            stop2.longitude
+                        );
+
+                        // If any pair exceeds 200m, skip merging this group
+                        if (distance > 200) {
+                            shouldMerge = false;
+                        }
+                    }
+                }
+            }
+
+            // If merge is valid, compute averaged lat/lng and store in mergedStops
+            if (shouldMerge) {
+                let sumLat = 0;
+                let sumLng = 0;
+
+                childStopIds.forEach((stopId) => {
+                    const stop = stopsData.get(stopId);
+                    if (stop) {
+                        sumLat += stop.latitude;
+                        sumLng += stop.longitude;
+                    }
+                });
+
+                const avgLat = sumLat / childStopIds.length;
+                const avgLng = sumLng / childStopIds.length;
+
+                // Use first child stop's color (deterministic based on route iteration order)
+                const firstChildId = childStopIds[0];
+                const color = stopColorMap.get(firstChildId) || '#888888';
+
+                mergedStops.set(parentId, {
+                    lat: avgLat,
+                    lng: avgLng,
+                    childStopIds,
+                    color,
+                });
+            }
+        });
+
+        // Proximity-based grouping: catches divided-road bus stops that share no parentStopId.
+        // Two stops on the same primary route within PROXIMITY_THRESHOLD meters are merged.
+        // Using the same-route requirement prevents merging unrelated stops at busy intersections.
+        const PROXIMITY_THRESHOLD = 40; // meters — covers typical divided-road widths
+        const mergedChildIds = new Set([...mergedStops.values()].flatMap(g => g.childStopIds));
+        const ungrouped = [...visibleStopIds].filter(id => !mergedChildIds.has(id));
+        const proximityGrouped = new Set();
+
+        ungrouped.forEach((stopId) => {
+            if (proximityGrouped.has(stopId)) return;
+            const stop = stopsData.get(stopId);
+            if (!stop || !stop.latitude || !stop.longitude) return;
+            const stopRoute = stopRouteMap.get(stopId);
+
+            const nearby = ungrouped.filter((otherId) => {
+                if (otherId === stopId || proximityGrouped.has(otherId)) return false;
+                if (stopRouteMap.get(otherId) !== stopRoute) return false;
+                const other = stopsData.get(otherId);
+                if (!other || !other.latitude || !other.longitude) return false;
+                return haversineDistance(stop.latitude, stop.longitude, other.latitude, other.longitude) <= PROXIMITY_THRESHOLD;
+            });
+
+            if (nearby.length > 0) {
+                const group = [stopId, ...nearby];
+                group.forEach(id => proximityGrouped.add(id));
+
+                const coords = group.map(id => stopsData.get(id));
+                const lat = coords.reduce((sum, s) => sum + s.latitude, 0) / coords.length;
+                const lng = coords.reduce((sum, s) => sum + s.longitude, 0) / coords.length;
+                const color = stopColorMap.get(stopId) || '#888888';
+
+                mergedStops.set(stopId, { lat, lng, childStopIds: group, color });
+            }
+        });
+    }
+
+    return { visibleStopIds, stopColorMap, stopRouteMap, mergedStops };
 }
 
 /**
  * Compute config state for a stop popup.
  * Builds per-route direction info with labels and terminus status.
+ * Extended to support merged markers: aggregates route info and config state across multiple child stops.
  *
- * @param {string} stopId — stop ID
+ * @param {string} stopId — stop ID (used as parent ID for merged markers)
+ * @param {Array<string>} [childStopIds=null] — optional array of child stop IDs for merged marker aggregation
  * @returns {Object} — {pairCount, maxPairs, existingAlerts, routeDirections}
+ *   When childStopIds provided: aggregates routes from all children, adds stopId field to each routeDirection
  */
-function getStopConfigState(stopId) {
+export function getStopConfigState(stopId, childStopIds = null) {
     const pairs = getNotificationPairs();
     const routeMetadata = getRouteMetadata();
 
-    // Find which alerts already exist at this stop
+    // When childStopIds provided, aggregate across all child stops; otherwise single stop
+    const stopsToCheck = childStopIds || [stopId];
+
+    // Find which alerts already exist at any of these stops
     const existingAlerts = pairs
-        .filter(p => p.checkpointStopId === stopId)
+        .filter(p => stopsToCheck.includes(p.checkpointStopId))
         .map(p => ({ routeId: p.routeId, directionId: p.directionId }));
 
-    // Build route directions for each route serving this stop
+    // Build route directions aggregated from all stops
     if (!stopRoutesMap) {
         stopRoutesMap = buildStopRoutesMap();
     }
-    const stopRouteIds = stopRoutesMap.get(stopId) || [];
 
-    const routeDirections = stopRouteIds.map(routeId => {
+    // Collect all unique routes serving any child stop, tracking which child serves each route
+    const routeToChildMap = new Map(); // routeId -> childStopId that serves it
+    stopsToCheck.forEach(cid => {
+        const stopRouteIds = stopRoutesMap.get(cid) || [];
+        stopRouteIds.forEach(routeId => {
+            if (!routeToChildMap.has(routeId)) {
+                routeToChildMap.set(routeId, cid);
+            }
+        });
+    });
+
+    const routeDirections = Array.from(routeToChildMap.entries()).map(([routeId, childStopIdForRoute]) => {
         const meta = routeMetadata.find(m => m.id === routeId);
         const routeName = meta
             ? (meta.type === 2 ? meta.longName : meta.shortName)
             : routeId;
         const labels = getDirectionDestinations(routeId);
-        const terminus = isTerminusStop(stopId, routeId);
+        const terminus = isTerminusStop(childStopIdForRoute, routeId);
 
-        return {
+        const result = {
             routeId,
             routeName,
             dir0Label: labels[0],
             dir1Label: labels[1],
             isTerminus: terminus,
         };
+
+        // For merged stops (childStopIds provided), add stopId field to indicate which child to use for alert creation
+        if (childStopIds) {
+            result.stopId = childStopIdForRoute;
+        }
+
+        return result;
     });
 
     return {
@@ -160,12 +302,57 @@ function handleAlertResult(result, stopId, container) {
 }
 
 /**
+ * Attach hover/mouseout/popupclose behavior to a marker.
+ * Encapsulates: on hover show popup, on mouseout hide (with delay), on popupclose reset sticky flag.
+ * Shared between merged markers and individual markers (touch-targets.AC2.3).
+ *
+ * @param {L.Marker} marker — marker to attach hover behavior to
+ */
+function attachHoverBehavior(marker) {
+    marker.on('mouseover', function () {
+        if (this._hoverCloseTimer) {
+            clearTimeout(this._hoverCloseTimer);
+            this._hoverCloseTimer = null;
+        }
+        this.openPopup();
+    });
+    marker.on('mouseout', function () {
+        // Don't auto-close if user engaged with chip picker or merged marker popup
+        if (this._popupSticky) return;
+        const self = this;
+        self._hoverCloseTimer = setTimeout(() => {
+            self.closePopup();
+            self._hoverCloseTimer = null;
+        }, 300);
+    });
+
+    // Reset sticky flag when popup closes
+    marker.on('popupclose', function () {
+        this._popupSticky = false;
+    });
+}
+
+/**
+ * Resolve a stop ID to its marker key (direct or via parent mapping).
+ * Encapsulates: if stop has direct marker, return stopId; else check childToParentMap.
+ * Used by highlightConfiguredStop and tests to find the actual marker key.
+ *
+ * @param {string} stopId — stop ID to resolve
+ * @returns {string|undefined} — marker key (stopId or parentId), or undefined if not found
+ */
+export function resolveMarkerKey(stopId) {
+    return stopMarkers.has(stopId) ? stopId : childToParentMap.get(stopId);
+}
+
+/**
  * Highlight a configured stop by increasing marker size and opacity.
  *
  * @param {string} stopId — stop ID to highlight
  */
 function highlightConfiguredStop(stopId) {
-    const marker = stopMarkers.get(stopId);
+    const markerId = resolveMarkerKey(stopId);
+    if (!markerId) return;
+    const marker = stopMarkers.get(markerId);
     if (!marker) return;
     const el = marker.getElement();
     if (!el) return;
@@ -368,15 +555,18 @@ export function updateVisibleStops(routeIds) {
     const routeStopsMap = getRouteStopsMap();
     const routeColorMap = getRouteColorMap();
 
-    const { visibleStopIds, stopColorMap, stopRouteMap } = computeVisibleStops(routeIds, routeStopsMap, routeColorMap);
+    const { visibleStopIds, stopColorMap, stopRouteMap, mergedStops } = computeVisibleStops(routeIds, routeStopsMap, routeColorMap, stopsData);
 
     // Detect hover support (desktop vs touch)
     const hasHover = window.matchMedia('(hover: hover)').matches;
 
-    // Collect stops to remove (avoid modifying Map during iteration)
+    // Step 1: Collect stops to remove (avoid modifying Map during iteration)
+    // Parent-keyed markers are not in visibleStopIds, so check against currentMergedParentIds
+    const currentMergedParentIds = new Set(mergedStops.keys());
+
     const stopsToRemove = [];
     stopMarkers.forEach((marker, stopId) => {
-        if (!visibleStopIds.has(stopId)) {
+        if (!visibleStopIds.has(stopId) && !currentMergedParentIds.has(stopId)) {
             stopsToRemove.push(stopId);
         }
     });
@@ -391,8 +581,74 @@ export function updateVisibleStops(routeIds) {
     // Invalidate stopRoutesMap cache on route visibility change
     stopRoutesMap = null;
 
+    // Step 2: Rebuild childToParentMap and collect merged child IDs
+    childToParentMap.clear();
+    const mergedChildIds = new Set();
+    mergedStops.forEach(({ childStopIds }, parentId) => {
+        childStopIds.forEach(cid => {
+            childToParentMap.set(cid, parentId);
+            mergedChildIds.add(cid);
+        });
+    });
+
+    // Step 3: Create merged markers
+    mergedStops.forEach(({ lat, lng, childStopIds, color }, parentId) => {
+        if (!stopMarkers.has(parentId)) {
+            const marker = createStopMarker(lat, lng, color);
+
+            // Store child IDs for popup and highlight lookup
+            marker._childStopIds = childStopIds;
+            marker._isMerged = true;
+
+            // Bind popup with aggregating content for merged marker
+            const popupFunction = () => {
+                if (!stopRoutesMap) {
+                    stopRoutesMap = buildStopRoutesMap();
+                }
+
+                // Aggregate routes from all child stops.
+                // Note: Similar route aggregation logic exists in getStopConfigState;
+                // both iterate childStopIds and collect unique routes from stopRoutesMap.
+                const allRouteIds = new Set();
+                const allRouteInfos = [];
+                const routeMetadata = getRouteMetadata();
+
+                childStopIds.forEach(cid => {
+                    const childRouteIds = stopRoutesMap.get(cid) || [];
+                    childRouteIds.forEach(rid => {
+                        if (!allRouteIds.has(rid)) {
+                            allRouteIds.add(rid);
+                            const meta = routeMetadata.find(m => m.id === rid);
+                            if (meta) allRouteInfos.push(meta);
+                        }
+                    });
+                });
+
+                // Use parent stop data for popup header (name)
+                const parentStop = stopsData.get(parentId) || stopsData.get(childStopIds[0]);
+                const configState = getStopConfigState(parentId, childStopIds);
+                return formatStopPopup(parentStop, allRouteInfos, configState);
+            };
+
+            marker.bindPopup(popupFunction, {
+                className: 'stop-popup-container',
+                closeButton: true,
+                autoPan: false,
+            });
+
+            // Desktop: hover to show popup, stays open while cursor is over marker OR popup
+            if (hasHover) {
+                attachHoverBehavior(marker);
+            }
+
+            stopMarkers.set(parentId, marker);
+            stopLayerGroup.addLayer(marker);
+        }
+    });
+
     // Add markers for newly visible stops
     visibleStopIds.forEach((stopId) => {
+        if (mergedChildIds.has(stopId)) return; // Handled by merged marker
         if (!stopMarkers.has(stopId)) {
             const stop = stopsData.get(stopId);
             // Skip stops without coordinates
@@ -433,27 +689,7 @@ export function updateVisibleStops(routeIds) {
 
             // Desktop: hover to show popup, stays open while cursor is over marker OR popup
             if (hasHover) {
-                marker.on('mouseover', function () {
-                    if (this._hoverCloseTimer) {
-                        clearTimeout(this._hoverCloseTimer);
-                        this._hoverCloseTimer = null;
-                    }
-                    this.openPopup();
-                });
-                marker.on('mouseout', function () {
-                    // Don't auto-close if user engaged with chip picker
-                    if (this._popupSticky) return;
-                    const self = this;
-                    self._hoverCloseTimer = setTimeout(() => {
-                        self.closePopup();
-                        self._hoverCloseTimer = null;
-                    }, 300);
-                });
-
-                // Reset sticky flag when popup closes
-                marker.on('popupclose', function () {
-                    this._popupSticky = false;
-                });
+                attachHoverBehavior(marker);
             }
 
             stopMarkers.set(stopId, marker);

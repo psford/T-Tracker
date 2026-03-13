@@ -134,7 +134,7 @@ function buildActionsHtml(stop, routeInfos, configState) {
         } = rd;
 
         const escapedRouteId = escapeHtml(routeId);
-        const escapedStopId = escapeHtml(stop.id);
+        const escapedStopId = escapeHtml(rd.stopId || stop.id);
 
         // Check which directions already have alerts at this stop for this route
         const hasDir0 = existingAlerts.some(a => a.routeId === routeId && a.directionId === 0);

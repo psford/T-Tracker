@@ -1,6 +1,6 @@
 # T-Tracker Source Modules
 
-Last verified: 2026-03-08
+Last verified: 2026-03-11
 
 ## Purpose
 Fourteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
@@ -67,25 +67,35 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Creates custom `stopPane` (z-index 625) between markerPane (600) and tooltipPane (650) for stop marker layering.
 
 ### stop-markers.js -- Stop Marker Rendering & Notification Config
-- **Exposes**: `initStopMarkers(map, apiEventsTarget)`, `updateVisibleStops(routeIds)`, `computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap)`, `createStopMarker(lat, lng, color)`, `refreshAllHighlights()`
+- **Exposes**: `initStopMarkers(map, apiEventsTarget)`, `updateVisibleStops(routeIds)`, `computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap, stopsData = null)`, `createStopMarker(lat, lng, color)`, `refreshAllHighlights()`, `resolveMarkerKey(stopId)`, `getStopConfigState(stopId, childStopIds = null)`
 - **Guarantees**: Renders stop markers as `L.marker` + `L.divIcon` with 44×44px touch targets in a custom `stopPane` (z-index 625) above vehicles.
   Creates one marker per unique stop (deduplication for stops on multiple routes, AC1.5).
   First visible route to claim a stop sets its color (no visual stacking).
   Only creates/removes markers on route visibility changes, not on every update (AC1.4 performance).
   Binds click popups to markers with stop name and routes serving that stop (via `formatStopPopup(configState)`).
   Popups are click-activated and include close button; autoPan ensures full visibility.
-  `computeVisibleStops()` is a pure function for testability.
+  `computeVisibleStops()` is a pure function for testability. Accepts optional 4th parameter `stopsData` (Map<stopId, {parentStopId, latitude, longitude, name, ...}>).
+  Returns object with fields: `visibleStopIds` (Set), `stopColorMap` (Map), `stopRouteMap` (Map), and `mergedStops` (Map<parentId, {lat, lng, childStopIds, color}> with merged parent station data when stopsData provided).
+  Implements parent station merging: stops sharing a `parentStopId` within 200m render as one marker at their averaged position (stop-marker-merging.AC1.1).
+  Merged markers keyed by parentId in `stopMarkers` Map. Stores `marker._childStopIds` and `marker._isMerged` metadata for highlight and popup context.
+  Module-level `childToParentMap` (Map<childStopId, parentStopId>) enables highlight resolution for merged groups (stop-marker-merging.AC6.1, AC6.2).
+  `resolveMarkerKey(stopId)` returns the marker key for a stop ID: the stopId itself if it has a direct marker, or the parentId via childToParentMap if merged. Returns undefined if not found.
+  `getStopConfigState(stopId, childStopIds)` computes popup config state. When childStopIds is provided, aggregates routes and existing alerts across all children; adds `stopId` field to each routeDirection entry identifying which child stop to configure.
+  `highlightConfiguredStop()` resolves child stop IDs to parent-keyed markers via childToParentMap, applying stop-dot--configured class to merged markers when any child has a configured alert.
   Implements Phase 2 two-tap notification alert creation workflow via chip picker: first tap on direction button reveals chip picker with count options below the button (AC1.1), second tap on a chip updates the "Set Alert" button's data-count attribute and visually selects the chip (AC1.3), tapping "Set Alert" button creates the alert (AC1.3, AC1.4, AC1.5).
   Delegates chip picker interactions via event delegation on popupopen Leaflet event listener.
   On successful pair creation, calls `highlightConfiguredStop()` to visually enlarge configured stop markers.
   On page load, restores highlights for all previously-configured stops from localStorage.
   Computes fresh `configState` on each popup open with current pair count, existing alerts, and per-route direction info.
+  For merged markers, `configState` is computed with `getStopConfigState(parentId, childStopIds)` to aggregate existing alerts and routes across all children.
+  Each routeDirection entry can include optional `stopId` field (set by getStopConfigState for merged markers) indicating which child stop to use for alert creation (stop-marker-merging.AC3.1).
   Imports `MAX_PAIRS` constant from `notifications.js` for consistent limits across all modules.
   Sanitizes error messages with `escapeHtml()` before rendering to DOM (defense-in-depth for unsanitized API strings).
   Imports `buildChipPickerHtml` from `stop-popup.js` for chip picker HTML generation on direction button click.
   Centralized success/error handling for alert creation: after `addNotificationPair()` resolves, calls `highlightConfiguredStop()`, `updateNotificationStatus()`, `renderPanel()`, and closes popup on success; shows inline error message on failure.
   Listens for `notification:pair-expired` CustomEvent on apiEventsTarget to refresh stop highlights when pairs auto-delete.
-- **Expects**: Leaflet `L` global available. `map.js` exports for stop data, route-stop mapping, and route colors. `stop-popup.js` for popup content formatting (`formatStopPopup`), chip picker HTML generation (`buildChipPickerHtml`), and HTML escaping (`escapeHtml`). `notifications.js` for pair management (`addNotificationPair`, `getNotificationPairs`), MAX_PAIRS constant. `notification-ui.js` for status/panel updates (`updateStatus`, `renderPanel`). `apiEventsTarget` EventTarget for listening to `notification:pair-expired` events (optional, defaults to null).
+- **Expects**: Leaflet `L` global available. `map.js` exports for stop data, route-stop mapping, and route colors. `stop-popup.js` for popup content formatting (`formatStopPopup`), chip picker HTML generation (`buildChipPickerHtml`), and HTML escaping (`escapeHtml`). `notifications.js` for pair management (`addNotificationPair`, `getNotificationPairs`), MAX_PAIRS constant. `notification-ui.js` for status/panel updates (`updateStatus`, `renderPanel`). `vehicle-math.js` for `haversineDistance()` (200m proximity check for parent station merging). `apiEventsTarget` EventTarget for listening to `notification:pair-expired` events (optional, defaults to null).
+  `stopsData` Map must contain stop objects with `parentStopId`, `latitude`, `longitude`, and `name` properties for merged marker support.
 
 ### vehicle-math.js -- Pure Math
 - **Exposes**: `lerp(a, b, t)`, `easeOutCubic(t)`, `lerpAngle(a, b, t)`, `haversineDistance(lat1, lon1, lat2, lon2)`, `darkenHexColor(hex, amount)`, `bearingToTransform(bearing)`
@@ -138,8 +148,8 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 
 ### stop-popup.js -- Stop Popup Content Formatting
 - **Exposes**: `formatStopPopup(stop, routeInfos, configState = {})`, `buildChipPickerHtml(stopId, routeId, directionId)`, `escapeHtml(str)`
-- **Guarantees**: Pure functions, no side effects. Returns HTML strings. Gracefully handles null/missing data (omits sections rather than showing empty/broken content). HTML-escapes all user strings to prevent injection. Commuter rail (type 2) uses longName; subway and bus use shortName. Generates popup with direction buttons that trigger two-tap alert creation flow: first tap on direction button reveals inline chip picker with count options `[1] [2] [3] [#] [∞]`, second tap on chip creates the alert with that count. Chip picker with count selection component: `buildChipPickerHtml()` generates div with selectable count chips (1, 2, 3 as presets), custom input option (#), unlimited option (∞), and "Set Alert" button. Chip `1` is pre-selected by default. Custom chip (#) reveals inline number input for values 1-99. Counter shows `pairCount/maxPairs` in actions area. All buttons include `data-stop-id` and `data-route-id` attributes for event delegation.
-- **Expects**: Stop object with {id, name, latitude, longitude}. Route infos as Array<{id, shortName, longName, color, type}> or null. Optional configState object with shape {pairCount, maxPairs, existingAlerts: Array<{routeId, directionId}>, routeDirections: Array<{routeId, routeName, dir0Label, dir1Label, isTerminus}>>}.
+- **Guarantees**: Pure functions, no side effects. Returns HTML strings. Gracefully handles null/missing data (omits sections rather than showing empty/broken content). HTML-escapes all user strings to prevent injection. Commuter rail (type 2) uses longName; subway and bus use shortName. Generates popup with direction buttons that trigger two-tap alert creation flow: first tap on direction button reveals inline chip picker with count options `[1] [2] [3] [#] [∞]`, second tap on chip creates the alert with that count. Chip picker with count selection component: `buildChipPickerHtml()` generates div with selectable count chips (1, 2, 3 as presets), custom input option (#), unlimited option (∞), and "Set Alert" button. Chip `1` is pre-selected by default. Custom chip (#) reveals inline number input for values 1-99. Counter shows `pairCount/maxPairs` in actions area. All buttons include `data-stop-id` and `data-route-id` attributes for event delegation. For merged markers, `data-stop-id` attribute uses `routeDirection.stopId` if present (identifying the specific child stop to configure alerts for), falling back to `stop.id` for backward compatibility.
+- **Expects**: Stop object with {id, name, latitude, longitude}. Route infos as Array<{id, shortName, longName, color, type}> or null. Optional configState object with shape {pairCount, maxPairs, existingAlerts: Array<{routeId, directionId}>, routeDirections: Array<{routeId, routeName, dir0Label, dir1Label, isTerminus, stopId?: string}>>}. The `stopId` field in routeDirections is optional and used only for merged markers to specify which child stop to use for alert creation.
 
 ### notifications.js -- Notification Engine
 - **Exposes**: `MAX_PAIRS` (constant: 5), `initNotifications(apiEventsTarget, stopsData, terminusChecker?, directionLabelFn?, routeMetadataFn?)`, `addNotificationPair(checkpointStopId, routeId, directionId, count = null)`, `removeNotificationPair(pairId)`, `updatePairCount(pairId, count)`, `getNotificationPairs()`, `validatePair(checkpointStopId, routeId, directionId, existingPairs)`, `shouldNotify(vehicle, pair, notifiedSet, stopsData?, terminusChecker?)`, `requestPermission()`, `getPermissionState()`, `pauseNotifications()`, `resumeNotifications()`, `togglePause()`, `isPaused()`

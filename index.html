@@ -73,6 +73,7 @@
         import { getCachedRouteStops, setCachedRouteStops } from './src/route-stops-cache.js';
 
         const map = initMap('map');
+        window._map = map;
         initVehicles(apiEvents, () => map.getBounds());
         onVehicleUpdate(syncVehicleMarkers);
 
