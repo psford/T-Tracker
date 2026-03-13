@@ -728,6 +728,137 @@ export async function loadStops() {
 }
 
 /**
+ * Hydrate route state from pre-baked static data bundle.
+ * Equivalent to loadRoutes() but from pre-decoded data instead of MBTA API.
+ * Safe to call multiple times — clears existing state before repopulating.
+ *
+ * @param {Array<{id, color, shortName, longName, type, directionNames, directionDestinations, polyline: number[][]}>} routes
+ */
+export function hydrateRoutes(routes) {
+    // Clear existing Leaflet layers
+    if (routeLayerGroup) {
+        routeLayerGroup.clearLayers();
+    } else {
+        routeLayerGroup = L.layerGroup().addTo(map);
+    }
+
+    // Clear state maps
+    routeMetadata.length = 0;
+    routeColorMap.clear();
+    routeTypeMap.clear();
+    routePolylines.clear();
+    routeLabels.clear();
+
+    routes.forEach((route) => {
+        const { id: routeId, shortName, longName, type, directionNames, directionDestinations } = route;
+
+        // Apply same color darkening as loadRoutes() for dark map theme
+        let color = route.color;
+        if (type === 1 || type === 2) {
+            color = darkenHexColor(color, 0.15);
+        }
+
+        routeMetadata.push({ id: routeId, color, shortName, longName, type, directionNames, directionDestinations });
+        routeColorMap.set(routeId, color);
+        routeTypeMap.set(routeId, type);
+
+        // Create Leaflet polyline from pre-decoded [[lat, lng], ...] array
+        const polyline = L.polyline(route.polyline, { color, weight: 3, opacity: 0.9 });
+        // Don't add to map yet — setVisibleRoutes() adds visible ones after UI init
+        routePolylines.set(routeId, [polyline]);
+
+        // Route name labels along the polyline (same logic as loadRoutes() lines 580–624)
+        const coords = polyline.getLatLngs();
+        if (coords.length >= 20) {
+            const labels = [];
+            const numLabels = Math.max(1, Math.min(5, Math.floor(coords.length / 100)));
+            const interval = Math.floor(coords.length / (numLabels + 1));
+
+            for (let n = 1; n <= numLabels; n++) {
+                const i = n * interval;
+                const point = coords[i];
+                const prev = coords[Math.max(0, i - 5)];
+                const next = coords[Math.min(coords.length - 1, i + 5)];
+
+                const cosLat = Math.cos(point.lat * Math.PI / 180);
+                const dx = (next.lng - prev.lng) * cosLat;
+                const dy = next.lat - prev.lat;
+                let rotation = -Math.atan2(dy, dx) * (180 / Math.PI);
+                if (rotation > 90) rotation -= 180;
+                else if (rotation < -90) rotation += 180;
+
+                const icon = L.divIcon({
+                    html: `<span class="route-label" style="--route-color: ${color}; transform: rotate(${rotation.toFixed(1)}deg)">${shortName}</span>`,
+                    className: '',
+                    iconSize: [0, 0],
+                    iconAnchor: [0, 0],
+                });
+
+                labels.push(L.marker([point.lat, point.lng], {
+                    icon,
+                    interactive: false,
+                    zIndexOffset: -1000,
+                }));
+            }
+
+            routeLabels.set(routeId, labels);
+        }
+    });
+
+    console.log(`Hydrated ${routes.length} routes from static data`);
+}
+
+/**
+ * Returns the current set of visible route IDs.
+ * Used by onStaticDataRefresh in index.html to re-render after re-hydration.
+ * @returns {Set<string>}
+ */
+export function getVisibleRoutes() {
+    return visibleRoutes;
+}
+
+/**
+ * Hydrate stop state from pre-baked static data bundle.
+ * Equivalent to loadStops() but from pre-decoded data instead of MBTA API.
+ * Safe to call multiple times — clears existing state before repopulating.
+ *
+ * @param {Object<string, {id, name, lat, lng, parentStopId}>} stops - keyed by stop ID
+ */
+export function hydrateStops(stops) {
+    stopsData.clear();
+
+    for (const stop of Object.values(stops)) {
+        // Static bundle uses lat/lng; stopsData uses latitude/longitude to match existing consumers
+        stopsData.set(stop.id, {
+            id: stop.id,
+            name: stop.name,
+            latitude: stop.lat,
+            longitude: stop.lng,
+            parentStopId: stop.parentStopId,
+        });
+    }
+
+    // Synthesize parent station entries for any parentStopId not already in stopsData.
+    // Matches the second pass in loadStops() (lines 756–767). stop-markers.js looks up
+    // stops by parent station ID, so these entries must exist even if the static bundle
+    // only includes them as references on child platforms.
+    for (const stop of Object.values(stops)) {
+        const parentId = stop.parentStopId;
+        if (parentId && !stopsData.has(parentId)) {
+            stopsData.set(parentId, {
+                id: parentId,
+                name: stop.name,
+                latitude: stop.lat,
+                longitude: stop.lng,
+                parentStopId: null,
+            });
+        }
+    }
+
+    console.log(`Hydrated ${stopsData.size} stops from static data`);
+}
+
+/**
  * Returns the cached stops data Map.
  * Key: stop ID (string), Value: {id, name, latitude, longitude}
  *
