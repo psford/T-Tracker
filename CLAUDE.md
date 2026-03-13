@@ -30,6 +30,7 @@ All data flows through dedicated modules with clear responsibilities:
 - `vehicle-icons.js`: Pure data module with SVG silhouettes for each MBTA vehicle type
 - `vehicle-popup.js`: Pure formatting for vehicle popup content (HTML escaping, status strings)
 - `polyline.js`: Pure function for Google polyline decoding
+- `polyline-merge.js`: Pure function for deciding whether two polylines should be merged (arc-length sampling, nearest-vertex distance)
 - `map.js`: Leaflet rendering, marker management, route visibility filtering, stop data fetching
 - `route-stops-cache.js`: localStorage caching for route-stops mapping with TTL invalidation
 - `route-sorter.js`: Pure function for grouping and sorting route metadata by type and name
@@ -50,6 +51,7 @@ All data flows through dedicated modules with clear responsibilities:
 - `python -m http.server 8000` from project root, then open `http://localhost:8000`
 - `node tests/vehicles.test.js` -- run vehicle/math unit tests
 - `node tests/vehicle-icons.test.js` -- run vehicle icon tests
+- `node tests/polyline-merge.test.js` -- run polyline merge unit tests
 - `node tests/stop-markers.test.js` -- run stop marker unit tests
 - `node tests/stop-popup.test.js` -- run stop popup formatting tests
 - `node tests/notifications.test.js` -- run notification engine tests
@@ -70,7 +72,7 @@ All data flows through dedicated modules with clear responsibilities:
 - `manifest.json` -- PWA manifest (app name, icons, theme color, display: standalone)
 - `sw.js` -- Minimal service worker (no caching, notification click handler)
 - `icons/` -- PWA icons (192x192, 512x512, 180x180 apple-touch-icon)
-- `src/` -- 14 application modules (see `src/CLAUDE.md` for contracts)
+- `src/` -- 15 application modules (see `src/CLAUDE.md` for contracts)
 - `tests/` -- 16 test files (unit tests, integration tests, pathway tests)
 - `docs/` -- Design plans and implementation phase docs
 - `.visual-review/` -- Visual review tooling (config, mock pages, screenshots)

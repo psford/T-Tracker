@@ -3,10 +3,10 @@
 Last verified: 2026-03-11
 
 ## Purpose
-Fourteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
+Fifteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
 rendering (Leaflet markers/polylines/stop markers), user controls (route filtering), polyline decoding,
-route organization, popup content formatting, vehicle icon data, stop popup formatting, notification engine,
-notification UI management, and route-stops cache management.
+polyline merging, route organization, popup content formatting, vehicle icon data, stop popup formatting,
+notification engine, notification UI management, and route-stops cache management.
 
 ## Data Flow
 ```
@@ -17,8 +17,9 @@ index.html (orchestrator — hydrate or fetch)
 MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
                       |                  ^                           ^
                       |               ui.js (configure)      polyline.js (decode)
-                      |                  ^                      stop-markers.js (render stops)
-                      |                  (organize routes)   vehicle-popup.js (format)
+                      |                  ^                      polyline-merge.js (merge decision)
+                      |                  (organize routes)   stop-markers.js (render stops)
+                      |                                      vehicle-popup.js (format)
                       |                                      stop-popup.js (format)
                       |                                      vehicle-icons.js (icon data)
                       |                                      route-sorter.js
@@ -128,6 +129,11 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - **Guarantees**: Pure function. Returns array of [lat, lng] coordinate pairs.
   Handles Google's 5-digit decimal precision encoding algorithm.
 - **Expects**: String input in Google encoded polyline format
+
+### polyline-merge.js -- Polyline Merge Decision
+- **Exposes**: `shouldMergePolylines(coords1, coords2, thresholdMeters = 50)`
+- **Guarantees**: Pure function, no side effects. Samples SAMPLES (30) points along coords1 at equal arc-length intervals using binary search. For each sample, finds the nearest vertex in coords2 via exhaustive search. Returns true if the median of those distances is ≤ thresholdMeters (default 50m). Works in both browser and Node.js (no Leaflet dependency).
+- **Expects**: Two arrays of coordinate objects with {lat, lng} properties. Optional threshold in meters (default 50).
 
 ### route-sorter.js -- Route Sorting and Grouping
 - **Exposes**: `groupAndSortRoutes(routes)`
