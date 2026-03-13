@@ -1,0 +1,55 @@
+# .github/workflows/refresh-mbta-data.yml
+# Nightly job: refresh data/mbta-static.json from MBTA API and commit if changed.
+# Runs at 03:00 UTC daily. Can also be triggered manually via workflow_dispatch.
+
+name: Refresh MBTA Static Data
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch MBTA static data
+        env:
+          MBTA_API_KEY: ${{ secrets.MBTA_API_KEY }}
+        run: node scripts/fetch-mbta-data.mjs
+
+      - name: Validate data file
+        run: |
+          node -e "
+          const data = JSON.parse(require('fs').readFileSync('data/mbta-static.json', 'utf8'));
+          if (!data.generatedAt || !Array.isArray(data.routes) || data.routes.length < 100) {
+            console.error('Validation failed: data/mbta-static.json is malformed or incomplete');
+            process.exit(1);
+          }
+          console.log('Validated: ' + data.routes.length + ' routes, generatedAt ' + data.generatedAt);
+          "
+
+      - name: Commit updated data file (if changed)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/mbta-static.json
+          if git diff --quiet --cached; then
+            echo "No changes to data/mbta-static.json — skipping commit"
+          else
+            git commit -m "chore: refresh MBTA static data"
+            git push origin master
+          fi
