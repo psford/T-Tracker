@@ -5,6 +5,8 @@
 import { haversineDistance } from './vehicle-math.js';
 
 const SAMPLES = 30;
+const SEGMENT_MIN_VERTICES = 2;
+const MIN_DIVERGENT_RUN = 3; // minimum consecutive "far" vertices to be treated as divergent
 
 /**
  * Decide whether two polylines represent the same physical path.
@@ -59,4 +61,113 @@ export function shouldMergePolylines(coords1, coords2, thresholdMeters = 50) {
     distances.sort((a, b) => a - b);
     const median = distances[Math.floor(SAMPLES / 2)];
     return median <= thresholdMeters;
+}
+
+/**
+ * Smooth a boolean classification array in-place: reclassify short "far" (false) runs
+ * as "close" (true) to prevent noise from vertices oscillating near the threshold.
+ * A "far" run must have at least MIN_DIVERGENT_RUN consecutive vertices to be kept.
+ * @param {boolean[]} classification - Array of close (true) / far (false) values, modified in-place
+ */
+function smoothClassification(classification) {
+    let i = 0;
+    while (i < classification.length) {
+        if (!classification[i]) {
+            // Found start of a "far" run — measure its length
+            const start = i;
+            while (i < classification.length && !classification[i]) i++;
+            const runLen = i - start;
+            // If too short, reclassify as "close"
+            if (runLen < MIN_DIVERGENT_RUN) {
+                for (let k = start; k < i; k++) classification[k] = true;
+            }
+        } else {
+            i++;
+        }
+    }
+}
+
+/**
+ * Merge two polylines segment-by-segment based on physical proximity.
+ * Where vertices are close (same street/track), average them into one line.
+ * Where vertices diverge (different streets, terminus loops), keep both paths.
+ *
+ * @param {Array<{lat: number, lng: number}>} coordsA - First polyline
+ * @param {Array<{lat: number, lng: number}>} coordsB - Second polyline (oriented same direction as A)
+ * @param {number} threshold - Max distance in meters for "close" classification (default 20)
+ * @returns {Array<Array<{lat: number, lng: number}>>} - Array of polyline segments
+ */
+export function mergePolylineSegments(coordsA, coordsB, threshold = 20) {
+    // For each vertex in A, find nearest vertex in B and distance
+    const nearestB = coordsA.map(a => {
+        let minDist = Infinity, minIdx = -1;
+        for (let j = 0; j < coordsB.length; j++) {
+            const d = haversineDistance(a.lat, a.lng, coordsB[j].lat, coordsB[j].lng);
+            if (d < minDist) { minDist = d; minIdx = j; }
+        }
+        return { dist: minDist, idx: minIdx };
+    });
+
+    // For each vertex in B, find nearest vertex in A and distance
+    const nearestA = coordsB.map(b => {
+        let minDist = Infinity, minIdx = -1;
+        for (let i = 0; i < coordsA.length; i++) {
+            const d = haversineDistance(b.lat, b.lng, coordsA[i].lat, coordsA[i].lng);
+            if (d < minDist) { minDist = d; minIdx = i; }
+        }
+        return { dist: minDist, idx: minIdx };
+    });
+
+    // Classify A vertices: close (< threshold) or far (>= threshold)
+    const aClose = coordsA.map((_, i) => nearestB[i].dist < threshold);
+    const bClose = coordsB.map((_, j) => nearestA[j].dist < threshold);
+
+    // Smooth classifications: short "far" runs (< MIN_DIVERGENT_RUN) are reclassified
+    // as "close" to prevent noise from vertices oscillating near the threshold boundary.
+    smoothClassification(aClose);
+    smoothClassification(bClose);
+
+    // Build segments from A: merged (close) and A-only (far)
+    const segments = [];
+    let current = [];
+    let currentType = null; // 'merged' or 'a-only'
+
+    for (let i = 0; i < coordsA.length; i++) {
+        const type = aClose[i] ? 'merged' : 'a-only';
+
+        if (type !== currentType && current.length > 0) {
+            segments.push(current);
+            current = [];
+        }
+        currentType = type;
+
+        if (aClose[i]) {
+            // Average with nearest B vertex
+            const b = coordsB[nearestB[i].idx];
+            current.push({
+                lat: (coordsA[i].lat + b.lat) / 2,
+                lng: (coordsA[i].lng + b.lng) / 2,
+            });
+        } else {
+            current.push({ lat: coordsA[i].lat, lng: coordsA[i].lng });
+        }
+    }
+    if (current.length > 0) segments.push(current);
+
+    // Build B-only segments (B vertices that are far from A)
+    let bOnly = [];
+    for (let j = 0; j < coordsB.length; j++) {
+        if (!bClose[j]) {
+            bOnly.push({ lat: coordsB[j].lat, lng: coordsB[j].lng });
+        } else {
+            if (bOnly.length > 0) {
+                segments.push(bOnly);
+                bOnly = [];
+            }
+        }
+    }
+    if (bOnly.length > 0) segments.push(bOnly);
+
+    // Filter out segments too short to form a line
+    return segments.filter(s => s.length >= SEGMENT_MIN_VERTICES);
 }

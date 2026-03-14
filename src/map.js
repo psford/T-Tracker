@@ -3,28 +3,8 @@ import { config } from '../config.js';
 import { decodePolyline } from './polyline.js';
 import { formatVehiclePopup } from './vehicle-popup.js';
 import { darkenHexColor, bearingToTransform, haversineDistance, nearestPointOnSegment } from './vehicle-math.js';
-import { shouldMergePolylines } from './polyline-merge.js';
+import { shouldMergePolylines, mergePolylineSegments } from './polyline-merge.js';
 import { VEHICLE_ICONS, DEFAULT_ICON } from './vehicle-icons.js';
-
-/**
- * Sample a point along a polyline at parameter t in [0, 1].
- * t=0 → first coordinate, t=1 → last coordinate.
- * @param {L.LatLng[]} coords
- * @param {number} t
- * @returns {{lat: number, lng: number}}
- */
-function sampleAtT(coords, t) {
-    if (coords.length === 1) return coords[0];
-    const idx = t * (coords.length - 1);
-    const lo = Math.floor(idx);
-    const hi = Math.ceil(idx);
-    if (lo === hi) return coords[lo];
-    const frac = idx - lo;
-    return {
-        lat: coords[lo].lat + frac * (coords[hi].lat - coords[lo].lat),
-        lng: coords[lo].lng + frac * (coords[hi].lng - coords[lo].lng),
-    };
-}
 
 let map = null;
 
@@ -492,11 +472,11 @@ export async function loadRoutes() {
                 }
             }
 
-            // Merge parallel polylines into one averaged line.
-            // Rail (types 0, 1): always merge — both directions use the same physical track.
-            // Bus (type 3): merge only when the two shapes are mostly parallel (median separation
-            // ≤50m). This handles divided-road bus routes correctly while keeping genuinely
-            // divergent routes (different streets inbound/outbound) as two separate lines.
+            // Merge parallel polylines segment-by-segment.
+            // Where two directions share the same street/track, average into one line.
+            // Where they diverge (different streets, terminus loops), keep both paths.
+            // Uses shouldMergePolylines as a gate (median distance ≤50m) for all route types,
+            // then mergePolylineSegments for fine-grained per-vertex merging.
             if (polylines.length === 2) {
                 const c1 = polylines[0].getLatLngs();
                 const c2raw = polylines[1].getLatLngs();
@@ -507,25 +487,18 @@ export async function loadRoutes() {
                     const dFlip = haversineDistance(c1[0].lat, c1[0].lng, c2raw[c2raw.length - 1].lat, c2raw[c2raw.length - 1].lng);
                     const c2 = dFlip < dSame ? [...c2raw].reverse() : c2raw;
 
-                    // For bus routes, check median separation before merging.
-                    // Rail always merges (type 0 or 1).
-                    let shouldMerge = (type === 0 || type === 1);
-
-                    if (!shouldMerge) {
-                        shouldMerge = shouldMergePolylines(c1, polylines[1].getLatLngs());
-                    }
-
-                    if (shouldMerge) {
-                        const n = Math.max(c1.length, c2.length);
-                        const merged = [];
-                        for (let i = 0; i < n; i++) {
-                            const t = i / (n - 1);
-                            const p1 = sampleAtT(c1, t);
-                            const p2 = sampleAtT(c2, t);
-                            merged.push(L.latLng((p1.lat + p2.lat) / 2, (p1.lng + p2.lng) / 2));
+                    if (shouldMergePolylines(c1, c2)) {
+                        const segments = mergePolylineSegments(c1, c2, 20);
+                        // Replace the two original polylines with the merged segments
+                        const routeColor = polylines[0].options.color;
+                        const routeOpts = { color: routeColor, weight: 3, opacity: 0.9 };
+                        polylines.forEach(pl => pl.remove());
+                        polylines.length = 0;
+                        for (const seg of segments) {
+                            const latlngs = seg.map(p => L.latLng(p.lat, p.lng));
+                            const pl = L.polyline(latlngs, routeOpts).addTo(map);
+                            polylines.push(pl);
                         }
-                        polylines[0].setLatLngs(merged);
-                        polylines.splice(1, 1);
                     }
                 }
             }

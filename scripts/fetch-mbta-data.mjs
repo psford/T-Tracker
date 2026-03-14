@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 import { decodePolyline } from '../src/polyline.js';
-import { shouldMergePolylines } from '../src/polyline-merge.js';
+import { shouldMergePolylines, mergePolylineSegments } from '../src/polyline-merge.js';
 import { haversineDistance } from '../src/vehicle-math.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,30 +32,7 @@ async function fetchJSON(url) {
     return res.json();
 }
 
-// Parametric interpolation: returns {lat, lng} at parameter t ∈ [0,1] along coords ({lat,lng}[]).
-function sampleAtT(coords, t) {
-    if (coords.length === 1) return coords[0];
-    const idx = t * (coords.length - 1);
-    const lo = Math.floor(idx);
-    const hi = Math.min(lo + 1, coords.length - 1);
-    const frac = idx - lo;
-    return {
-        lat: coords[lo].lat + frac * (coords[hi].lat - coords[lo].lat),
-        lng: coords[lo].lng + frac * (coords[hi].lng - coords[lo].lng),
-    };
-}
-
-// Average two {lat,lng} polylines by sampling at equal parametric intervals.
-function averagePolylines(c1, c2, numSamples = 100) {
-    const result = [];
-    for (let i = 0; i <= numSamples; i++) {
-        const t = i / numSamples;
-        const p1 = sampleAtT(c1, t);
-        const p2 = sampleAtT(c2, t);
-        result.push({ lat: (p1.lat + p2.lat) / 2, lng: (p1.lng + p2.lng) / 2 });
-    }
-    return result;
-}
+const SEGMENT_MERGE_THRESHOLD = 20; // meters — per-vertex threshold for segment-by-segment merge
 
 async function main() {
     // ── Fetch routes with route_patterns and shapes ──────────────────────────
@@ -110,14 +87,15 @@ async function main() {
         }
 
         // Merge polylines that represent the same physical path (e.g., inbound/outbound on
-        // shared track). Polylines that diverge (e.g., Red Line Ashmont vs Braintree branches)
-        // are kept separate. Uses shouldMergePolylines threshold check for ALL route types —
-        // even rail can have physically separate branches.
+        // shared track). Uses segment-by-segment merging: where two polylines are physically
+        // close (same street/track), average into one line; where they diverge (different
+        // streets, terminus loops), keep both paths as separate segments.
         //
-        // Algorithm: maintain a list of merged polylines. For each new polyline, try to merge
-        // it into the first existing merged polyline that passes the threshold check. If none
-        // match, keep it as a separate branch.
-        const mergedPolylines = polylines.length > 0 ? [polylines[0]] : [];
+        // Algorithm: maintain a list of result polylines. For each new polyline, check if it
+        // should merge with any existing one (median distance ≤ MERGE_THRESHOLD). If yes,
+        // replace the existing polyline with segment-by-segment merge results. If no, keep
+        // as a separate branch.
+        let mergedPolylines = polylines.length > 0 ? [polylines[0]] : [];
         for (let i = 1; i < polylines.length; i++) {
             const c2raw = polylines[i];
             if (c2raw.length === 0) continue;
@@ -133,7 +111,9 @@ async function main() {
                 const c2 = dFlip < dSame ? [...c2raw].reverse() : c2raw;
 
                 if (shouldMergePolylines(existing, c2, MERGE_THRESHOLD)) {
-                    mergedPolylines[j] = averagePolylines(existing, c2);
+                    // Segment-by-segment merge: average where close, keep separate where divergent
+                    const segments = mergePolylineSegments(existing, c2, SEGMENT_MERGE_THRESHOLD);
+                    mergedPolylines.splice(j, 1, ...segments);
                     didMerge = true;
                     break;
                 }
