@@ -472,24 +472,22 @@ export async function loadRoutes() {
                 }
             }
 
-            // Merge parallel polylines segment-by-segment.
-            // Where two directions share the same street/track, average into one line.
-            // Where they diverge (different streets, terminus loops), keep both paths.
-            // Uses shouldMergePolylines as a gate (median distance ≤50m) for all route types,
-            // then mergePolylineSegments for fine-grained per-vertex merging.
-            if (polylines.length === 2) {
+            // Rail (types 0, 1): no merging — inbound/outbound share the same track (0-5m),
+            // so overlapping polylines look like one line. Terminus loops preserved naturally.
+            // Bus/CR/Ferry: segment-by-segment merge where paths share the same street,
+            // keep separate where they diverge to different streets.
+            const isRail = (type === 0 || type === 1);
+            if (!isRail && polylines.length === 2) {
                 const c1 = polylines[0].getLatLngs();
                 const c2raw = polylines[1].getLatLngs();
 
                 if (c1.length >= 2 && c2raw.length >= 2) {
-                    // Orient c2 in the same direction as c1 (compare start-to-start vs start-to-end)
                     const dSame = haversineDistance(c1[0].lat, c1[0].lng, c2raw[0].lat, c2raw[0].lng);
                     const dFlip = haversineDistance(c1[0].lat, c1[0].lng, c2raw[c2raw.length - 1].lat, c2raw[c2raw.length - 1].lng);
                     const c2 = dFlip < dSame ? [...c2raw].reverse() : c2raw;
 
                     if (shouldMergePolylines(c1, c2)) {
                         const segments = mergePolylineSegments(c1, c2, 20);
-                        // Replace the two original polylines with the merged segments
                         const routeColor = polylines[0].options.color;
                         const routeOpts = { color: routeColor, weight: 3, opacity: 0.9 };
                         polylines.forEach(pl => pl.remove());

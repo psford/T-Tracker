@@ -86,40 +86,47 @@ async function main() {
             polylines.push(coords);
         }
 
-        // Merge polylines that represent the same physical path (e.g., inbound/outbound on
-        // shared track). Uses segment-by-segment merging: where two polylines are physically
-        // close (same street/track), average into one line; where they diverge (different
-        // streets, terminus loops), keep both paths as separate segments.
+        // Rail (types 0, 1): store raw polylines without merging. Inbound/outbound share the
+        // same physical track (0-5m apart), so two overlapping polylines look like one line at
+        // any normal zoom level. Terminus loops (e.g., Green-E Heath St) are preserved naturally
+        // from the raw MBTA shape data.
         //
-        // Algorithm: maintain a list of result polylines. For each new polyline, check if it
-        // should merge with any existing one (median distance ≤ MERGE_THRESHOLD). If yes,
-        // replace the existing polyline with segment-by-segment merge results. If no, keep
-        // as a separate branch.
-        let mergedPolylines = polylines.length > 0 ? [polylines[0]] : [];
-        for (let i = 1; i < polylines.length; i++) {
-            const c2raw = polylines[i];
-            if (c2raw.length === 0) continue;
+        // Bus/CR/Ferry (types 2, 3, 4): segment-by-segment merge. Bus inbound/outbound can be
+        // 10-15m apart on the same street (visibly doubled at zoom 17+), so we average where
+        // paths share the same street and keep separate where they diverge to different streets.
+        const isRail = (attr.type === 0 || attr.type === 1);
+        let mergedPolylines;
 
-            let didMerge = false;
-            for (let j = 0; j < mergedPolylines.length; j++) {
-                const existing = mergedPolylines[j];
-                if (existing.length === 0) continue;
+        if (isRail) {
+            // Rail: keep all raw polylines as-is
+            mergedPolylines = polylines;
+        } else {
+            // Non-rail: segment-by-segment merge for polylines on the same physical path
+            mergedPolylines = polylines.length > 0 ? [polylines[0]] : [];
+            for (let i = 1; i < polylines.length; i++) {
+                const c2raw = polylines[i];
+                if (c2raw.length === 0) continue;
 
-                // Orient c2 in same direction as existing (compare start-to-start vs start-to-end)
-                const dSame = haversineDistance(existing[0].lat, existing[0].lng, c2raw[0].lat, c2raw[0].lng);
-                const dFlip = haversineDistance(existing[0].lat, existing[0].lng, c2raw[c2raw.length - 1].lat, c2raw[c2raw.length - 1].lng);
-                const c2 = dFlip < dSame ? [...c2raw].reverse() : c2raw;
+                let didMerge = false;
+                for (let j = 0; j < mergedPolylines.length; j++) {
+                    const existing = mergedPolylines[j];
+                    if (existing.length === 0) continue;
 
-                if (shouldMergePolylines(existing, c2, MERGE_THRESHOLD)) {
-                    // Segment-by-segment merge: average where close, keep separate where divergent
-                    const segments = mergePolylineSegments(existing, c2, SEGMENT_MERGE_THRESHOLD);
-                    mergedPolylines.splice(j, 1, ...segments);
-                    didMerge = true;
-                    break;
+                    // Orient c2 in same direction as existing
+                    const dSame = haversineDistance(existing[0].lat, existing[0].lng, c2raw[0].lat, c2raw[0].lng);
+                    const dFlip = haversineDistance(existing[0].lat, existing[0].lng, c2raw[c2raw.length - 1].lat, c2raw[c2raw.length - 1].lng);
+                    const c2 = dFlip < dSame ? [...c2raw].reverse() : c2raw;
+
+                    if (shouldMergePolylines(existing, c2, MERGE_THRESHOLD)) {
+                        const segments = mergePolylineSegments(existing, c2, SEGMENT_MERGE_THRESHOLD);
+                        mergedPolylines.splice(j, 1, ...segments);
+                        didMerge = true;
+                        break;
+                    }
                 }
-            }
-            if (!didMerge) {
-                mergedPolylines.push(c2raw);
+                if (!didMerge) {
+                    mergedPolylines.push(c2raw);
+                }
             }
         }
 
