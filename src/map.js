@@ -35,6 +35,10 @@ let stopsData = new Map();
 // Map<routeId, Set<stopId>> — tracks which stops belong to which routes
 const routeStopsMap = new Map();
 
+// Map<routeId, Map<stopId, number>> — direction-only stops (0 or 1)
+// Stops NOT in this map default to both directions.
+let routeStopDirectionsMap = new Map();
+
 // Map<routeId, L.Marker[]> — route name labels placed along polylines
 const routeLabels = new Map();
 
@@ -174,8 +178,12 @@ export function createVehicleMarker(vehicle) {
         return; // Marker already exists
     }
 
+    // Snap vehicle to nearest point on its route's polyline so icons
+    // ride on the (potentially merged/averaged) rendered line
+    const snapped = snapToRoutePolyline(vehicle.latitude, vehicle.longitude, vehicle.routeId);
+
     const marker = L.marker(
-        [vehicle.latitude, vehicle.longitude],
+        [snapped.lat, snapped.lng],
         {
             icon: createVehicleDivIcon(vehicle),
         }
@@ -221,8 +229,9 @@ export function updateVehicleMarker(vehicle) {
         return; // Marker doesn't exist
     }
 
-    // Update position
-    marker.setLatLng([vehicle.latitude, vehicle.longitude]);
+    // Snap to polyline and update position
+    const snapped = snapToRoutePolyline(vehicle.latitude, vehicle.longitude, vehicle.routeId);
+    marker.setLatLng([snapped.lat, snapped.lng]);
 
     // Update rotation and opacity
     const iconElement = marker.getElement().querySelector('.vehicle-marker');
@@ -472,12 +481,86 @@ export async function loadRoutes() {
                 }
             }
 
-            // Rail (types 0, 1): no merging — inbound/outbound share the same track (0-5m),
-            // so overlapping polylines look like one line. Terminus loops preserved naturally.
-            // Bus/CR/Ferry: segment-by-segment merge where paths share the same street,
-            // keep separate where they diverge to different streets.
+            // Rail (types 0, 1): dedup inbound/outbound copies (max nearest-vertex < 20m),
+            // then segment-merge remaining polylines (shared corridors averaged at 40m threshold,
+            // branches and terminus loops kept as separate segments).
+            // Bus/CR/Ferry: segment-by-segment merge at 20m threshold.
             const isRail = (type === 0 || type === 1);
-            if (!isRail && polylines.length === 2) {
+            if (isRail && polylines.length >= 2) {
+                const coords = polylines.map(pl => pl.getLatLngs());
+                const oriented = [coords[0]];
+                for (let pi = 1; pi < coords.length; pi++) {
+                    const p = coords[pi];
+                    const dS = haversineDistance(oriented[0][0].lat, oriented[0][0].lng, p[0].lat, p[0].lng);
+                    const dF = haversineDistance(oriented[0][0].lat, oriented[0][0].lng, p[p.length - 1].lat, p[p.length - 1].lng);
+                    oriented.push(dF < dS ? [...p].reverse() : p);
+                }
+                // Deduplicate: same start+end AND max sampled nearest-vertex < 20m
+                const unique = [oriented[0]];
+                for (let pi = 1; pi < oriented.length; pi++) {
+                    let isDup = false;
+                    for (const u of unique) {
+                        const dStart = haversineDistance(oriented[pi][0].lat, oriented[pi][0].lng, u[0].lat, u[0].lng);
+                        const dEnd = haversineDistance(
+                            oriented[pi][oriented[pi].length - 1].lat, oriented[pi][oriented[pi].length - 1].lng,
+                            u[u.length - 1].lat, u[u.length - 1].lng
+                        );
+                        if (dStart > 100 || dEnd > 100) continue;
+                        let maxDist = 0;
+                        const step = Math.max(1, Math.floor(oriented[pi].length / 50));
+                        for (let k = 0; k < oriented[pi].length; k += step) {
+                            let minD = Infinity;
+                            for (const v of u) {
+                                const d = haversineDistance(oriented[pi][k].lat, oriented[pi][k].lng, v.lat, v.lng);
+                                if (d < minD) minD = d;
+                            }
+                            if (minD > maxDist) maxDist = minD;
+                        }
+                        if (maxDist < 20) { isDup = true; break; }
+                    }
+                    if (!isDup) unique.push(oriented[pi]);
+                }
+                // Distinguish terminus loops from branching routes:
+                // - Same start AND end (within 500m): terminus variation (Green-E, Green-C/D).
+                //   Keep both raw — they overlap on shared track and diverge at terminus loops.
+                // - Same start, different end: branching route (Red Line Ashmont/Braintree).
+                //   Segment-merge to combine the shared corridor into one line.
+                let resultCoords = unique;
+                if (unique.length >= 2) {
+                    const END_MATCH_THRESHOLD = 500; // meters
+                    const allSameEnd = unique.every(p => {
+                        const dEnd = haversineDistance(
+                            p[p.length - 1].lat, p[p.length - 1].lng,
+                            unique[0][unique[0].length - 1].lat, unique[0][unique[0].length - 1].lng
+                        );
+                        return dEnd < END_MATCH_THRESHOLD;
+                    });
+
+                    if (!allSameEnd) {
+                        // Branching route: segment-merge pairwise to combine shared corridor
+                        resultCoords = [unique[0]];
+                        for (let ui = 1; ui < unique.length; ui++) {
+                            const c2 = unique[ui];
+                            if (c2.length === 0) continue;
+                            // Bypass shouldMergePolylines gate — we know branching polylines
+                            // share a corridor that needs merging
+                            const segments = mergePolylineSegments(resultCoords[0], c2, 40);
+                            resultCoords.splice(0, 1, ...segments);
+                        }
+                    }
+                    // else: terminus loops — keep all raw polylines
+                }
+                if (resultCoords.length !== polylines.length || unique.length !== oriented.length) {
+                    const routeColor = polylines[0].options.color;
+                    const routeOpts = { color: routeColor, weight: 3, opacity: 0.9 };
+                    polylines.forEach(pl => pl.remove());
+                    polylines.length = 0;
+                    for (const seg of resultCoords) {
+                        const latlngs = seg.map(p => L.latLng(p.lat, p.lng));
+                        polylines.push(L.polyline(latlngs, routeOpts).addTo(map));
+                    }
+                }
+            } else if (!isRail && polylines.length === 2) {
                 const c1 = polylines[0].getLatLngs();
                 const c2raw = polylines[1].getLatLngs();
 
@@ -993,6 +1076,21 @@ export function hydrateRouteStopsMap(routeId, stopIds) {
 }
 
 /**
+ * Populate routeStopDirectionsMap from static data.
+ * @param {Object} directionData — { routeId: { stopId: directionId (0 or 1) } }
+ */
+export function hydrateRouteStopDirections(directionData) {
+    routeStopDirectionsMap = new Map();
+    for (const [routeId, stopDirs] of Object.entries(directionData)) {
+        const stopMap = new Map();
+        for (const [stopId, dir] of Object.entries(stopDirs)) {
+            stopMap.set(stopId, dir);
+        }
+        routeStopDirectionsMap.set(routeId, stopMap);
+    }
+}
+
+/**
  * Returns the route-to-stops mapping.
  * Key: route ID (string), Value: Set of stop IDs
  *
@@ -1000,6 +1098,17 @@ export function hydrateRouteStopsMap(routeId, stopIds) {
  */
 export function getRouteStopsMap() {
     return routeStopsMap;
+}
+
+/**
+ * Returns the direction-only stops mapping.
+ * Key: route ID, Value: Map<stopId, directionId (0 or 1)>.
+ * Stops not in this map serve both directions.
+ *
+ * @returns {Map<string, Map<string, number>>}
+ */
+export function getRouteStopDirectionsMap() {
+    return routeStopDirectionsMap;
 }
 
 /**

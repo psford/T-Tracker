@@ -34,6 +34,172 @@ async function fetchJSON(url) {
 
 const SEGMENT_MERGE_THRESHOLD = 20; // meters — per-vertex threshold for segment-by-segment merge
 
+const RAIL_DEDUP_MAX_DIST = 20;  // meters — max nearest-vertex distance for two polylines to be "same path"
+const RAIL_MERGE_THRESHOLD = 40; // meters — segment merge threshold for shared rail corridors
+
+/**
+ * Connect dangling branch endpoints back to the main chain.
+ *
+ * After mergePolylineSegments, branch segments (terminus loops, one-way streets)
+ * may start at a junction on the main chain but end at a point that doesn't
+ * connect back. This function finds such dangling endpoints and appends the
+ * nearest vertex from another segment to close the gap.
+ *
+ * @param {Array<Array<{lat: number, lng: number}>>} segments - Merged segments
+ * @returns {Array<Array<{lat: number, lng: number}>>} Segments with branches reconnected
+ */
+function connectBranchEndpoints(segments) {
+    if (segments.length <= 1) return segments;
+
+    const CONNECT_THRESHOLD = 30; // max gap (meters) that counts as "already connected"
+
+    // Build a set of all segment start/end points for junction detection
+    const endpoints = [];
+    for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        if (seg.length < 2) continue;
+        endpoints.push({ segIdx: i, end: 'start', lat: seg[0].lat, lng: seg[0].lng });
+        endpoints.push({ segIdx: i, end: 'end', lat: seg[seg.length - 1].lat, lng: seg[seg.length - 1].lng });
+    }
+
+    // For each segment endpoint, check if it's near any OTHER segment's start/end
+    // If not, it's dangling — find the nearest vertex on any other segment and connect
+    const result = segments.map(s => [...s]);
+
+    for (let i = 0; i < result.length; i++) {
+        const seg = result[i];
+        if (seg.length < 2) continue;
+
+        // Check both start and end of this segment
+        for (const checkEnd of ['start', 'end']) {
+            const pt = checkEnd === 'start' ? seg[0] : seg[seg.length - 1];
+
+            // Is this endpoint near any other segment's start or end?
+            let nearestEndpointDist = Infinity;
+            for (const ep of endpoints) {
+                if (ep.segIdx === i) continue;
+                const d = haversineDistance(pt.lat, pt.lng, ep.lat, ep.lng);
+                if (d < nearestEndpointDist) nearestEndpointDist = d;
+            }
+
+            if (nearestEndpointDist <= CONNECT_THRESHOLD) continue; // already connected
+
+            // Dangling! Find nearest vertex on any other segment
+            let bestDist = Infinity;
+            let bestVtx = null;
+            for (let j = 0; j < result.length; j++) {
+                if (j === i) continue;
+                for (const v of result[j]) {
+                    const d = haversineDistance(pt.lat, pt.lng, v.lat, v.lng);
+                    if (d < bestDist) {
+                        bestDist = d;
+                        bestVtx = v;
+                    }
+                }
+            }
+
+            if (bestVtx && bestDist < 200) { // only connect if reasonably close
+                if (checkEnd === 'start') {
+                    result[i] = [{ lat: bestVtx.lat, lng: bestVtx.lng }, ...result[i]];
+                } else {
+                    result[i] = [...result[i], { lat: bestVtx.lat, lng: bestVtx.lng }];
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Process rail polylines: (1) deduplicate inbound/outbound copies, then
+ * (2) segment-merge remaining distinct polylines to combine shared corridors
+ * while preserving branches and terminus loops.
+ *
+ * Dedup criterion: same start+end AND max sampled nearest-vertex < 20m.
+ * After dedup, if 2+ polylines remain (e.g., Red Line Ashmont + Braintree),
+ * segment-merge them: average where close (shared corridor, 15-25m apart),
+ * keep separate where they diverge (actual branches, >40m).
+ * Terminus loops (Green-E, 47m max) are preserved as separate segments.
+ */
+function processRailPolylines(polylines) {
+    if (polylines.length <= 1) return polylines;
+
+    // Orient all polylines to match the first one's direction
+    const oriented = [polylines[0]];
+    for (let i = 1; i < polylines.length; i++) {
+        const p = polylines[i];
+        const dSame = haversineDistance(oriented[0][0].lat, oriented[0][0].lng, p[0].lat, p[0].lng);
+        const dFlip = haversineDistance(oriented[0][0].lat, oriented[0][0].lng, p[p.length - 1].lat, p[p.length - 1].lng);
+        oriented.push(dFlip < dSame ? [...p].reverse() : p);
+    }
+
+    // Deduplicate: same start+end AND max sampled nearest-vertex distance < threshold
+    const unique = [oriented[0]];
+    for (let i = 1; i < oriented.length; i++) {
+        let isDup = false;
+        for (const u of unique) {
+            const dStart = haversineDistance(oriented[i][0].lat, oriented[i][0].lng, u[0].lat, u[0].lng);
+            const dEnd = haversineDistance(
+                oriented[i][oriented[i].length - 1].lat, oriented[i][oriented[i].length - 1].lng,
+                u[u.length - 1].lat, u[u.length - 1].lng
+            );
+            if (dStart > 100 || dEnd > 100) continue;
+
+            let maxDist = 0;
+            const step = Math.max(1, Math.floor(oriented[i].length / 50));
+            for (let k = 0; k < oriented[i].length; k += step) {
+                let minD = Infinity;
+                for (const v of u) {
+                    const d = haversineDistance(oriented[i][k].lat, oriented[i][k].lng, v.lat, v.lng);
+                    if (d < minD) minD = d;
+                }
+                if (minD > maxDist) maxDist = minD;
+            }
+            if (maxDist < RAIL_DEDUP_MAX_DIST) {
+                isDup = true;
+                break;
+            }
+        }
+        if (!isDup) unique.push(oriented[i]);
+    }
+
+    if (unique.length <= 1) return unique;
+
+    // Distinguish terminus loops from branching routes:
+    // - Same start AND end (within threshold): terminus variation (Green-E, Green-C/D).
+    //   Keep both raw — they overlap on shared track and diverge at terminus loops.
+    // - Same start, different end: branching route (Red Line Ashmont/Braintree).
+    //   Segment-merge to combine the shared corridor into one line.
+    const END_MATCH_THRESHOLD = 500; // meters — terminus ends are at the same station
+    const allSameEnd = unique.every(p => {
+        const dEnd = haversineDistance(
+            p[p.length - 1].lat, p[p.length - 1].lng,
+            unique[0][unique[0].length - 1].lat, unique[0][unique[0].length - 1].lng
+        );
+        return dEnd < END_MATCH_THRESHOLD;
+    });
+
+    if (allSameEnd) {
+        // Terminus loops: keep all raw polylines (overlap on trunk, diverge at loop)
+        return unique;
+    }
+
+    // Branching route: segment-merge pairwise to combine shared corridor
+    let merged = [unique[0]];
+    for (let i = 1; i < unique.length; i++) {
+        const c2 = unique[i];
+        if (c2.length === 0) continue;
+
+        // Use segment merge directly (skip shouldMergePolylines gate — we know
+        // branching polylines share a corridor that needs merging)
+        const segments = mergePolylineSegments(merged[0], c2, RAIL_MERGE_THRESHOLD);
+        merged.splice(0, 1, ...segments);
+    }
+
+    return merged;
+}
+
 async function main() {
     // ── Fetch routes with route_patterns and shapes ──────────────────────────
     console.log('Fetching routes and shapes...');
@@ -60,6 +226,7 @@ async function main() {
 
         // Collect unique decoded polylines from typicality=1 patterns
         const polylines = [];
+        const polylineDirections = []; // direction_id for each polyline (0 or 1)
         const seenShapeIds = new Set();
 
         for (const patRel of route.relationships?.route_patterns?.data || []) {
@@ -84,12 +251,13 @@ async function main() {
             // decodePolyline returns [[lat, lng], ...]; convert to {lat, lng}
             const coords = decodePolyline(encoded).map(([lat, lng]) => ({ lat, lng }));
             polylines.push(coords);
+            polylineDirections.push(pattern.attributes.direction_id);
         }
 
-        // Rail (types 0, 1): store raw polylines without merging. Inbound/outbound share the
-        // same physical track (0-5m apart), so two overlapping polylines look like one line at
-        // any normal zoom level. Terminus loops (e.g., Green-E Heath St) are preserved naturally
-        // from the raw MBTA shape data.
+        // Rail (types 0, 1): deduplicate inbound/outbound (same physical track), then split
+        // branching routes at their divergence point. This gives one trunk polyline plus separate
+        // branch tails (e.g., Red Line → trunk + Ashmont + Braintree). Terminus loops (Green-E
+        // Heath St) are preserved because both directions trace the same loop.
         //
         // Bus/CR/Ferry (types 2, 3, 4): segment-by-segment merge. Bus inbound/outbound can be
         // 10-15m apart on the same street (visibly doubled at zoom 17+), so we average where
@@ -98,10 +266,10 @@ async function main() {
         let mergedPolylines;
 
         if (isRail) {
-            // Rail: keep all raw polylines as-is
-            mergedPolylines = polylines;
+            mergedPolylines = processRailPolylines(polylines);
         } else {
-            // Non-rail: segment-by-segment merge for polylines on the same physical path
+            // Non-rail: segment-by-segment merge for polylines on the same physical path.
+            // Averages where paths share the same street, keeps separate where they diverge.
             mergedPolylines = polylines.length > 0 ? [polylines[0]] : [];
             for (let i = 1; i < polylines.length; i++) {
                 const c2raw = polylines[i];
@@ -118,7 +286,11 @@ async function main() {
                     const c2 = dFlip < dSame ? [...c2raw].reverse() : c2raw;
 
                     if (shouldMergePolylines(existing, c2, MERGE_THRESHOLD)) {
-                        const segments = mergePolylineSegments(existing, c2, SEGMENT_MERGE_THRESHOLD);
+                        let segments = mergePolylineSegments(existing, c2, SEGMENT_MERGE_THRESHOLD);
+                        // Fix dangling branch endpoints: connect branch segment ends
+                        // back to the nearest point on the main chain so loops don't
+                        // dead-end visually.
+                        segments = connectBranchEndpoints(segments);
                         mergedPolylines.splice(j, 1, ...segments);
                         didMerge = true;
                         break;
@@ -128,10 +300,15 @@ async function main() {
                     mergedPolylines.push(c2raw);
                 }
             }
+
         }
 
         // Store as array of [[lat, lng], ...] arrays — one per branch
         const polylinesArr = mergedPolylines.map(pl => pl.map(p => [p.lat, p.lng]));
+
+        // Track which directions have typicality=1 patterns (for direction classification)
+        const hasDir0 = polylineDirections.includes(0);
+        const hasDir1 = polylineDirections.includes(1);
 
         routes.push({
             id: routeId,
@@ -142,6 +319,7 @@ async function main() {
             directionNames: attr.direction_names || [],
             directionDestinations: attr.direction_destinations || [],
             polylines: polylinesArr,
+            _hasBothDirections: hasDir0 && hasDir1,
         });
     }
 
@@ -215,12 +393,77 @@ async function main() {
         console.log(`${filteredIds.length} stops`);
     }
 
+    // ── Classify stop direction availability via per-direction stop lists ─────
+    // For routes with both directions, fetch the stop list for each direction from
+    // the MBTA API and compare. If a stop (by parent station) appears in both
+    // directions, it's shared → show both direction buttons. If it only appears
+    // in one direction, it's direction-specific → show only that button.
+    console.log('Classifying stop direction availability...');
+    const routeStopDirections = {};
+
+    for (const route of routes) {
+        if (!route._hasBothDirections) continue;
+
+        process.stdout.write(`  ${route.id}... `);
+
+        // Fetch stops served in each direction
+        const [dir0Data, dir1Data] = await Promise.all([
+            fetchJSON(`${BASE_URL}/stops?filter[route]=${route.id}&filter[direction_id]=0&api_key=${API_KEY}`),
+            fetchJSON(`${BASE_URL}/stops?filter[route]=${route.id}&filter[direction_id]=1&api_key=${API_KEY}`),
+        ]);
+
+        // Build sets of stop IDs per direction, normalized to parent station ID
+        const normalize = (stopId) => stops[stopId]?.parentStopId || stopId;
+
+        const dir0Stops = new Set(dir0Data.data.map(s => s.id));
+        const dir1Stops = new Set(dir1Data.data.map(s => s.id));
+
+        // Also build parent-station-level sets for comparison
+        const dir0Parents = new Set(dir0Data.data.map(s => normalize(s.id)));
+        const dir1Parents = new Set(dir1Data.data.map(s => normalize(s.id)));
+
+        const dirMap = {};
+        let hasDirectionOnly = false;
+
+        // Classify each stop on this route
+        for (const stopId of (routeStops[route.id] || [])) {
+            const parentId = normalize(stopId);
+
+            // Check if this stop's parent station appears in both directions
+            const inDir0 = dir0Parents.has(parentId) || dir0Stops.has(stopId);
+            const inDir1 = dir1Parents.has(parentId) || dir1Stops.has(stopId);
+
+            if (inDir0 && !inDir1) {
+                dirMap[stopId] = 0;
+                hasDirectionOnly = true;
+            } else if (inDir1 && !inDir0) {
+                dirMap[stopId] = 1;
+                hasDirectionOnly = true;
+            }
+            // In both directions (or neither — shouldn't happen) → no entry → both buttons
+        }
+
+        if (hasDirectionOnly) {
+            routeStopDirections[route.id] = dirMap;
+            console.log(`${Object.keys(dirMap).length} direction-specific`);
+        } else {
+            console.log('all shared');
+        }
+    }
+    console.log(`  ${Object.keys(routeStopDirections).length} routes with direction-specific stops`);
+
+    // Clean up temporary fields (not needed in output)
+    for (const route of routes) {
+        delete route._hasBothDirections;
+    }
+
     // ── Write output ──────────────────────────────────────────────────────────
     const output = {
         generatedAt: Math.floor(Date.now() / 1000),
         routes,
         stops,
         routeStops,
+        routeStopDirections,
     };
 
     const dataDir = join(__dirname, '..', 'data');

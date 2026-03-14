@@ -1,5 +1,5 @@
 // src/stop-markers.js — Renders stop markers on map for visible routes
-import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, snapToRoutePolyline, isTerminusStop, getDirectionDestinations } from './map.js';
+import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, getRouteStopDirectionsMap, snapToRoutePolyline, isTerminusStop, getDirectionDestinations } from './map.js';
 import { formatStopPopup, escapeHtml, buildChipPickerHtml } from './stop-popup.js';
 import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';
 import { updateStatus as updateNotificationStatus, renderPanel } from './notification-ui.js';
@@ -255,12 +255,18 @@ export function getStopConfigState(stopId, childStopIds = null) {
         const labels = getDirectionDestinations(routeId);
         const terminus = isTerminusStop(childStopIdForRoute, routeId);
 
+        // Check direction availability: on split sections, a stop may only serve one direction
+        const dirMap = getRouteStopDirectionsMap().get(routeId);
+        const dirOnly = dirMap ? dirMap.get(childStopIdForRoute) : undefined;
+        // dirOnly is 0 or 1 if direction-specific, undefined if both directions
+
         const result = {
             routeId,
             routeName,
             dir0Label: labels[0],
             dir1Label: labels[1],
             isTerminus: terminus,
+            availableDirections: dirOnly !== undefined ? [dirOnly] : [0, 1],
         };
 
         // For merged stops (childStopIds provided), add stopId field to indicate which child to use for alert creation

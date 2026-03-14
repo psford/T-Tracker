@@ -128,6 +128,8 @@ export function mergePolylineSegments(coordsA, coordsB, threshold = 20) {
     smoothClassification(bClose);
 
     // Build segments from A: merged (close) and A-only (far)
+    // Stitch segments at transitions by duplicating the last vertex of the previous
+    // segment as the first vertex of the new segment — prevents visual gaps.
     const segments = [];
     let current = [];
     let currentType = null; // 'merged' or 'a-only'
@@ -136,8 +138,10 @@ export function mergePolylineSegments(coordsA, coordsB, threshold = 20) {
         const type = aClose[i] ? 'merged' : 'a-only';
 
         if (type !== currentType && current.length > 0) {
+            const lastPt = current[current.length - 1];
             segments.push(current);
-            current = [];
+            // Stitch: start new segment from last point of previous for continuity
+            current = [{ lat: lastPt.lat, lng: lastPt.lng }];
         }
         currentType = type;
 
@@ -155,11 +159,24 @@ export function mergePolylineSegments(coordsA, coordsB, threshold = 20) {
     if (current.length > 0) segments.push(current);
 
     // Build B-only segments (B vertices that are far from A)
+    // Stitch each B-only segment to the merged trunk by prepending the averaged
+    // position of the last "close" B vertex before the divergence.
     let bOnly = [];
+    let lastCloseBMergedPt = null;
     for (let j = 0; j < coordsB.length; j++) {
         if (!bClose[j]) {
+            if (bOnly.length === 0 && lastCloseBMergedPt) {
+                // Stitch: start B-only segment from the last merged position
+                bOnly.push({ lat: lastCloseBMergedPt.lat, lng: lastCloseBMergedPt.lng });
+            }
             bOnly.push({ lat: coordsB[j].lat, lng: coordsB[j].lng });
         } else {
+            // Track the merged position for the last close B vertex
+            const aIdx = nearestA[j].idx;
+            lastCloseBMergedPt = {
+                lat: (coordsA[aIdx].lat + coordsB[j].lat) / 2,
+                lng: (coordsA[aIdx].lng + coordsB[j].lng) / 2,
+            };
             if (bOnly.length > 0) {
                 segments.push(bOnly);
                 bOnly = [];
@@ -170,4 +187,89 @@ export function mergePolylineSegments(coordsA, coordsB, threshold = 20) {
 
     // Filter out segments too short to form a line
     return segments.filter(s => s.length >= SEGMENT_MIN_VERTICES);
+}
+
+/**
+ * Remove short dead-end branch segments from a merge result.
+ *
+ * After mergePolylineSegments, bus routes often have short branch segments at
+ * terminus loops (where inbound/outbound diverge for the turnaround). These
+ * create ugly visual artifacts. This function finds the main chain (longest
+ * connected path through the segments) and removes branches shorter than
+ * minBranchLengthMeters.
+ *
+ * @param {Array<Array<{lat: number, lng: number}>>} segments - Merge output
+ * @param {number} minBranchLengthMeters - Branches shorter than this are removed (default 500)
+ * @returns {Array<Array<{lat: number, lng: number}>>} - Trimmed segments
+ */
+export function trimBranchSegments(segments, minBranchLengthMeters = 500) {
+    if (segments.length <= 2) return segments;
+
+    const CONNECT_THRESHOLD = 10; // meters — endpoints within this are "connected"
+
+    // Compute segment lengths
+    const lengths = segments.map(seg => {
+        let len = 0;
+        for (let i = 1; i < seg.length; i++) {
+            len += haversineDistance(seg[i - 1].lat, seg[i - 1].lng, seg[i].lat, seg[i].lng);
+        }
+        return len;
+    });
+
+    // Build directed graph: segment i's endpoint → segments starting there
+    const successors = segments.map(() => []);
+    const predecessors = segments.map(() => []);
+
+    for (let i = 0; i < segments.length; i++) {
+        const end = segments[i][segments[i].length - 1];
+        for (let j = 0; j < segments.length; j++) {
+            if (i === j) continue;
+            const start = segments[j][0];
+            if (haversineDistance(end.lat, end.lng, start.lat, start.lng) < CONNECT_THRESHOLD) {
+                successors[i].push(j);
+                predecessors[j].push(i);
+            }
+        }
+    }
+
+    // Find longest path (main chain) via DFS from each source
+    const sources = [];
+    for (let i = 0; i < segments.length; i++) {
+        if (predecessors[i].length === 0) sources.push(i);
+    }
+    // If no clear source, start from every segment (handles cycles)
+    if (sources.length === 0) {
+        for (let i = 0; i < segments.length; i++) sources.push(i);
+    }
+
+    let bestPath = [];
+    let bestLength = 0;
+
+    function dfs(node, path, totalLen, visited) {
+        if (totalLen > bestLength) {
+            bestLength = totalLen;
+            bestPath = [...path];
+        }
+        for (const next of successors[node]) {
+            if (!visited.has(next)) {
+                visited.add(next);
+                path.push(next);
+                dfs(next, path, totalLen + lengths[next], visited);
+                path.pop();
+                visited.delete(next);
+            }
+        }
+    }
+
+    for (const src of sources) {
+        const visited = new Set([src]);
+        dfs(src, [src], lengths[src], visited);
+    }
+
+    const mainChainSet = new Set(bestPath);
+
+    // Keep main chain segments + branches longer than threshold
+    return segments.filter((_, i) =>
+        mainChainSet.has(i) || lengths[i] >= minBranchLengthMeters
+    );
 }

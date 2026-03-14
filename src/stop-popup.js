@@ -131,6 +131,7 @@ function buildActionsHtml(stop, routeInfos, configState) {
             dir0Label = 'Direction 0',
             dir1Label = 'Direction 1',
             isTerminus = false,
+            availableDirections = [0, 1],
         } = rd;
 
         const escapedRouteId = escapeHtml(routeId);
@@ -139,6 +140,10 @@ function buildActionsHtml(stop, routeInfos, configState) {
         // Check which directions already have alerts at this stop for this route
         const hasDir0 = existingAlerts.some(a => a.routeId === routeId && a.directionId === 0);
         const hasDir1 = existingAlerts.some(a => a.routeId === routeId && a.directionId === 1);
+
+        // Direction availability: on split sections, only one direction serves this stop
+        const showDir0 = availableDirections.includes(0);
+        const showDir1 = availableDirections.includes(1);
 
         if (isTerminus) {
             // Terminus: single button (uses directionId 0 as convention)
@@ -152,12 +157,12 @@ function buildActionsHtml(stop, routeInfos, configState) {
             </div>`;
         }
 
-        // Non-terminus: two direction buttons
-        const btn0 = hasDir0
+        // Non-terminus: direction buttons (filtered by availability)
+        const btn0 = !showDir0 ? '' : hasDir0
             ? `<span class="stop-popup__alert-configured">${escapeHtml(dir0Label)}</span>`
             : `<button class="stop-popup__btn" data-action="show-chips" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="0">\u2192 ${escapeHtml(dir0Label)}</button>`;
 
-        const btn1 = hasDir1
+        const btn1 = !showDir1 ? '' : hasDir1
             ? `<span class="stop-popup__alert-configured">${escapeHtml(dir1Label)}</span>`
             : `<button class="stop-popup__btn" data-action="show-chips" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="1">\u2192 ${escapeHtml(dir1Label)}</button>`;
 
