@@ -878,8 +878,28 @@ export function hydrateRoutes(routes, stopsData = null, routeStopsData = null) {
                 }
             }
         } else {
-            // Non-rail: use prebaked segments as-is
+            // Non-rail: use prebaked segments as-is.
+            // GUARD: prebaked segments must pass through unmodified (no concat, no dedup).
+            // If this assertion fires, someone removed the isRailRoute gate and applied
+            // rail-only processing to bus/CR/ferry. Dedup destroys one-way-street divergences.
             deduped = rawSegments.filter(seg => seg && seg.length >= 2);
+        }
+
+        // GUARD: verify isRailRoute is consistent with route type.
+        // Catches both failure modes: non-rail misclassified as rail (dedup applied)
+        // and rail misclassified as non-rail (dedup skipped).
+        if (!isRailRoute && (type === 0 || type === 1)) {
+            throw new Error(
+                `[hydrateRoutes] ASSERTION FAILED: route "${routeId}" has rail type ${type} ` +
+                `but isRailRoute is false. isRailRoute gate is broken.`
+            );
+        }
+        if (isRailRoute && type !== 0 && type !== 1) {
+            throw new Error(
+                `[hydrateRoutes] ASSERTION FAILED: route "${routeId}" has non-rail type ${type} ` +
+                `but isRailRoute is true. isRailRoute gate is broken — ` +
+                `bus/CR/ferry routes would be put through rail dedup, destroying one-way-street paths.`
+            );
         }
 
         // Trim rail polylines at terminal stops — riders don't care about yard tracks.

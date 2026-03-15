@@ -31,3 +31,7 @@ nul
 
 # Visual review screenshots (generated, not committed)
 .visual-review/screenshots/
+
+# Visual regression test artifacts (generated, not committed)
+tests/visual-baselines/*-FAIL.png
+tests/visual-baselines/*-candidate.png

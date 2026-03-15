@@ -284,6 +284,58 @@ function processRailPolylines(polylines) {
     return merged;
 }
 
+/**
+ * Validate that merged non-rail polyline segments are topologically sane.
+ * Exits process with code 1 if any invariant is violated.
+ */
+function validateNonRailPolylines(routeId, routeType, segments, inputPolylines) {
+    const typeNames = ['Light Rail', 'Heavy Rail', 'Commuter Rail', 'Bus', 'Ferry'];
+    const typeName = typeNames[routeType] || `type ${routeType}`;
+
+    if (routeType === 0 || routeType === 1) {
+        console.error(`[validateNonRailPolylines] ASSERTION: called for rail route "${routeId}"`);
+        process.exit(1);
+    }
+
+    if (inputPolylines.length === 0) return;
+
+    if (segments.length === 0) {
+        console.error(`[VALIDATION] Route "${routeId}" (${typeName}): merge produced 0 segments from ${inputPolylines.length} inputs`);
+        process.exit(1);
+    }
+
+    for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        if (!Array.isArray(seg) || seg.length < 2) {
+            console.error(`[VALIDATION] Route "${routeId}" (${typeName}): segment ${i} has ${seg ? seg.length : 'null'} vertices (min 2)`);
+            process.exit(1);
+        }
+    }
+
+    // Check for spatially degenerate segments (all vertices at same point)
+    for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        const first = seg[0];
+        let maxDist = 0;
+        for (let j = 1; j < seg.length; j++) {
+            const d = haversineDistance(first.lat, first.lng, seg[j].lat, seg[j].lng);
+            if (d > maxDist) maxDist = d;
+        }
+        if (maxDist < 1) { // Less than 1 meter = degenerate
+            console.error(`[VALIDATION] Route "${routeId}" (${typeName}): segment ${i} is degenerate — all ${seg.length} vertices within ${maxDist.toFixed(2)}m`);
+            process.exit(1);
+        }
+    }
+
+    // Check vertex preservation ratio
+    const maxInputLength = Math.max(...inputPolylines.map(p => p.length));
+    const totalOutputVertices = segments.reduce((sum, s) => sum + s.length, 0);
+    if (totalOutputVertices < maxInputLength * 0.2) {
+        console.error(`[VALIDATION] Route "${routeId}" (${typeName}): merge produced only ${totalOutputVertices} vertices from max input of ${maxInputLength} (ratio: ${(totalOutputVertices / maxInputLength).toFixed(2)})`);
+        process.exit(1);
+    }
+}
+
 async function main() {
     // ── Fetch routes with route_patterns and shapes ──────────────────────────
     console.log('Fetching routes and shapes...');
@@ -385,6 +437,10 @@ async function main() {
                 }
             }
 
+        }
+
+        if (!isRail) {
+            validateNonRailPolylines(routeId, attr.type, mergedPolylines, polylines);
         }
 
         // Store as array of [[lat, lng], ...] arrays — one per branch
