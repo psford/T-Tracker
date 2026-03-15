@@ -818,67 +818,72 @@ export function hydrateRoutes(routes, stopsData = null, routeStopsData = null) {
         routeColorMap.set(routeId, color);
         routeTypeMap.set(routeId, type);
 
-        // Concatenate consecutive segments whose endpoints match (fixes merge fragments)
+        // Rail-only render-time processing: concatenation, dedup, and terminal trimming.
+        // Non-rail routes (bus/CR/ferry) use prebaked segments directly — the prebake script
+        // already handled merging, preserving one-way street divergences correctly.
+        const isRailRoute = (type === 0 || type === 1);
         const rawSegments = route.polylines || [route.polyline];
-        const merged = [];
-        for (const seg of rawSegments) {
-            if (!seg || seg.length < 2) continue;
-            if (merged.length > 0) {
-                const prev = merged[merged.length - 1];
-                const prevEnd = prev[prev.length - 1];
-                const curStart = seg[0];
-                const endpointDist = haversineDistance(prevEnd[0], prevEnd[1], curStart[0], curStart[1]);
-                if (endpointDist < 5) {
-                    // Append to previous segment (skip duplicate start point)
-                    prev.push(...seg.slice(1));
-                    continue;
+
+        let deduped;
+        if (isRailRoute) {
+            // Concatenate consecutive segments whose endpoints match (fixes merge fragments)
+            const merged = [];
+            for (const seg of rawSegments) {
+                if (!seg || seg.length < 2) continue;
+                if (merged.length > 0) {
+                    const prev = merged[merged.length - 1];
+                    const prevEnd = prev[prev.length - 1];
+                    const curStart = seg[0];
+                    const endpointDist = haversineDistance(prevEnd[0], prevEnd[1], curStart[0], curStart[1]);
+                    if (endpointDist < 5) {
+                        prev.push(...seg.slice(1));
+                        continue;
+                    }
+                }
+                merged.push([...seg]);
+            }
+
+            // Deduplicate segments with matching start+end points (inbound/outbound overlaps).
+            // Keeps the longer segment.
+            deduped = [];
+            const dedupedFlags = new Set();
+            for (let mi = 0; mi < merged.length; mi++) {
+                if (dedupedFlags.has(mi)) continue;
+                const seg = merged[mi];
+                const start = seg[0];
+                const end = seg[seg.length - 1];
+
+                let dupIdx = -1;
+                for (let mj = mi + 1; mj < merged.length; mj++) {
+                    if (dedupedFlags.has(mj)) continue;
+                    const other = merged[mj];
+                    const oStart = other[0];
+                    const oEnd = other[other.length - 1];
+                    if ((haversineDistance(start[0], start[1], oStart[0], oStart[1]) < 100 &&
+                         haversineDistance(end[0], end[1], oEnd[0], oEnd[1]) < 100) ||
+                        (haversineDistance(start[0], start[1], oEnd[0], oEnd[1]) < 100 &&
+                         haversineDistance(end[0], end[1], oStart[0], oStart[1]) < 100)) {
+                        dupIdx = mj;
+                        break;
+                    }
+                }
+
+                if (dupIdx === -1) {
+                    deduped.push(seg);
+                } else {
+                    dedupedFlags.add(dupIdx);
+                    const other = merged[dupIdx];
+                    const kept = seg.length >= other.length ? seg : other;
+                    deduped.push(kept);
                 }
             }
-            merged.push([...seg]);
-        }
-
-        // Deduplicate segments with matching start+end points (inbound/outbound overlaps).
-        // Keeps the longer segment.
-        const deduped = [];
-        const dedupedFlags = new Set();
-        for (let mi = 0; mi < merged.length; mi++) {
-            if (dedupedFlags.has(mi)) continue;
-            const seg = merged[mi];
-            const start = seg[0];
-            const end = seg[seg.length - 1];
-
-            let dupIdx = -1;
-            for (let mj = mi + 1; mj < merged.length; mj++) {
-                if (dedupedFlags.has(mj)) continue;
-                const other = merged[mj];
-                const oStart = other[0];
-                const oEnd = other[other.length - 1];
-                if ((haversineDistance(start[0], start[1], oStart[0], oStart[1]) < 100 &&
-                     haversineDistance(end[0], end[1], oEnd[0], oEnd[1]) < 100) ||
-                    (haversineDistance(start[0], start[1], oEnd[0], oEnd[1]) < 100 &&
-                     haversineDistance(end[0], end[1], oStart[0], oStart[1]) < 100)) {
-                    dupIdx = mj;
-                    break;
-                }
-            }
-
-            if (dupIdx === -1) {
-                deduped.push(seg);
-            } else {
-                dedupedFlags.add(dupIdx);
-                // Keep the longer segment
-                const other = merged[dupIdx];
-                const kept = seg.length >= other.length ? seg : other;
-                deduped.push(kept);
-            }
+        } else {
+            // Non-rail: use prebaked segments as-is
+            deduped = rawSegments.filter(seg => seg && seg.length >= 2);
         }
 
         // Trim rail polylines at terminal stops — riders don't care about yard tracks.
         // Only for rail (subway/light rail) — bus routes have complex multi-segment shapes.
-        // Uses segment projection (not just vertex distance) to handle cases where
-        // the nearest vertex is already past the terminal (e.g., Alewife 74m overshoot).
-        // Only trims true terminal endpoints, NOT junction endpoints where branches connect.
-        const isRailRoute = (type === 0 || type === 1);
         if (isRailRoute && stopsData && routeStopsData && routeStopsData[routeId]) {
             const stopIds = routeStopsData[routeId];
             const stopCoords = stopIds.map(sid => stopsData[sid]).filter(Boolean);

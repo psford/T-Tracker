@@ -536,8 +536,6 @@ html, body {
 .stop-popup__route-btns {
     display: flex;
     gap: 3px;
-    flex: 1;
-    min-width: 0;
 }
 
 .stop-popup__swatch {
@@ -567,10 +565,6 @@ html, body {
     cursor: pointer;
     transition: background 0.15s;
     white-space: nowrap;
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .stop-popup__btn:hover {

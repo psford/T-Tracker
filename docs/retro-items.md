@@ -69,3 +69,19 @@ Claude repeatedly told Patrick "it's fixed" or "it's working correctly" without 
 **Root cause:** Claude treats passing tests and logical reasoning as sufficient proof. For visual/UI bugs, they are not. The only proof is a screenshot of the exact area at the exact zoom level showing the fix.
 
 **Lesson (HARD RULE):** Every visual fix claim MUST include a Playwright screenshot of the specific area that was broken, at the zoom level the user was looking at. No exceptions. "Tests pass" is not visual proof. "The data looks correct" is not visual proof. A screenshot is visual proof.
+
+---
+
+## 2026-03-14 — Render-time processing broke bus polylines that were already working
+
+**Feature:** polyline rendering (feature/stop-marker-merging branch)
+
+Claude added render-time processing (concatenation, dedup, terminal trimming) to `hydrateRoutes()` that applied to ALL route types. The prebake script had already correctly handled bus polyline merging — averaging shared-street paths, preserving one-way street divergences as separate segments. The render-time dedup then destroyed this by comparing segment start/end points and dropping "duplicates" that were actually different one-way-street paths.
+
+Route 39 went from rendering correctly (23 connected segments forming a continuous line) to 6 fragmented polylines with visible gaps and doubling. This was immediately visible to Patrick but Claude didn't catch it because there were no automated visual regression tests.
+
+**Root cause:** Claude applied a blanket fix to all route types without considering that non-rail routes had different data characteristics. The prebake output for buses was already correct — the render-time processing was only needed for rail.
+
+**Action item:** Build a UI regression test suite that screenshots key areas (bus routes on one-way streets, rail terminals, branch points) and runs before commits touching map.js or polyline code. This would have caught the regression immediately instead of Patrick finding it manually.
+
+**Lesson:** When adding render-time processing, scope it to the route types that need it. The prebake exists precisely so the renderer doesn't have to re-derive things. Trust it for the route types where it already works.

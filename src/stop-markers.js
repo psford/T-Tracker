@@ -1,5 +1,5 @@
 // src/stop-markers.js — Renders stop markers on map for visible routes
-import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, getRouteStopDirectionsMap, isTerminusStop, getDirectionDestinations, snapToRoutePolyline } from './map.js';
+import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, getVisibleRoutes, getRouteStopDirectionsMap, isTerminusStop, getDirectionDestinations, snapToRoutePolyline } from './map.js';
 import { formatStopPopup, escapeHtml, buildChipPickerHtml } from './stop-popup.js';
 import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';
 import { updateStatus as updateNotificationStatus, renderPanel } from './notification-ui.js';
@@ -255,10 +255,12 @@ export function getStopConfigState(stopId, childStopIds = null) {
         const labels = getDirectionDestinations(routeId);
         const terminus = isTerminusStop(childStopIdForRoute, routeId);
 
-        // Check direction availability: on split sections, a stop may only serve one direction
-        const dirMap = getRouteStopDirectionsMap().get(routeId);
+        // Check direction availability: on rail split sections, a stop may only serve one direction.
+        // Non-rail routes always show both directions — bus stops serve both even if MBTA API
+        // reports separate physical stops per direction (opposite sides of street).
+        const isRail = meta && (meta.type === 0 || meta.type === 1);
+        const dirMap = isRail ? getRouteStopDirectionsMap().get(routeId) : undefined;
         const dirOnly = dirMap ? dirMap.get(childStopIdForRoute) : undefined;
-        // dirOnly is 0 or 1 if direction-specific, undefined if both directions
 
         const result = {
             routeId,
@@ -636,17 +638,18 @@ export function updateVisibleStops(routeIds) {
                     stopRoutesMap = buildStopRoutesMap();
                 }
 
-                // Aggregate routes from all child stops.
+                // Aggregate routes from all child stops, filtered to currently visible routes.
                 // Note: Similar route aggregation logic exists in getStopConfigState;
                 // both iterate childStopIds and collect unique routes from stopRoutesMap.
                 const allRouteIds = new Set();
                 const allRouteInfos = [];
                 const routeMetadata = getRouteMetadata();
+                const visible = getVisibleRoutes();
 
                 childStopIds.forEach(cid => {
                     const childRouteIds = stopRoutesMap.get(cid) || [];
                     childRouteIds.forEach(rid => {
-                        if (!allRouteIds.has(rid)) {
+                        if (!allRouteIds.has(rid) && visible.has(rid)) {
                             allRouteIds.add(rid);
                             const meta = routeMetadata.find(m => m.id === rid);
                             if (meta) allRouteInfos.push(meta);
@@ -664,6 +667,7 @@ export function updateVisibleStops(routeIds) {
                 className: 'stop-popup-container',
                 closeButton: true,
                 autoPan: false,
+                maxWidth: 400,
             });
 
             // Desktop: hover to show popup, stays open while cursor is over marker OR popup
@@ -717,7 +721,9 @@ export function updateVisibleStops(routeIds) {
 
                 const stopRouteIds = stopRoutesMap.get(stopId) || [];
                 const routeMetadata = getRouteMetadata();
+                const visible = getVisibleRoutes();
                 const routeInfos = stopRouteIds
+                    .filter(rid => visible.has(rid))
                     .map(rid => routeMetadata.find(m => m.id === rid))
                     .filter(Boolean);
 
@@ -729,6 +735,7 @@ export function updateVisibleStops(routeIds) {
                 className: 'stop-popup-container',
                 closeButton: true,
                 autoPan: false,
+                maxWidth: 400,
             });
 
             // Desktop: hover to show popup, stays open while cursor is over marker OR popup

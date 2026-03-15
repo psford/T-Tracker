@@ -488,6 +488,12 @@ async function main() {
     for (const route of routes) {
         if (!route._hasBothDirections) continue;
 
+        // Only classify direction-specific stops for rail routes.
+        // Bus routes have separate physical stops per direction (opposite sides of street),
+        // but riders expect to set alerts for both directions from any stop marker.
+        const routeType = route.attributes?.type ?? route.type;
+        if (routeType !== 0 && routeType !== 1) continue;
+
         process.stdout.write(`  ${route.id}... `);
 
         // Fetch stops served in each direction
