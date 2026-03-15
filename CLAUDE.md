@@ -142,6 +142,12 @@ All data flows through dedicated modules with clear responsibilities:
 ## Retrospective
 - Retro items are logged in `docs/retro-items.md` (not `.claude/retrospective-log.md`)
 
+## Decisions
+- Architectural and product decisions are recorded in `docs/decisions.md`
+- Read this file at session start before proposing solutions related to polylines, merging, or rendering
+- REJECTED entries must never be re-proposed — check before suggesting alternatives
+- When Patrick makes a UX/product decision, implement it; technical objections only for data loss, security, or irreversibility
+
 ## Configuration
 - `config.js` holds API key, map settings, animation timing, route defaults
 - Gitignored (contains API key); copy `config.example.js` to create

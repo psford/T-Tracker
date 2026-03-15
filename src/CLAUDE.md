@@ -223,6 +223,53 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 - notifications.js listens to apiEvents directly (not via vehicles.js): avoids coupling notification timing to animation frames
 - Pure formatting modules (stop-popup.js, notification-ui.js) export display helpers separately from init: enables isolated unit testing
 
+## Route Type Behavior Matrix
+
+MBTA route types differ in how their polylines are processed at prebake time
+(`scripts/fetch-mbta-data.mjs`) and at render time (`src/map.js`).
+**Any code touching polylines MUST consult this table.**
+
+| Processing Stage | Type 0 Light Rail | Type 1 Heavy Rail | Type 2 Commuter Rail | Type 3 Bus | Type 4 Ferry |
+|---|---|---|---|---|---|
+| **Prebake: inbound/outbound dedup** | YES — same physical track | YES — same physical track | NO | NO | NO |
+| **Prebake: segment-merge (average close paths)** | NO (rail uses dedup instead) | NO (rail uses dedup instead) | YES — same street averaging | YES — same street averaging | YES |
+| **Prebake: terminus loop extraction** | YES — Green-E Heath St style | YES | NO | NO | NO |
+| **Prebake: direction stop classification** | YES — stops may be direction-only | YES — stops may be direction-only | NO — all stops serve both directions | NO — opposite-side bus stops both serve both directions | NO |
+| **Render-time: concat fragments** | YES | YES | NO | NO | NO |
+| **Render-time: start+end dedup** | YES | YES | NO — would destroy one-way paths | NO — would destroy one-way paths | NO |
+| **Render-time: terminal trim to stops** | YES | YES | NO | NO | NO |
+| **Stop marker direction buttons** | Both shown unless stop is rail direction-only | Both shown unless stop is rail direction-only | Both always shown | Both always shown | Both always shown |
+
+### Why Non-Rail Does NOT Get Rail Dedup
+
+Bus inbound and outbound routes can be 10-15m apart on the **same street** (visibly doubled
+at zoom 17+) or 50-150m apart on **different streets** at each terminus. The segment-merge
+algorithm handles both cases: it averages where paths share the same street and keeps separate
+segments where they diverge.
+
+Rail dedup uses a start+end proximity gate that would collapse both bus directions into one
+even when they use different streets at terminuses. This destroyed Bus 39's one-way terminus
+paths in the bug that triggered 9 algorithm rewrites.
+
+### isRailType() Definition
+
+The canonical definition is `type === 0 || type === 1`. It appears in:
+- `scripts/fetch-mbta-data.mjs` — prebake pipeline
+- `src/map.js` — `const isRailRoute`
+- `src/stop-markers.js` — `const isRail`
+- `tests/route-type-polyline.test.js` — `isRailType()` helper
+
+**All four must agree.** If you change the definition in one place, update all four and
+update this table.
+
+### Adding a New Route Type
+
+If MBTA ever introduces a type 5:
+1. Add a row to this table
+2. Update `isRailType()` in all four files above
+3. Add the new type to `testAllTypesBranchAssignment()` in `tests/route-type-polyline.test.js`
+4. Run `node tests/route-type-polyline.test.js` — it will fail until the matrix is updated
+
 ## Invariants
 - api.js is the only module that talks to MBTA API for live vehicle data (exceptions: map.js fetches route shapes at startup; static-data.js makes a lightweight staleness check against /routes; scripts/fetch-mbta-data.mjs prebakes static data offline)
 - All MBTA JSON:API parsing happens at the api.js boundary (downstream modules receive flat objects)
