@@ -1,5 +1,5 @@
 // src/stop-markers.js — Renders stop markers on map for visible routes
-import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, getRouteStopDirectionsMap, snapToRoutePolyline, isTerminusStop, getDirectionDestinations } from './map.js';
+import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, getRouteStopDirectionsMap, isTerminusStop, getDirectionDestinations, snapToRoutePolyline } from './map.js';
 import { formatStopPopup, escapeHtml, buildChipPickerHtml } from './stop-popup.js';
 import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';
 import { updateStatus as updateNotificationStatus, renderPanel } from './notification-ui.js';
@@ -471,10 +471,10 @@ export function initStopMarkers(map, apiEventsTarget = null) {
                 // Collapse any existing chip picker in this popup (AC1.7)
                 container.querySelectorAll('.chip-picker').forEach(el => el.remove());
 
-                // Insert chip picker after the clicked button's parent route-alerts div
-                const routeAlertsDiv = showChipsBtn.closest('.stop-popup__route-alerts');
-                if (routeAlertsDiv) {
-                    routeAlertsDiv.insertAdjacentHTML('afterend', buildChipPickerHtml(stopId, routeId, directionId));
+                // Insert chip picker after the clicked button's parent route row
+                const routeRow = showChipsBtn.closest('.stop-popup__route-row');
+                if (routeRow) {
+                    routeRow.insertAdjacentHTML('afterend', buildChipPickerHtml(stopId, routeId, directionId));
                 }
                 return;
             }
@@ -600,7 +600,31 @@ export function updateVisibleStops(routeIds) {
     // Step 3: Create merged markers
     mergedStops.forEach(({ lat, lng, childStopIds, color }, parentId) => {
         if (!stopMarkers.has(parentId)) {
-            const marker = createStopMarker(lat, lng, color);
+            // Distance-capped snap for merged markers: try all visible routes
+            // serving any child stop, pick nearest polyline point within threshold
+            let markerLat = lat;
+            let markerLng = lng;
+            const SNAP_THRESHOLD = 75; // meters — covers underground stations (Andrew ~64m)
+            let bestSnapDist = Infinity;
+            const childSet = new Set(childStopIds);
+
+            new Set(routeIds).forEach((rid) => {
+                const routeStops = routeStopsMap.get(rid);
+                if (!routeStops) return;
+                // Check if any child stop is served by this route
+                let serves = false;
+                childSet.forEach(cid => { if (routeStops.has(cid)) serves = true; });
+                if (!serves) return;
+                const snapped = snapToRoutePolyline(lat, lng, rid);
+                const dist = haversineDistance(lat, lng, snapped.lat, snapped.lng);
+                if (dist < bestSnapDist && dist <= SNAP_THRESHOLD) {
+                    bestSnapDist = dist;
+                    markerLat = snapped.lat;
+                    markerLng = snapped.lng;
+                }
+            });
+
+            const marker = createStopMarker(markerLat, markerLng, color);
 
             // Store child IDs for popup and highlight lookup
             marker._childStopIds = childStopIds;
@@ -660,14 +684,28 @@ export function updateVisibleStops(routeIds) {
             // Skip stops without coordinates
             if (!stop || !stop.latitude || !stop.longitude) return;
 
-            // Snap stop position to nearest point on its route's polyline
-            const ownerRouteId = stopRouteMap.get(stopId);
-            const snapped = ownerRouteId
-                ? snapToRoutePolyline(stop.latitude, stop.longitude, ownerRouteId)
-                : { lat: stop.latitude, lng: stop.longitude };
-
             const color = stopColorMap.get(stopId) || '#888888';
-            const marker = createStopMarker(snapped.lat, snapped.lng, color);
+
+            // Distance-capped snap: try ALL visible routes serving this stop,
+            // pick the nearest polyline point within 30m. No single "owner" route.
+            let markerLat = stop.latitude;
+            let markerLng = stop.longitude;
+            const SNAP_THRESHOLD = 75; // meters — covers underground stations (Andrew ~64m)
+            let bestSnapDist = Infinity;
+
+            new Set(routeIds).forEach((rid) => {
+                const routeStops = routeStopsMap.get(rid);
+                if (!routeStops || !routeStops.has(stopId)) return;
+                const snapped = snapToRoutePolyline(stop.latitude, stop.longitude, rid);
+                const dist = haversineDistance(stop.latitude, stop.longitude, snapped.lat, snapped.lng);
+                if (dist < bestSnapDist && dist <= SNAP_THRESHOLD) {
+                    bestSnapDist = dist;
+                    markerLat = snapped.lat;
+                    markerLng = snapped.lng;
+                }
+            });
+
+            const marker = createStopMarker(markerLat, markerLng, color);
 
             // Build popup content dynamically on each popup open
             // This ensures config state is always fresh

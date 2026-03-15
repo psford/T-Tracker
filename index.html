@@ -94,7 +94,7 @@
         // Re-hydrates in-memory state and re-renders visible routes/stops so
         // the current session stays current (AC3.3).
         function onStaticDataRefresh(freshBundle) {
-            hydrateRoutes(freshBundle.routes);
+            hydrateRoutes(freshBundle.routes, freshBundle.stops, freshBundle.routeStops);
             hydrateStops(freshBundle.stops);
             for (const [routeId, stopIds] of Object.entries(freshBundle.routeStops)) {
                 hydrateRouteStopsMap(routeId, [...stopIds]);
@@ -112,7 +112,7 @@
             try {
                 // AC2.1/AC2.2: load from static file or localStorage cache
                 const bundle = await loadStaticData(onStaticDataRefresh, config.api.key);
-                hydrateRoutes(bundle.routes);
+                hydrateRoutes(bundle.routes, bundle.stops, bundle.routeStops);
                 hydrateStops(bundle.stops);
                 for (const [routeId, stopIds] of Object.entries(bundle.routeStops)) {
                     hydrateRouteStopsMap(routeId, [...stopIds]);

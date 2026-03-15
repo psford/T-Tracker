@@ -134,67 +134,151 @@ function processRailPolylines(polylines) {
         oriented.push(dFlip < dSame ? [...p].reverse() : p);
     }
 
-    // Deduplicate: same start+end AND max sampled nearest-vertex distance < threshold
+    // Deduplicate: drop polylines that overlap with an existing one.
+    // For same-start-same-end pairs (e.g., Green-E inbound/outbound),
+    // extract the divergent terminus tail from the dropped polyline and
+    // keep it as a separate short segment (preserves turnaround loops).
+    const DIVERGE_THRESHOLD = 15; // meters — distance at which tracks are "divergent"
     const unique = [oriented[0]];
     for (let i = 1; i < oriented.length; i++) {
-        let isDup = false;
-        for (const u of unique) {
-            const dStart = haversineDistance(oriented[i][0].lat, oriented[i][0].lng, u[0].lat, u[0].lng);
+        // Check this polyline against ALL previously accepted unique entries,
+        // not just oriented[0]. This catches inbound/outbound duplicates of
+        // branches (e.g., Red has 2 Ashmont + 2 Braintree polylines).
+        let matchedIdx = -1;
+        for (let u = 0; u < unique.length; u++) {
+            const ref = unique[u];
+            const dStart = haversineDistance(oriented[i][0].lat, oriented[i][0].lng, ref[0].lat, ref[0].lng);
             const dEnd = haversineDistance(
                 oriented[i][oriented[i].length - 1].lat, oriented[i][oriented[i].length - 1].lng,
-                u[u.length - 1].lat, u[u.length - 1].lng
+                ref[ref.length - 1].lat, ref[ref.length - 1].lng
             );
-            if (dStart > 100 || dEnd > 100) continue;
-
-            let maxDist = 0;
-            const step = Math.max(1, Math.floor(oriented[i].length / 50));
-            for (let k = 0; k < oriented[i].length; k += step) {
-                let minD = Infinity;
-                for (const v of u) {
-                    const d = haversineDistance(oriented[i][k].lat, oriented[i][k].lng, v.lat, v.lng);
-                    if (d < minD) minD = d;
-                }
-                if (minD > maxDist) maxDist = minD;
-            }
-            if (maxDist < RAIL_DEDUP_MAX_DIST) {
-                isDup = true;
+            // Same start AND same end → inbound/outbound pair candidate
+            if (dStart <= 100 && dEnd <= 100 && shouldMergePolylines(oriented[i], ref)) {
+                matchedIdx = u;
                 break;
             }
         }
-        if (!isDup) unique.push(oriented[i]);
+
+        if (matchedIdx === -1) {
+            // No match — this is a distinct branch. Keep it.
+            unique.push(oriented[i]);
+            continue;
+        }
+
+        // This is a duplicate — drop it, but extract divergent terminus loops.
+        const kept = unique[matchedIdx];
+        const dropped = oriented[i];
+
+        // Compute per-vertex distance to nearest point on kept polyline
+        const dists = dropped.map(v => {
+            let minDist = Infinity;
+            for (let k = 0; k < kept.length; k++) {
+                const d = haversineDistance(v.lat, v.lng, kept[k].lat, kept[k].lng);
+                if (d < minDist) minDist = d;
+            }
+            return minDist;
+        });
+
+        // Find divergent runs near the terminus that form LOOPS — tracks that
+        // diverge from the main line and then reconverge. This preserves turnaround
+        // loops (e.g., Heath St) while ignoring parallel-track junction divergences.
+        // A loop run must: (a) be in the tail zone (last/first 10%), (b) have both
+        // endpoints close to the kept polyline (< DIVERGE_THRESHOLD), meaning the
+        // tracks diverge and come back — not just shift to a parallel track.
+        const tailZone = Math.max(10, Math.floor(dropped.length * 0.1));
+
+        function extractLoopRuns(startIdx, endIdx) {
+            let runStart = -1;
+            for (let j = startIdx; j <= endIdx; j++) {
+                const isDivergent = j < dropped.length && dists[j] > DIVERGE_THRESHOLD;
+                if (isDivergent && runStart === -1) {
+                    runStart = j;
+                } else if (!isDivergent && runStart !== -1) {
+                    // Run ended — check if it's a loop (both endpoints close to kept)
+                    const preIdx = Math.max(0, runStart - 1);
+                    const postIdx = Math.min(dropped.length - 1, j);
+                    const preClose = dists[preIdx] <= DIVERGE_THRESHOLD;
+                    const postClose = dists[postIdx] <= DIVERGE_THRESHOLD;
+                    if (preClose && postClose) {
+                        const maxDiv = Math.max(...dists.slice(runStart, j));
+                        // Only keep small turnaround loops (< 50m divergence).
+                        // Larger divergences are route alignment differences, not loops.
+                        if (maxDiv < 50) {
+                            const tail = dropped.slice(preIdx, postIdx + 1);
+                            if (tail.length >= 4) {
+                                unique.push(tail);
+                            }
+                        }
+                    }
+                    runStart = -1;
+                }
+            }
+        }
+
+        // Check end tail zone
+        extractLoopRuns(dropped.length - tailZone, dropped.length);
+        // Check start tail zone
+        extractLoopRuns(0, tailZone);
     }
 
     if (unique.length <= 1) return unique;
 
-    // Distinguish terminus loops from branching routes:
-    // - Same start AND end (within threshold): terminus variation (Green-E, Green-C/D).
-    //   Keep both raw — they overlap on shared track and diverge at terminus loops.
-    // - Same start, different end: branching route (Red Line Ashmont/Braintree).
-    //   Segment-merge to combine the shared corridor into one line.
-    const END_MATCH_THRESHOLD = 500; // meters — terminus ends are at the same station
-    const allSameEnd = unique.every(p => {
-        const dEnd = haversineDistance(
-            p[p.length - 1].lat, p[p.length - 1].lng,
-            unique[0][unique[0].length - 1].lat, unique[0][unique[0].length - 1].lng
-        );
-        return dEnd < END_MATCH_THRESHOLD;
-    });
-
-    if (allSameEnd) {
-        // Terminus loops: keep all raw polylines (overlap on trunk, diverge at loop)
-        return unique;
-    }
-
-    // Branching route: segment-merge pairwise to combine shared corridor
+    // Merge remaining distinct polylines (branches) pairwise to combine shared corridor.
+    // Then concatenate all junction fragments into their neighboring segments so
+    // no short orphan segments remain.
     let merged = [unique[0]];
     for (let i = 1; i < unique.length; i++) {
         const c2 = unique[i];
         if (c2.length === 0) continue;
 
-        // Use segment merge directly (skip shouldMergePolylines gate — we know
-        // branching polylines share a corridor that needs merging)
+        // Short segments (< 20 vertices) are terminus tails — keep as-is
+        if (c2.length < 20) {
+            merged.push(c2);
+            continue;
+        }
+
         const segments = mergePolylineSegments(merged[0], c2, RAIL_MERGE_THRESHOLD);
         merged.splice(0, 1, ...segments);
+    }
+
+    // Absorb short junction fragments into adjacent longer segments.
+    // mergePolylineSegments creates tiny segments at branch points (e.g., JFK/UMass)
+    // that render as orphan line fragments. Find each short segment and append it
+    // to whichever neighboring long segment it connects to.
+    const MIN_SEG = 15;
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (let i = 0; i < merged.length; i++) {
+            if (merged[i].length >= MIN_SEG) continue;
+            const short = merged[i];
+            const shortStart = short[0];
+            const shortEnd = short[short.length - 1];
+
+            // Try to attach to a neighboring long segment
+            for (let j = 0; j < merged.length; j++) {
+                if (j === i || merged[j].length < MIN_SEG) continue;
+                const long = merged[j];
+                const longStart = long[0];
+                const longEnd = long[long.length - 1];
+
+                // Short's start matches long's end → append short to end of long
+                if (haversineDistance(shortStart.lat, shortStart.lng, longEnd.lat, longEnd.lng) < 50) {
+                    merged[j] = long.concat(short.slice(1));
+                    merged.splice(i, 1);
+                    changed = true;
+                    break;
+                }
+                // Short's end matches long's start → prepend short to start of long
+                if (haversineDistance(shortEnd.lat, shortEnd.lng, longStart.lat, longStart.lng) < 50) {
+                    merged[j] = short.concat(long.slice(1));
+                    merged.splice(i, 1);
+                    changed = true;
+                    break;
+                }
+            }
+            if (changed) break;
+        }
     }
 
     return merged;

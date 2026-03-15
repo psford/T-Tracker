@@ -357,9 +357,9 @@ export async function loadRoutes() {
             const longName = route.attributes.long_name || '';
             const type = route.attributes.type;
 
-            // Darken heavy rail and commuter rail colors for dark map theme
-            // Green Line (type 0) and Bus (type 3) already theme-appropriate
-            if (type === 1 || type === 2) {
+            // Darken rail colors for dark map theme
+            // Bus (type 3) and Ferry (type 4) already theme-appropriate
+            if (type === 0 || type === 1 || type === 2) {
                 color = darkenHexColor(color, 0.15);
             }
 
@@ -593,7 +593,7 @@ export async function loadRoutes() {
                 }
             });
 
-            if (longestCoords.length >= 20) {
+            if (shortName && longestCoords.length >= 20) {
                 const labels = [];
                 const numLabels = Math.max(1, Math.min(5, Math.floor(longestCoords.length / 100)));
                 const interval = Math.floor(longestCoords.length / (numLabels + 1));
@@ -787,8 +787,10 @@ export async function loadStops() {
  * Safe to call multiple times — clears existing state before repopulating.
  *
  * @param {Array<{id, color, shortName, longName, type, directionNames, directionDestinations, polyline: number[][]}>} routes
+ * @param {Object} [stopsData] - stops keyed by ID with {lat, lng}
+ * @param {Object} [routeStopsData] - route ID → array of stop IDs
  */
-export function hydrateRoutes(routes) {
+export function hydrateRoutes(routes, stopsData = null, routeStopsData = null) {
     // Clear existing Leaflet layers
     if (routeLayerGroup) {
         routeLayerGroup.clearLayers();
@@ -808,7 +810,7 @@ export function hydrateRoutes(routes) {
 
         // Apply same color darkening as loadRoutes() for dark map theme
         let color = route.color || '#888888';
-        if (type === 1 || type === 2) {
+        if (type === 0 || type === 1 || type === 2) {
             color = darkenHexColor(color, 0.15);
         }
 
@@ -816,8 +818,176 @@ export function hydrateRoutes(routes) {
         routeColorMap.set(routeId, color);
         routeTypeMap.set(routeId, type);
 
-        // Create Leaflet polylines from pre-decoded [[lat, lng], ...] arrays (one per branch)
-        const polylines = (route.polylines || [route.polyline]).map(
+        // Concatenate consecutive segments whose endpoints match (fixes merge fragments)
+        const rawSegments = route.polylines || [route.polyline];
+        const merged = [];
+        for (const seg of rawSegments) {
+            if (!seg || seg.length < 2) continue;
+            if (merged.length > 0) {
+                const prev = merged[merged.length - 1];
+                const prevEnd = prev[prev.length - 1];
+                const curStart = seg[0];
+                const endpointDist = haversineDistance(prevEnd[0], prevEnd[1], curStart[0], curStart[1]);
+                if (endpointDist < 5) {
+                    // Append to previous segment (skip duplicate start point)
+                    prev.push(...seg.slice(1));
+                    continue;
+                }
+            }
+            merged.push([...seg]);
+        }
+
+        // Deduplicate segments with matching start+end points (inbound/outbound overlaps).
+        // Keeps the longer segment.
+        const deduped = [];
+        const dedupedFlags = new Set();
+        for (let mi = 0; mi < merged.length; mi++) {
+            if (dedupedFlags.has(mi)) continue;
+            const seg = merged[mi];
+            const start = seg[0];
+            const end = seg[seg.length - 1];
+
+            let dupIdx = -1;
+            for (let mj = mi + 1; mj < merged.length; mj++) {
+                if (dedupedFlags.has(mj)) continue;
+                const other = merged[mj];
+                const oStart = other[0];
+                const oEnd = other[other.length - 1];
+                if ((haversineDistance(start[0], start[1], oStart[0], oStart[1]) < 100 &&
+                     haversineDistance(end[0], end[1], oEnd[0], oEnd[1]) < 100) ||
+                    (haversineDistance(start[0], start[1], oEnd[0], oEnd[1]) < 100 &&
+                     haversineDistance(end[0], end[1], oStart[0], oStart[1]) < 100)) {
+                    dupIdx = mj;
+                    break;
+                }
+            }
+
+            if (dupIdx === -1) {
+                deduped.push(seg);
+            } else {
+                dedupedFlags.add(dupIdx);
+                // Keep the longer segment
+                const other = merged[dupIdx];
+                const kept = seg.length >= other.length ? seg : other;
+                deduped.push(kept);
+            }
+        }
+
+        // Trim rail polylines at terminal stops — riders don't care about yard tracks.
+        // Only for rail (subway/light rail) — bus routes have complex multi-segment shapes.
+        // Uses segment projection (not just vertex distance) to handle cases where
+        // the nearest vertex is already past the terminal (e.g., Alewife 74m overshoot).
+        // Only trims true terminal endpoints, NOT junction endpoints where branches connect.
+        const isRailRoute = (type === 0 || type === 1);
+        if (isRailRoute && stopsData && routeStopsData && routeStopsData[routeId]) {
+            const stopIds = routeStopsData[routeId];
+            const stopCoords = stopIds.map(sid => stopsData[sid]).filter(Boolean);
+
+            // Identify junction endpoints: a segment endpoint that's near any point on another segment.
+            // These should NOT be trimmed — they're branch connection points, not terminals.
+            // Checks all vertices (not just endpoints) because branches can diverge mid-segment
+            // (e.g., Red Line Braintree branch splits from trunk mid-polyline).
+            const JUNCTION_THRESHOLD = 50; // meters
+            function isJunction(segIdx, whichEnd) {
+                const pt = whichEnd === 'start' ? deduped[segIdx][0] : deduped[segIdx][deduped[segIdx].length - 1];
+                for (let oi = 0; oi < deduped.length; oi++) {
+                    if (oi === segIdx) continue;
+                    for (let vi = 0; vi < deduped[oi].length; vi++) {
+                        if (haversineDistance(pt[0], pt[1], deduped[oi][vi][0], deduped[oi][vi][1]) < JUNCTION_THRESHOLD) return true;
+                    }
+                }
+                return false;
+            }
+
+            for (let si = 0; si < deduped.length; si++) {
+                const seg = deduped[si];
+                if (seg.length < 3 || stopCoords.length === 0) continue;
+
+                let trimStart = !isJunction(si, 'start');
+                let trimEnd = !isJunction(si, 'end');
+                if (!trimStart && !trimEnd) continue;
+
+                // Trim at terminal stops — always trim non-junction endpoints
+                // so lines end cleanly at the last station (no turnaround curves,
+                // no maintenance yard extensions).
+
+                // For each stop, find its nearest point on the polyline (segment projection)
+                let minSegIdx = seg.length - 1;
+                let maxSegIdx = 0;
+                let minProjPoint = null;
+                let maxProjPoint = null;
+                let hasNearby = false;
+
+                for (const stop of stopCoords) {
+                    let bestDist = Infinity;
+                    let bestSegI = 0;
+                    let bestProj = null;
+
+                    for (let vi = 0; vi < seg.length - 1; vi++) {
+                        const proj = nearestPointOnSegment(
+                            stop.lat, stop.lng,
+                            seg[vi][0], seg[vi][1],
+                            seg[vi + 1][0], seg[vi + 1][1]
+                        );
+                        const d = haversineDistance(stop.lat, stop.lng, proj.lat, proj.lng);
+                        if (d < bestDist) {
+                            bestDist = d;
+                            bestSegI = vi;
+                            bestProj = proj;
+                        }
+                    }
+
+                    if (bestDist < 300) {
+                        hasNearby = true;
+                        if (bestSegI < minSegIdx) {
+                            minSegIdx = bestSegI;
+                            minProjPoint = bestProj;
+                        }
+                        if (bestSegI > maxSegIdx) {
+                            maxSegIdx = bestSegI;
+                            maxProjPoint = bestProj;
+                        }
+                    }
+                }
+                if (!hasNearby) continue;
+
+                // Build trimmed segment, only trimming true terminal ends
+                const startIdx = trimStart ? minSegIdx : 0;
+                const endIdx = trimEnd ? maxSegIdx : seg.length - 2;
+                if (endIdx < startIdx) continue;
+
+                const trimmed = [];
+                // Start: projected point at first terminal stop, or keep original start
+                if (trimStart && minProjPoint) {
+                    trimmed.push([minProjPoint.lat, minProjPoint.lng]);
+                } else {
+                    // Keep all vertices from start to startIdx
+                    for (let vi = 0; vi <= startIdx; vi++) {
+                        trimmed.push(seg[vi]);
+                    }
+                }
+                // Middle vertices
+                for (let vi = startIdx + 1; vi <= endIdx; vi++) {
+                    trimmed.push(seg[vi]);
+                }
+                // End: projected point at last terminal stop, or keep original end
+                if (trimEnd && maxProjPoint) {
+                    trimmed.push([maxProjPoint.lat, maxProjPoint.lng]);
+                } else {
+                    // Keep all vertices from endIdx+1 to end
+                    for (let vi = endIdx + 1; vi < seg.length; vi++) {
+                        trimmed.push(seg[vi]);
+                    }
+                }
+
+                if (trimmed.length >= 2) {
+                    deduped[si] = trimmed;
+                }
+            }
+        }
+
+        // Create Leaflet polylines from deduplicated coordinate arrays (one per branch)
+        const polylines = deduped.map(
             pl => L.polyline(pl, { color, weight: 3, opacity: 0.9 })
         );
 
@@ -865,10 +1035,11 @@ export function hydrateRoutes(routes) {
         routePolylines.set(routeId, polylines);
 
         // Route name labels along the longest polyline branch
+        // Skip labels for routes with empty shortName (renders as tiny colored rectangles)
         const longestPl = polylines.reduce((best, pl) =>
             pl.getLatLngs().length > best.getLatLngs().length ? pl : best, polylines[0]);
         const coords = longestPl ? longestPl.getLatLngs() : [];
-        if (coords.length >= 20) {
+        if (shortName && coords.length >= 20) {
             const labels = [];
             const numLabels = Math.max(1, Math.min(5, Math.floor(coords.length / 100)));
             const interval = Math.floor(coords.length / (numLabels + 1));

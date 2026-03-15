@@ -517,15 +517,27 @@ html, body {
 .stop-popup__routes {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
 }
 
-.stop-popup__route {
+.stop-popup__route-row {
     display: flex;
     align-items: center;
     gap: 6px;
     font-size: 12px;
     color: #c0c0d0;
+    flex-wrap: wrap;
+}
+
+.stop-popup__route-name {
+    white-space: nowrap;
+}
+
+.stop-popup__route-btns {
+    display: flex;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
 }
 
 .stop-popup__swatch {
@@ -544,66 +556,39 @@ html, body {
     color: #e0e0e0;
 }
 
-.stop-popup__actions {
-    margin-top: 8px;
-    padding-top: 6px;
-    border-top: 1px solid rgba(15, 52, 96, 0.5);
-}
-
-/* Stop popup direction alert buttons */
-.stop-popup__route-alerts {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin-bottom: 4px;
-}
-
-.stop-popup__route-label {
-    font-size: 11px;
-    color: #8888aa;
-    white-space: nowrap;
-    min-width: 40px;
-}
-
+/* Stop popup direction alert buttons (inline with route row) */
 .stop-popup__btn {
-    flex: 1;
-    padding: 4px 8px;
+    padding: 2px 6px;
     background: rgba(15, 52, 96, 0.6);
     border: 1px solid #0f3460;
-    border-radius: 4px;
+    border-radius: 3px;
     color: #e0e0e0;
-    font-size: 11px;
+    font-size: 10px;
     cursor: pointer;
     transition: background 0.15s;
     white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .stop-popup__btn:hover {
     background: rgba(15, 52, 96, 0.9);
 }
 
-.stop-popup__btn--terminus {
-    flex: none;
-    width: 100%;
-    background: rgba(0, 165, 81, 0.2);
-    border-color: rgba(0, 165, 81, 0.5);
-}
-
-.stop-popup__btn--terminus:hover {
-    background: rgba(0, 165, 81, 0.4);
-}
-
 .stop-popup__alert-configured {
-    font-size: 11px;
+    font-size: 10px;
     color: #00A551;
-    flex: 1;
-    text-align: center;
+    white-space: nowrap;
 }
 
 .stop-popup__count {
     font-size: 11px;
     color: #8888aa;
-    margin-top: 4px;
+    margin-top: 6px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(15, 52, 96, 0.3);
 }
 
 /* Chip picker — inline count selector for notification expiry */

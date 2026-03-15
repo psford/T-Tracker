@@ -71,11 +71,11 @@ function testFormatStopPopup() {
     assert(result1.includes('class="stop-popup__name"'), 'Should contain stop-popup__name class');
     assert(result1.includes('Downtown Crossing'), 'Should include stop name');
     assert(result1.includes('class="stop-popup__routes"'), 'Should contain routes container');
-    assert(result1.includes('class="stop-popup__route"'), 'Should contain route div');
+    assert(result1.includes('class="stop-popup__route-row"'), 'Should contain route row');
     assert(result1.includes('Red'), 'Should include route short name for subway');
     assert(result1.includes('#DA291C'), 'Should include route color');
     assert(result1.includes('class="stop-popup__swatch"'), 'Should contain color swatch');
-    assert(result1.includes('class="stop-popup__actions"'), 'Should contain actions div');
+    assert(result1.includes('class="stop-popup__count"'), 'Should contain count div');
     assert(!result1.includes('Red Line'), 'Should not include longName for subway');
 
     console.log('✓ formatStopPopup basic test passed');
@@ -109,8 +109,8 @@ function testFormatStopPopup() {
 
     assert(result2.includes('Park Street'), 'Should include stop name');
     // Count route divs - should be 2
-    const routeMatches = result2.match(/class="stop-popup__route"/g);
-    assert(routeMatches && routeMatches.length === 2, 'Should have 2 route divs for multi-route stop');
+    const routeMatches = result2.match(/class="stop-popup__route-row"/g);
+    assert(routeMatches && routeMatches.length === 2, 'Should have 2 route rows for multi-route stop');
     assert(result2.includes('Red'), 'Should include first route');
     assert(result2.includes('Green-B'), 'Should include second route');
     assert(result2.includes('#DA291C'), 'Should include first route color');
@@ -130,8 +130,8 @@ function testFormatStopPopup() {
 
     assert(result3.includes('Empty Stop'), 'Should include stop name');
     assert(result3.includes('class="stop-popup__routes"'), 'Should contain routes container');
-    const routeMatches3 = result3.match(/class="stop-popup__route"/g);
-    assert(!routeMatches3 || routeMatches3.length === 0, 'Should have no route divs for empty routes');
+    const routeMatches3 = result3.match(/class="stop-popup__route-row"/g);
+    assert(!routeMatches3 || routeMatches3.length === 0, 'Should have no route rows for empty routes');
 
     console.log('✓ formatStopPopup empty routes test passed');
 
@@ -157,7 +157,7 @@ function testFormatStopPopup() {
 
     assert(result4.includes('Union Station'), 'Should include stop name');
     assert(result4.includes('Providence/Stoughton Line'), 'Should include longName for commuter rail');
-    const visibleRouteMatch = result4.match(/<span class="stop-popup__swatch"[\s\S]*?<\/span>[\s\S]*?<span>([\s\S]*?)<\/span>/);
+    const visibleRouteMatch = result4.match(/<span class="stop-popup__route-name">([\s\S]*?)<\/span>/);
     assert(visibleRouteMatch, 'Should have route name in visible span');
     assert(!visibleRouteMatch[1].includes('CR-Providence'), 'Visible route text should not include shortName for commuter rail');
     assert(result4.includes('#80276C'), 'Should include route color');
@@ -200,7 +200,7 @@ function testFormatStopPopup() {
 
     assert(result6.includes('Test Stop'), 'Should include stop name');
     assert(result6.includes('class="stop-popup__routes"'), 'Should contain routes container');
-    const routeMatches6 = result6.match(/class="stop-popup__route"/g);
+    const routeMatches6 = result6.match(/class="stop-popup__route-row"/g);
     assert(!routeMatches6 || routeMatches6.length === 0, 'Should handle null routeInfos gracefully');
 
     console.log('✓ formatStopPopup null routeInfos test passed');
@@ -261,12 +261,14 @@ function testDirectionButtons() {
     assert.ok(singleRouteHtml.includes('Ashmont/Braintree'), 'Should show dir0 label');
     assert.ok(singleRouteHtml.includes('Alewife'), 'Should show dir1 label');
     assert.ok(singleRouteHtml.includes('data-stop-id="70019"'), 'Should have stop ID in data attribute');
-    // Single route should NOT show route label
-    assert.ok(!singleRouteHtml.includes('stop-popup__route-label'), 'Single route should not have route label');
     console.log('✓ Single route direction buttons');
 
-    // Multi-route stop shows route labels
-    const multiRouteHtml = formatStopPopup(stop, routes, {
+    // Multi-route stop shows route names with inline buttons
+    const multiRoutes = [
+        { id: 'Red', shortName: 'Red', longName: 'Red Line', color: '#DA291C', type: 1 },
+        { id: 'Green-B', shortName: 'Green-B', longName: 'Green Line B', color: '#00843D', type: 1 },
+    ];
+    const multiRouteHtml = formatStopPopup(stop, multiRoutes, {
         pairCount: 0,
         maxPairs: 5,
         existingAlerts: [],
@@ -275,14 +277,14 @@ function testDirectionButtons() {
             { routeId: 'Green-B', routeName: 'Green-B', dir0Label: 'Boston College', dir1Label: 'Park Street', isTerminus: false },
         ],
     });
-    assert.ok(multiRouteHtml.includes('stop-popup__route-label'), 'Multi-route should show route labels');
-    assert.ok(multiRouteHtml.includes('Red:'), 'Should show Red route label');
-    assert.ok(multiRouteHtml.includes('Green-B:'), 'Should show Green-B route label');
+    assert.ok(multiRouteHtml.includes('stop-popup__route-name'), 'Multi-route should show route names');
+    assert.ok(multiRouteHtml.includes('Red'), 'Should show Red route name');
+    assert.ok(multiRouteHtml.includes('Green-B'), 'Should show Green-B route name');
     const alertButtons = multiRouteHtml.match(/data-action="show-chips"/g);
     assert.strictEqual(alertButtons.length, 4, 'Should have 4 direction buttons (2 per route)');
-    console.log('✓ Multi-route direction buttons with labels');
+    console.log('✓ Multi-route direction buttons with inline buttons');
 
-    // Terminus stop: single button instead of two direction buttons
+    // Terminus stop: shows both direction buttons (same as non-terminus)
     const terminusHtml = formatStopPopup(stop, routes, {
         pairCount: 0,
         maxPairs: 5,
@@ -291,11 +293,11 @@ function testDirectionButtons() {
             { routeId: 'Red', routeName: 'Red', dir0Label: 'Ashmont', dir1Label: 'Alewife', isTerminus: true },
         ],
     });
-    assert.ok(terminusHtml.includes('Alert me here'), 'Terminus should show "Alert me here" button');
-    assert.ok(terminusHtml.includes('stop-popup__btn--terminus'), 'Should have terminus button class');
+    assert.ok(terminusHtml.includes('Ashmont'), 'Terminus should show direction labels');
+    assert.ok(terminusHtml.includes('Alewife'), 'Terminus should show both direction labels');
     const terminusButtons = terminusHtml.match(/data-action="show-chips"/g);
-    assert.strictEqual(terminusButtons.length, 1, 'Terminus should have only 1 button');
-    console.log('✓ Terminus stop single button');
+    assert.strictEqual(terminusButtons.length, 2, 'Terminus should have 2 direction buttons');
+    console.log('✓ Terminus stop shows direction buttons');
 
     // Already-configured alert shows indicator instead of button
     const configuredHtml = formatStopPopup(stop, routes, {
@@ -328,7 +330,7 @@ function testDirectionButtons() {
     assert.strictEqual(indicators.length, 2, 'Should have 2 configured indicators');
     console.log('✓ Both directions configured shows indicators');
 
-    // Terminus already configured: shows configured indicator
+    // Terminus with one direction configured: shows indicator for configured, button for other
     const terminusConfiguredHtml = formatStopPopup(stop, routes, {
         pairCount: 1,
         maxPairs: 5,
@@ -337,10 +339,10 @@ function testDirectionButtons() {
             { routeId: 'Red', routeName: 'Red', dir0Label: 'Ashmont', dir1Label: 'Alewife', isTerminus: true },
         ],
     });
-    assert.ok(terminusConfiguredHtml.includes('Alert active (terminus)'), 'Configured terminus should show active indicator');
+    assert.ok(terminusConfiguredHtml.includes('stop-popup__alert-configured'), 'Configured direction should show indicator');
     const terminusConfigButtons = terminusConfiguredHtml.match(/data-action="show-chips"/g);
-    assert.ok(!terminusConfigButtons, 'Configured terminus should have no buttons');
-    console.log('✓ Configured terminus shows indicator');
+    assert.strictEqual(terminusConfigButtons.length, 1, 'Should have 1 button for unconfigured direction');
+    console.log('✓ Configured terminus shows indicator for configured direction');
 
     // Max pairs reached: no buttons, shows maximum reached message
     const maxHtml = formatStopPopup(stop, routes, { pairCount: 5, maxPairs: 5 });
