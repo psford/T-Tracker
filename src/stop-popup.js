@@ -42,13 +42,28 @@ function validateHexColor(color) {
  * @returns {string} HTML string for popup content
  */
 export function formatStopPopup(stop, routeInfos, configState = {}) {
+    const {
+        pairCount = 0,
+        maxPairs = 5,
+        existingAlerts = [],
+        routeDirections = [],
+    } = configState;
+
     // Build header with stop name
     const headerHtml = `<div class="stop-popup__header">
         <span class="stop-popup__name">${escapeHtml(stop.name)}</span>
     </div>`;
 
-    // Build route list
-    const routeHtmls = (routeInfos || []).map((routeInfo) => {
+    // Build a lookup from routeId → direction data for inline buttons
+    const dirByRoute = new Map();
+    for (const rd of routeDirections) {
+        dirByRoute.set(rd.routeId, rd);
+    }
+
+    const atMax = pairCount >= maxPairs;
+
+    // Build unified route rows: swatch + name + direction buttons on one line
+    const routeRowHtmls = (routeInfos || []).map((routeInfo) => {
         let routeName;
         if (routeInfo?.type === 2) {
             routeName = escapeHtml(routeInfo?.longName || routeInfo?.shortName || routeInfo?.id);
@@ -57,20 +72,31 @@ export function formatStopPopup(stop, routeInfos, configState = {}) {
         }
         const color = validateHexColor(routeInfo?.color);
 
-        return `<div class="stop-popup__route">
+        // Direction buttons for this route (if direction data available and not at max)
+        let btnsHtml = '';
+        const rd = dirByRoute.get(routeInfo?.id);
+        if (rd && !atMax) {
+            btnsHtml = buildRouteButtons(stop, rd, existingAlerts);
+        }
+
+        return `<div class="stop-popup__route-row">
             <span class="stop-popup__swatch" style="background: ${color}"></span>
-            <span>${routeName}</span>
+            <span class="stop-popup__route-name">${routeName}</span>
+            ${btnsHtml}
         </div>`;
     });
 
     const routesHtml = `<div class="stop-popup__routes">
-        ${routeHtmls.join('')}
+        ${routeRowHtmls.join('')}
     </div>`;
 
-    // Build actions div based on config state
-    const actionsHtml = buildActionsHtml(stop, routeInfos, configState);
+    // Counter line
+    const countText = atMax
+        ? `${maxPairs}/${maxPairs} alerts configured (maximum reached)`
+        : `${pairCount}/${maxPairs} alerts configured`;
+    const countHtml = `<div class="stop-popup__count">${countText}</div>`;
 
-    return `<div class="stop-popup">${headerHtml}${routesHtml}${actionsHtml}</div>`;
+    return `<div class="stop-popup">${headerHtml}${routesHtml}${countHtml}</div>`;
 }
 
 /**
@@ -98,83 +124,35 @@ export function buildChipPickerHtml(stopId, routeId, directionId) {
 }
 
 /**
- * Build actions div HTML with per-route direction buttons.
+ * Build inline direction buttons for a single route row.
  * @private
  */
-function buildActionsHtml(stop, routeInfos, configState) {
+function buildRouteButtons(stop, rd, existingAlerts) {
     const {
-        pairCount = 0,
-        maxPairs = 5,
-        existingAlerts = [],
-        routeDirections = [],
-    } = configState;
+        routeId,
+        dir0Label = 'Direction 0',
+        dir1Label = 'Direction 1',
+        availableDirections = [0, 1],
+    } = rd;
 
-    // If max pairs reached, show limit message
-    if (pairCount >= maxPairs) {
-        return `<div class="stop-popup__actions">
-            <div class="stop-popup__count">${maxPairs}/${maxPairs} alerts configured (maximum reached)</div>
-        </div>`;
-    }
+    const escapedRouteId = escapeHtml(routeId);
+    const escapedStopId = escapeHtml(rd.stopId || stop.id);
 
-    // If no route direction data, show minimal state
-    if (routeDirections.length === 0) {
-        return `<div class="stop-popup__actions">
-            <div class="stop-popup__count">${pairCount}/${maxPairs} alerts configured</div>
-        </div>`;
-    }
+    const hasDir0 = existingAlerts.some(a => a.routeId === routeId && a.directionId === 0);
+    const hasDir1 = existingAlerts.some(a => a.routeId === routeId && a.directionId === 1);
 
-    // Build per-route direction buttons
-    const routeAlertHtmls = routeDirections.map(rd => {
-        const {
-            routeId,
-            routeName,
-            dir0Label = 'Direction 0',
-            dir1Label = 'Direction 1',
-            isTerminus = false,
-        } = rd;
+    const showDir0 = availableDirections.includes(0);
+    const showDir1 = availableDirections.includes(1);
 
-        const escapedRouteId = escapeHtml(routeId);
-        const escapedStopId = escapeHtml(rd.stopId || stop.id);
+    const btn0 = !showDir0 ? '' : hasDir0
+        ? `<span class="stop-popup__alert-configured">${escapeHtml(dir0Label)}</span>`
+        : `<button class="stop-popup__btn" data-action="show-chips" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="0">\u2192 ${escapeHtml(dir0Label)}</button>`;
 
-        // Check which directions already have alerts at this stop for this route
-        const hasDir0 = existingAlerts.some(a => a.routeId === routeId && a.directionId === 0);
-        const hasDir1 = existingAlerts.some(a => a.routeId === routeId && a.directionId === 1);
+    const btn1 = !showDir1 ? '' : hasDir1
+        ? `<span class="stop-popup__alert-configured">${escapeHtml(dir1Label)}</span>`
+        : `<button class="stop-popup__btn" data-action="show-chips" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="1">\u2192 ${escapeHtml(dir1Label)}</button>`;
 
-        if (isTerminus) {
-            // Terminus: single button (uses directionId 0 as convention)
-            if (hasDir0 || hasDir1) {
-                return `<div class="stop-popup__route-alerts">
-                    <span class="stop-popup__alert-configured">Alert active (terminus)</span>
-                </div>`;
-            }
-            return `<div class="stop-popup__route-alerts">
-                <button class="stop-popup__btn stop-popup__btn--terminus" data-action="show-chips" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="0">Alert me here</button>
-            </div>`;
-        }
-
-        // Non-terminus: two direction buttons
-        const btn0 = hasDir0
-            ? `<span class="stop-popup__alert-configured">${escapeHtml(dir0Label)}</span>`
-            : `<button class="stop-popup__btn" data-action="show-chips" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="0">\u2192 ${escapeHtml(dir0Label)}</button>`;
-
-        const btn1 = hasDir1
-            ? `<span class="stop-popup__alert-configured">${escapeHtml(dir1Label)}</span>`
-            : `<button class="stop-popup__btn" data-action="show-chips" data-stop-id="${escapedStopId}" data-route-id="${escapedRouteId}" data-direction-id="1">\u2192 ${escapeHtml(dir1Label)}</button>`;
-
-        // Only show route label if multiple routes serve this stop
-        const labelHtml = routeDirections.length > 1
-            ? `<span class="stop-popup__route-label">${escapeHtml(routeName)}:</span>`
-            : '';
-
-        return `<div class="stop-popup__route-alerts">
-            ${labelHtml}${btn0}${btn1}
-        </div>`;
-    });
-
-    return `<div class="stop-popup__actions">
-        ${routeAlertHtmls.join('')}
-        <div class="stop-popup__count">${pairCount}/${maxPairs} alerts configured</div>
-    </div>`;
+    return `<div class="stop-popup__route-btns">${btn0}${btn1}</div>`;
 }
 
 // Export escapeHtml for testing

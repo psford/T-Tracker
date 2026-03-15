@@ -63,7 +63,7 @@
 
     <!-- App entry point (ES6 module) -->
     <script type="module">
-        import { initMap, loadRoutes, loadStops, fetchRouteStops, hydrateRoutes, hydrateStops, hydrateRouteStopsMap, syncVehicleMarkers, getRouteMetadata, setVisibleRoutes, getVisibleRoutes, getStopData, getRouteStopsMap, isTerminusStop, getDirectionDestinations } from './src/map.js';
+        import { initMap, loadRoutes, loadStops, fetchRouteStops, hydrateRoutes, hydrateStops, hydrateRouteStopsMap, hydrateRouteStopDirections, syncVehicleMarkers, getRouteMetadata, setVisibleRoutes, getVisibleRoutes, getStopData, getRouteStopsMap, isTerminusStop, getDirectionDestinations } from './src/map.js';
         import { loadStaticData } from './src/static-data.js';
         import { config } from './config.js';
         import { connect, apiEvents } from './src/api.js';
@@ -94,10 +94,13 @@
         // Re-hydrates in-memory state and re-renders visible routes/stops so
         // the current session stays current (AC3.3).
         function onStaticDataRefresh(freshBundle) {
-            hydrateRoutes(freshBundle.routes);
+            hydrateRoutes(freshBundle.routes, freshBundle.stops, freshBundle.routeStops);
             hydrateStops(freshBundle.stops);
             for (const [routeId, stopIds] of Object.entries(freshBundle.routeStops)) {
                 hydrateRouteStopsMap(routeId, [...stopIds]);
+            }
+            if (freshBundle.routeStopDirections) {
+                hydrateRouteStopDirections(freshBundle.routeStopDirections);
             }
             // Re-render map with existing visible routes (hydrateRoutes clears the layer group)
             const currentlyVisible = getVisibleRoutes();
@@ -109,10 +112,13 @@
             try {
                 // AC2.1/AC2.2: load from static file or localStorage cache
                 const bundle = await loadStaticData(onStaticDataRefresh, config.api.key);
-                hydrateRoutes(bundle.routes);
+                hydrateRoutes(bundle.routes, bundle.stops, bundle.routeStops);
                 hydrateStops(bundle.stops);
                 for (const [routeId, stopIds] of Object.entries(bundle.routeStops)) {
                     hydrateRouteStopsMap(routeId, [...stopIds]);
+                }
+                if (bundle.routeStopDirections) {
+                    hydrateRouteStopDirections(bundle.routeStopDirections);
                 }
             } catch {
                 // AC2.4: both localStorage and file fetch failed — fall back to live MBTA API

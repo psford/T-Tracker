@@ -1,5 +1,5 @@
 // src/stop-markers.js — Renders stop markers on map for visible routes
-import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, snapToRoutePolyline, isTerminusStop, getDirectionDestinations } from './map.js';
+import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, getVisibleRoutes, getRouteStopDirectionsMap, isTerminusStop, getDirectionDestinations, snapToRoutePolyline } from './map.js';
 import { formatStopPopup, escapeHtml, buildChipPickerHtml } from './stop-popup.js';
 import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';
 import { updateStatus as updateNotificationStatus, renderPanel } from './notification-ui.js';
@@ -255,12 +255,20 @@ export function getStopConfigState(stopId, childStopIds = null) {
         const labels = getDirectionDestinations(routeId);
         const terminus = isTerminusStop(childStopIdForRoute, routeId);
 
+        // Check direction availability: on rail split sections, a stop may only serve one direction.
+        // Non-rail routes always show both directions — bus stops serve both even if MBTA API
+        // reports separate physical stops per direction (opposite sides of street).
+        const isRail = meta && (meta.type === 0 || meta.type === 1);
+        const dirMap = isRail ? getRouteStopDirectionsMap().get(routeId) : undefined;
+        const dirOnly = dirMap ? dirMap.get(childStopIdForRoute) : undefined;
+
         const result = {
             routeId,
             routeName,
             dir0Label: labels[0],
             dir1Label: labels[1],
             isTerminus: terminus,
+            availableDirections: dirOnly !== undefined ? [dirOnly] : [0, 1],
         };
 
         // For merged stops (childStopIds provided), add stopId field to indicate which child to use for alert creation
@@ -465,10 +473,10 @@ export function initStopMarkers(map, apiEventsTarget = null) {
                 // Collapse any existing chip picker in this popup (AC1.7)
                 container.querySelectorAll('.chip-picker').forEach(el => el.remove());
 
-                // Insert chip picker after the clicked button's parent route-alerts div
-                const routeAlertsDiv = showChipsBtn.closest('.stop-popup__route-alerts');
-                if (routeAlertsDiv) {
-                    routeAlertsDiv.insertAdjacentHTML('afterend', buildChipPickerHtml(stopId, routeId, directionId));
+                // Insert chip picker after the clicked button's parent route row
+                const routeRow = showChipsBtn.closest('.stop-popup__route-row');
+                if (routeRow) {
+                    routeRow.insertAdjacentHTML('afterend', buildChipPickerHtml(stopId, routeId, directionId));
                 }
                 return;
             }
@@ -594,7 +602,31 @@ export function updateVisibleStops(routeIds) {
     // Step 3: Create merged markers
     mergedStops.forEach(({ lat, lng, childStopIds, color }, parentId) => {
         if (!stopMarkers.has(parentId)) {
-            const marker = createStopMarker(lat, lng, color);
+            // Distance-capped snap for merged markers: try all visible routes
+            // serving any child stop, pick nearest polyline point within threshold
+            let markerLat = lat;
+            let markerLng = lng;
+            const SNAP_THRESHOLD = 75; // meters — covers underground stations (Andrew ~64m)
+            let bestSnapDist = Infinity;
+            const childSet = new Set(childStopIds);
+
+            new Set(routeIds).forEach((rid) => {
+                const routeStops = routeStopsMap.get(rid);
+                if (!routeStops) return;
+                // Check if any child stop is served by this route
+                let serves = false;
+                childSet.forEach(cid => { if (routeStops.has(cid)) serves = true; });
+                if (!serves) return;
+                const snapped = snapToRoutePolyline(lat, lng, rid);
+                const dist = haversineDistance(lat, lng, snapped.lat, snapped.lng);
+                if (dist < bestSnapDist && dist <= SNAP_THRESHOLD) {
+                    bestSnapDist = dist;
+                    markerLat = snapped.lat;
+                    markerLng = snapped.lng;
+                }
+            });
+
+            const marker = createStopMarker(markerLat, markerLng, color);
 
             // Store child IDs for popup and highlight lookup
             marker._childStopIds = childStopIds;
@@ -606,17 +638,18 @@ export function updateVisibleStops(routeIds) {
                     stopRoutesMap = buildStopRoutesMap();
                 }
 
-                // Aggregate routes from all child stops.
+                // Aggregate routes from all child stops, filtered to currently visible routes.
                 // Note: Similar route aggregation logic exists in getStopConfigState;
                 // both iterate childStopIds and collect unique routes from stopRoutesMap.
                 const allRouteIds = new Set();
                 const allRouteInfos = [];
                 const routeMetadata = getRouteMetadata();
+                const visible = getVisibleRoutes();
 
                 childStopIds.forEach(cid => {
                     const childRouteIds = stopRoutesMap.get(cid) || [];
                     childRouteIds.forEach(rid => {
-                        if (!allRouteIds.has(rid)) {
+                        if (!allRouteIds.has(rid) && visible.has(rid)) {
                             allRouteIds.add(rid);
                             const meta = routeMetadata.find(m => m.id === rid);
                             if (meta) allRouteInfos.push(meta);
@@ -634,6 +667,7 @@ export function updateVisibleStops(routeIds) {
                 className: 'stop-popup-container',
                 closeButton: true,
                 autoPan: false,
+                maxWidth: 400,
             });
 
             // Desktop: hover to show popup, stays open while cursor is over marker OR popup
@@ -654,14 +688,28 @@ export function updateVisibleStops(routeIds) {
             // Skip stops without coordinates
             if (!stop || !stop.latitude || !stop.longitude) return;
 
-            // Snap stop position to nearest point on its route's polyline
-            const ownerRouteId = stopRouteMap.get(stopId);
-            const snapped = ownerRouteId
-                ? snapToRoutePolyline(stop.latitude, stop.longitude, ownerRouteId)
-                : { lat: stop.latitude, lng: stop.longitude };
-
             const color = stopColorMap.get(stopId) || '#888888';
-            const marker = createStopMarker(snapped.lat, snapped.lng, color);
+
+            // Distance-capped snap: try ALL visible routes serving this stop,
+            // pick the nearest polyline point within 30m. No single "owner" route.
+            let markerLat = stop.latitude;
+            let markerLng = stop.longitude;
+            const SNAP_THRESHOLD = 75; // meters — covers underground stations (Andrew ~64m)
+            let bestSnapDist = Infinity;
+
+            new Set(routeIds).forEach((rid) => {
+                const routeStops = routeStopsMap.get(rid);
+                if (!routeStops || !routeStops.has(stopId)) return;
+                const snapped = snapToRoutePolyline(stop.latitude, stop.longitude, rid);
+                const dist = haversineDistance(stop.latitude, stop.longitude, snapped.lat, snapped.lng);
+                if (dist < bestSnapDist && dist <= SNAP_THRESHOLD) {
+                    bestSnapDist = dist;
+                    markerLat = snapped.lat;
+                    markerLng = snapped.lng;
+                }
+            });
+
+            const marker = createStopMarker(markerLat, markerLng, color);
 
             // Build popup content dynamically on each popup open
             // This ensures config state is always fresh
@@ -673,7 +721,9 @@ export function updateVisibleStops(routeIds) {
 
                 const stopRouteIds = stopRoutesMap.get(stopId) || [];
                 const routeMetadata = getRouteMetadata();
+                const visible = getVisibleRoutes();
                 const routeInfos = stopRouteIds
+                    .filter(rid => visible.has(rid))
                     .map(rid => routeMetadata.find(m => m.id === rid))
                     .filter(Boolean);
 
@@ -685,6 +735,7 @@ export function updateVisibleStops(routeIds) {
                 className: 'stop-popup-container',
                 closeButton: true,
                 autoPan: false,
+                maxWidth: 400,
             });
 
             // Desktop: hover to show popup, stays open while cursor is over marker OR popup

@@ -131,10 +131,12 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Handles Google's 5-digit decimal precision encoding algorithm.
 - **Expects**: String input in Google encoded polyline format
 
-### polyline-merge.js -- Polyline Merge Decision
-- **Exposes**: `shouldMergePolylines(coords1, coords2, thresholdMeters = 50)`
-- **Guarantees**: Pure function, no side effects. Samples SAMPLES (30) points along coords1 at equal arc-length intervals using binary search. For each sample, finds the nearest vertex in coords2 via exhaustive search. Returns true if the median of those distances is ≤ thresholdMeters (default 50m). Works in both browser and Node.js (no Leaflet dependency).
-- **Expects**: Two arrays of coordinate objects with {lat, lng} properties. Optional threshold in meters (default 50).
+### polyline-merge.js -- Polyline Merge Decision and Segment Merging
+- **Exposes**: `shouldMergePolylines(coords1, coords2, thresholdMeters = 50)`, `mergePolylineSegments(coordsA, coordsB, threshold = 20)`
+- **Guarantees**: Pure functions, no side effects. Works in both browser and Node.js (no Leaflet dependency).
+  `shouldMergePolylines`: Samples 30 points along coords1 at equal arc-length intervals using binary search. For each sample, finds the nearest vertex in coords2 via exhaustive search. Returns true if the median of those distances is ≤ thresholdMeters (default 50m). Used as a gate to decide whether two polylines represent the same physical route.
+  `mergePolylineSegments`: Segment-by-segment merge of two oriented polylines. For each vertex, finds nearest vertex on the other polyline. Where distance < threshold (default 20m), averages the vertex pairs (same street/track). Where distance ≥ threshold, keeps both paths as separate segments (different streets, terminus loops). Applies hysteresis smoothing: short divergent runs (< 3 consecutive vertices) are reclassified as "close" to prevent noise from threshold boundary oscillation. Returns array of polyline coordinate arrays (multiple segments per merged pair). Filters segments with < 2 vertices.
+- **Expects**: Two arrays of coordinate objects with {lat, lng} properties. Both polylines should be oriented in the same direction before calling `mergePolylineSegments`.
 
 ### route-sorter.js -- Route Sorting and Grouping
 - **Exposes**: `groupAndSortRoutes(routes)`

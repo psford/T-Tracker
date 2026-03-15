@@ -3,28 +3,8 @@ import { config } from '../config.js';
 import { decodePolyline } from './polyline.js';
 import { formatVehiclePopup } from './vehicle-popup.js';
 import { darkenHexColor, bearingToTransform, haversineDistance, nearestPointOnSegment } from './vehicle-math.js';
-import { shouldMergePolylines } from './polyline-merge.js';
+import { shouldMergePolylines, mergePolylineSegments } from './polyline-merge.js';
 import { VEHICLE_ICONS, DEFAULT_ICON } from './vehicle-icons.js';
-
-/**
- * Sample a point along a polyline at parameter t in [0, 1].
- * t=0 → first coordinate, t=1 → last coordinate.
- * @param {L.LatLng[]} coords
- * @param {number} t
- * @returns {{lat: number, lng: number}}
- */
-function sampleAtT(coords, t) {
-    if (coords.length === 1) return coords[0];
-    const idx = t * (coords.length - 1);
-    const lo = Math.floor(idx);
-    const hi = Math.ceil(idx);
-    if (lo === hi) return coords[lo];
-    const frac = idx - lo;
-    return {
-        lat: coords[lo].lat + frac * (coords[hi].lat - coords[lo].lat),
-        lng: coords[lo].lng + frac * (coords[hi].lng - coords[lo].lng),
-    };
-}
 
 let map = null;
 
@@ -54,6 +34,10 @@ let stopsData = new Map();
 
 // Map<routeId, Set<stopId>> — tracks which stops belong to which routes
 const routeStopsMap = new Map();
+
+// Map<routeId, Map<stopId, number>> — direction-only stops (0 or 1)
+// Stops NOT in this map default to both directions.
+let routeStopDirectionsMap = new Map();
 
 // Map<routeId, L.Marker[]> — route name labels placed along polylines
 const routeLabels = new Map();
@@ -194,8 +178,12 @@ export function createVehicleMarker(vehicle) {
         return; // Marker already exists
     }
 
+    // Snap vehicle to nearest point on its route's polyline so icons
+    // ride on the (potentially merged/averaged) rendered line
+    const snapped = snapToRoutePolyline(vehicle.latitude, vehicle.longitude, vehicle.routeId);
+
     const marker = L.marker(
-        [vehicle.latitude, vehicle.longitude],
+        [snapped.lat, snapped.lng],
         {
             icon: createVehicleDivIcon(vehicle),
         }
@@ -241,8 +229,9 @@ export function updateVehicleMarker(vehicle) {
         return; // Marker doesn't exist
     }
 
-    // Update position
-    marker.setLatLng([vehicle.latitude, vehicle.longitude]);
+    // Snap to polyline and update position
+    const snapped = snapToRoutePolyline(vehicle.latitude, vehicle.longitude, vehicle.routeId);
+    marker.setLatLng([snapped.lat, snapped.lng]);
 
     // Update rotation and opacity
     const iconElement = marker.getElement().querySelector('.vehicle-marker');
@@ -368,9 +357,9 @@ export async function loadRoutes() {
             const longName = route.attributes.long_name || '';
             const type = route.attributes.type;
 
-            // Darken heavy rail and commuter rail colors for dark map theme
-            // Green Line (type 0) and Bus (type 3) already theme-appropriate
-            if (type === 1 || type === 2) {
+            // Darken rail colors for dark map theme
+            // Bus (type 3) and Ferry (type 4) already theme-appropriate
+            if (type === 0 || type === 1 || type === 2) {
                 color = darkenHexColor(color, 0.15);
             }
 
@@ -492,40 +481,105 @@ export async function loadRoutes() {
                 }
             }
 
-            // Merge parallel polylines into one averaged line.
-            // Rail (types 0, 1): always merge — both directions use the same physical track.
-            // Bus (type 3): merge only when the two shapes are mostly parallel (median separation
-            // ≤50m). This handles divided-road bus routes correctly while keeping genuinely
-            // divergent routes (different streets inbound/outbound) as two separate lines.
-            if (polylines.length === 2) {
+            // Rail (types 0, 1): dedup inbound/outbound copies (max nearest-vertex < 20m),
+            // then segment-merge remaining polylines (shared corridors averaged at 40m threshold,
+            // branches and terminus loops kept as separate segments).
+            // Bus/CR/Ferry: segment-by-segment merge at 20m threshold.
+            const isRail = (type === 0 || type === 1);
+            if (isRail && polylines.length >= 2) {
+                const coords = polylines.map(pl => pl.getLatLngs());
+                const oriented = [coords[0]];
+                for (let pi = 1; pi < coords.length; pi++) {
+                    const p = coords[pi];
+                    const dS = haversineDistance(oriented[0][0].lat, oriented[0][0].lng, p[0].lat, p[0].lng);
+                    const dF = haversineDistance(oriented[0][0].lat, oriented[0][0].lng, p[p.length - 1].lat, p[p.length - 1].lng);
+                    oriented.push(dF < dS ? [...p].reverse() : p);
+                }
+                // Deduplicate: same start+end AND max sampled nearest-vertex < 20m
+                const unique = [oriented[0]];
+                for (let pi = 1; pi < oriented.length; pi++) {
+                    let isDup = false;
+                    for (const u of unique) {
+                        const dStart = haversineDistance(oriented[pi][0].lat, oriented[pi][0].lng, u[0].lat, u[0].lng);
+                        const dEnd = haversineDistance(
+                            oriented[pi][oriented[pi].length - 1].lat, oriented[pi][oriented[pi].length - 1].lng,
+                            u[u.length - 1].lat, u[u.length - 1].lng
+                        );
+                        if (dStart > 100 || dEnd > 100) continue;
+                        let maxDist = 0;
+                        const step = Math.max(1, Math.floor(oriented[pi].length / 50));
+                        for (let k = 0; k < oriented[pi].length; k += step) {
+                            let minD = Infinity;
+                            for (const v of u) {
+                                const d = haversineDistance(oriented[pi][k].lat, oriented[pi][k].lng, v.lat, v.lng);
+                                if (d < minD) minD = d;
+                            }
+                            if (minD > maxDist) maxDist = minD;
+                        }
+                        if (maxDist < 20) { isDup = true; break; }
+                    }
+                    if (!isDup) unique.push(oriented[pi]);
+                }
+                // Distinguish terminus loops from branching routes:
+                // - Same start AND end (within 500m): terminus variation (Green-E, Green-C/D).
+                //   Keep both raw — they overlap on shared track and diverge at terminus loops.
+                // - Same start, different end: branching route (Red Line Ashmont/Braintree).
+                //   Segment-merge to combine the shared corridor into one line.
+                let resultCoords = unique;
+                if (unique.length >= 2) {
+                    const END_MATCH_THRESHOLD = 500; // meters
+                    const allSameEnd = unique.every(p => {
+                        const dEnd = haversineDistance(
+                            p[p.length - 1].lat, p[p.length - 1].lng,
+                            unique[0][unique[0].length - 1].lat, unique[0][unique[0].length - 1].lng
+                        );
+                        return dEnd < END_MATCH_THRESHOLD;
+                    });
+
+                    if (!allSameEnd) {
+                        // Branching route: segment-merge pairwise to combine shared corridor
+                        resultCoords = [unique[0]];
+                        for (let ui = 1; ui < unique.length; ui++) {
+                            const c2 = unique[ui];
+                            if (c2.length === 0) continue;
+                            // Bypass shouldMergePolylines gate — we know branching polylines
+                            // share a corridor that needs merging
+                            const segments = mergePolylineSegments(resultCoords[0], c2, 40);
+                            resultCoords.splice(0, 1, ...segments);
+                        }
+                    }
+                    // else: terminus loops — keep all raw polylines
+                }
+                if (resultCoords.length !== polylines.length || unique.length !== oriented.length) {
+                    const routeColor = polylines[0].options.color;
+                    const routeOpts = { color: routeColor, weight: 3, opacity: 0.9 };
+                    polylines.forEach(pl => pl.remove());
+                    polylines.length = 0;
+                    for (const seg of resultCoords) {
+                        const latlngs = seg.map(p => L.latLng(p.lat, p.lng));
+                        polylines.push(L.polyline(latlngs, routeOpts).addTo(map));
+                    }
+                }
+            } else if (!isRail && polylines.length === 2) {
                 const c1 = polylines[0].getLatLngs();
                 const c2raw = polylines[1].getLatLngs();
 
                 if (c1.length >= 2 && c2raw.length >= 2) {
-                    // Orient c2 in the same direction as c1 (compare start-to-start vs start-to-end)
                     const dSame = haversineDistance(c1[0].lat, c1[0].lng, c2raw[0].lat, c2raw[0].lng);
                     const dFlip = haversineDistance(c1[0].lat, c1[0].lng, c2raw[c2raw.length - 1].lat, c2raw[c2raw.length - 1].lng);
                     const c2 = dFlip < dSame ? [...c2raw].reverse() : c2raw;
 
-                    // For bus routes, check median separation before merging.
-                    // Rail always merges (type 0 or 1).
-                    let shouldMerge = (type === 0 || type === 1);
-
-                    if (!shouldMerge) {
-                        shouldMerge = shouldMergePolylines(c1, polylines[1].getLatLngs());
-                    }
-
-                    if (shouldMerge) {
-                        const n = Math.max(c1.length, c2.length);
-                        const merged = [];
-                        for (let i = 0; i < n; i++) {
-                            const t = i / (n - 1);
-                            const p1 = sampleAtT(c1, t);
-                            const p2 = sampleAtT(c2, t);
-                            merged.push(L.latLng((p1.lat + p2.lat) / 2, (p1.lng + p2.lng) / 2));
+                    if (shouldMergePolylines(c1, c2)) {
+                        const segments = mergePolylineSegments(c1, c2, 20);
+                        const routeColor = polylines[0].options.color;
+                        const routeOpts = { color: routeColor, weight: 3, opacity: 0.9 };
+                        polylines.forEach(pl => pl.remove());
+                        polylines.length = 0;
+                        for (const seg of segments) {
+                            const latlngs = seg.map(p => L.latLng(p.lat, p.lng));
+                            const pl = L.polyline(latlngs, routeOpts).addTo(map);
+                            polylines.push(pl);
                         }
-                        polylines[0].setLatLngs(merged);
-                        polylines.splice(1, 1);
                     }
                 }
             }
@@ -539,7 +593,7 @@ export async function loadRoutes() {
                 }
             });
 
-            if (longestCoords.length >= 20) {
+            if (shortName && longestCoords.length >= 20) {
                 const labels = [];
                 const numLabels = Math.max(1, Math.min(5, Math.floor(longestCoords.length / 100)));
                 const interval = Math.floor(longestCoords.length / (numLabels + 1));
@@ -733,8 +787,10 @@ export async function loadStops() {
  * Safe to call multiple times — clears existing state before repopulating.
  *
  * @param {Array<{id, color, shortName, longName, type, directionNames, directionDestinations, polyline: number[][]}>} routes
+ * @param {Object} [stopsData] - stops keyed by ID with {lat, lng}
+ * @param {Object} [routeStopsData] - route ID → array of stop IDs
  */
-export function hydrateRoutes(routes) {
+export function hydrateRoutes(routes, stopsData = null, routeStopsData = null) {
     // Clear existing Leaflet layers
     if (routeLayerGroup) {
         routeLayerGroup.clearLayers();
@@ -754,7 +810,7 @@ export function hydrateRoutes(routes) {
 
         // Apply same color darkening as loadRoutes() for dark map theme
         let color = route.color || '#888888';
-        if (type === 1 || type === 2) {
+        if (type === 0 || type === 1 || type === 2) {
             color = darkenHexColor(color, 0.15);
         }
 
@@ -762,8 +818,181 @@ export function hydrateRoutes(routes) {
         routeColorMap.set(routeId, color);
         routeTypeMap.set(routeId, type);
 
-        // Create Leaflet polylines from pre-decoded [[lat, lng], ...] arrays (one per branch)
-        const polylines = (route.polylines || [route.polyline]).map(
+        // Rail-only render-time processing: concatenation, dedup, and terminal trimming.
+        // Non-rail routes (bus/CR/ferry) use prebaked segments directly — the prebake script
+        // already handled merging, preserving one-way street divergences correctly.
+        const isRailRoute = (type === 0 || type === 1);
+        const rawSegments = route.polylines || [route.polyline];
+
+        let deduped;
+        if (isRailRoute) {
+            // Concatenate consecutive segments whose endpoints match (fixes merge fragments)
+            const merged = [];
+            for (const seg of rawSegments) {
+                if (!seg || seg.length < 2) continue;
+                if (merged.length > 0) {
+                    const prev = merged[merged.length - 1];
+                    const prevEnd = prev[prev.length - 1];
+                    const curStart = seg[0];
+                    const endpointDist = haversineDistance(prevEnd[0], prevEnd[1], curStart[0], curStart[1]);
+                    if (endpointDist < 5) {
+                        prev.push(...seg.slice(1));
+                        continue;
+                    }
+                }
+                merged.push([...seg]);
+            }
+
+            // Deduplicate segments with matching start+end points (inbound/outbound overlaps).
+            // Keeps the longer segment.
+            deduped = [];
+            const dedupedFlags = new Set();
+            for (let mi = 0; mi < merged.length; mi++) {
+                if (dedupedFlags.has(mi)) continue;
+                const seg = merged[mi];
+                const start = seg[0];
+                const end = seg[seg.length - 1];
+
+                let dupIdx = -1;
+                for (let mj = mi + 1; mj < merged.length; mj++) {
+                    if (dedupedFlags.has(mj)) continue;
+                    const other = merged[mj];
+                    const oStart = other[0];
+                    const oEnd = other[other.length - 1];
+                    if ((haversineDistance(start[0], start[1], oStart[0], oStart[1]) < 100 &&
+                         haversineDistance(end[0], end[1], oEnd[0], oEnd[1]) < 100) ||
+                        (haversineDistance(start[0], start[1], oEnd[0], oEnd[1]) < 100 &&
+                         haversineDistance(end[0], end[1], oStart[0], oStart[1]) < 100)) {
+                        dupIdx = mj;
+                        break;
+                    }
+                }
+
+                if (dupIdx === -1) {
+                    deduped.push(seg);
+                } else {
+                    dedupedFlags.add(dupIdx);
+                    const other = merged[dupIdx];
+                    const kept = seg.length >= other.length ? seg : other;
+                    deduped.push(kept);
+                }
+            }
+        } else {
+            // Non-rail: use prebaked segments as-is
+            deduped = rawSegments.filter(seg => seg && seg.length >= 2);
+        }
+
+        // Trim rail polylines at terminal stops — riders don't care about yard tracks.
+        // Only for rail (subway/light rail) — bus routes have complex multi-segment shapes.
+        if (isRailRoute && stopsData && routeStopsData && routeStopsData[routeId]) {
+            const stopIds = routeStopsData[routeId];
+            const stopCoords = stopIds.map(sid => stopsData[sid]).filter(Boolean);
+
+            // Identify junction endpoints: a segment endpoint that's near any point on another segment.
+            // These should NOT be trimmed — they're branch connection points, not terminals.
+            // Checks all vertices (not just endpoints) because branches can diverge mid-segment
+            // (e.g., Red Line Braintree branch splits from trunk mid-polyline).
+            const JUNCTION_THRESHOLD = 50; // meters
+            function isJunction(segIdx, whichEnd) {
+                const pt = whichEnd === 'start' ? deduped[segIdx][0] : deduped[segIdx][deduped[segIdx].length - 1];
+                for (let oi = 0; oi < deduped.length; oi++) {
+                    if (oi === segIdx) continue;
+                    for (let vi = 0; vi < deduped[oi].length; vi++) {
+                        if (haversineDistance(pt[0], pt[1], deduped[oi][vi][0], deduped[oi][vi][1]) < JUNCTION_THRESHOLD) return true;
+                    }
+                }
+                return false;
+            }
+
+            for (let si = 0; si < deduped.length; si++) {
+                const seg = deduped[si];
+                if (seg.length < 3 || stopCoords.length === 0) continue;
+
+                let trimStart = !isJunction(si, 'start');
+                let trimEnd = !isJunction(si, 'end');
+                if (!trimStart && !trimEnd) continue;
+
+                // Trim at terminal stops — always trim non-junction endpoints
+                // so lines end cleanly at the last station (no turnaround curves,
+                // no maintenance yard extensions).
+
+                // For each stop, find its nearest point on the polyline (segment projection)
+                let minSegIdx = seg.length - 1;
+                let maxSegIdx = 0;
+                let minProjPoint = null;
+                let maxProjPoint = null;
+                let hasNearby = false;
+
+                for (const stop of stopCoords) {
+                    let bestDist = Infinity;
+                    let bestSegI = 0;
+                    let bestProj = null;
+
+                    for (let vi = 0; vi < seg.length - 1; vi++) {
+                        const proj = nearestPointOnSegment(
+                            stop.lat, stop.lng,
+                            seg[vi][0], seg[vi][1],
+                            seg[vi + 1][0], seg[vi + 1][1]
+                        );
+                        const d = haversineDistance(stop.lat, stop.lng, proj.lat, proj.lng);
+                        if (d < bestDist) {
+                            bestDist = d;
+                            bestSegI = vi;
+                            bestProj = proj;
+                        }
+                    }
+
+                    if (bestDist < 300) {
+                        hasNearby = true;
+                        if (bestSegI < minSegIdx) {
+                            minSegIdx = bestSegI;
+                            minProjPoint = bestProj;
+                        }
+                        if (bestSegI > maxSegIdx) {
+                            maxSegIdx = bestSegI;
+                            maxProjPoint = bestProj;
+                        }
+                    }
+                }
+                if (!hasNearby) continue;
+
+                // Build trimmed segment, only trimming true terminal ends
+                const startIdx = trimStart ? minSegIdx : 0;
+                const endIdx = trimEnd ? maxSegIdx : seg.length - 2;
+                if (endIdx < startIdx) continue;
+
+                const trimmed = [];
+                // Start: projected point at first terminal stop, or keep original start
+                if (trimStart && minProjPoint) {
+                    trimmed.push([minProjPoint.lat, minProjPoint.lng]);
+                } else {
+                    // Keep all vertices from start to startIdx
+                    for (let vi = 0; vi <= startIdx; vi++) {
+                        trimmed.push(seg[vi]);
+                    }
+                }
+                // Middle vertices
+                for (let vi = startIdx + 1; vi <= endIdx; vi++) {
+                    trimmed.push(seg[vi]);
+                }
+                // End: projected point at last terminal stop, or keep original end
+                if (trimEnd && maxProjPoint) {
+                    trimmed.push([maxProjPoint.lat, maxProjPoint.lng]);
+                } else {
+                    // Keep all vertices from endIdx+1 to end
+                    for (let vi = endIdx + 1; vi < seg.length; vi++) {
+                        trimmed.push(seg[vi]);
+                    }
+                }
+
+                if (trimmed.length >= 2) {
+                    deduped[si] = trimmed;
+                }
+            }
+        }
+
+        // Create Leaflet polylines from deduplicated coordinate arrays (one per branch)
+        const polylines = deduped.map(
             pl => L.polyline(pl, { color, weight: 3, opacity: 0.9 })
         );
 
@@ -811,10 +1040,11 @@ export function hydrateRoutes(routes) {
         routePolylines.set(routeId, polylines);
 
         // Route name labels along the longest polyline branch
+        // Skip labels for routes with empty shortName (renders as tiny colored rectangles)
         const longestPl = polylines.reduce((best, pl) =>
             pl.getLatLngs().length > best.getLatLngs().length ? pl : best, polylines[0]);
         const coords = longestPl ? longestPl.getLatLngs() : [];
-        if (coords.length >= 20) {
+        if (shortName && coords.length >= 20) {
             const labels = [];
             const numLabels = Math.max(1, Math.min(5, Math.floor(coords.length / 100)));
             const interval = Math.floor(coords.length / (numLabels + 1));
@@ -1022,6 +1252,21 @@ export function hydrateRouteStopsMap(routeId, stopIds) {
 }
 
 /**
+ * Populate routeStopDirectionsMap from static data.
+ * @param {Object} directionData — { routeId: { stopId: directionId (0 or 1) } }
+ */
+export function hydrateRouteStopDirections(directionData) {
+    routeStopDirectionsMap = new Map();
+    for (const [routeId, stopDirs] of Object.entries(directionData)) {
+        const stopMap = new Map();
+        for (const [stopId, dir] of Object.entries(stopDirs)) {
+            stopMap.set(stopId, dir);
+        }
+        routeStopDirectionsMap.set(routeId, stopMap);
+    }
+}
+
+/**
  * Returns the route-to-stops mapping.
  * Key: route ID (string), Value: Set of stop IDs
  *
@@ -1029,6 +1274,17 @@ export function hydrateRouteStopsMap(routeId, stopIds) {
  */
 export function getRouteStopsMap() {
     return routeStopsMap;
+}
+
+/**
+ * Returns the direction-only stops mapping.
+ * Key: route ID, Value: Map<stopId, directionId (0 or 1)>.
+ * Stops not in this map serve both directions.
+ *
+ * @returns {Map<string, Map<string, number>>}
+ */
+export function getRouteStopDirectionsMap() {
+    return routeStopDirectionsMap;
 }
 
 /**

@@ -3,7 +3,7 @@
 // Runs a background staleness check after hydration.
 
 const STORAGE_KEY = 'ttracker-static-data';
-const STATIC_DATA_VERSION = 1;
+const STATIC_DATA_VERSION = 2;
 
 /**
  * Load static MBTA data. Returns a hydrated bundle { generatedAt, routes, stops, routeStops }.
