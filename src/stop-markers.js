@@ -5,6 +5,13 @@ import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifica
 import { updateStatus as updateNotificationStatus, renderPanel } from './notification-ui.js';
 import { haversineDistance } from './vehicle-math.js';
 
+// Max distance (meters) a stop may sit from a route polyline and still snap onto it.
+// Beyond this, the marker renders at its raw GPS coordinate. Set to 120m so surface
+// stops that sit on a slightly different block than the route's canonical shape
+// (e.g. Copley / Back Bay terminus stops measured at ~90-99m off) snap to the line
+// instead of floating. Also covers underground stations (Andrew ~64m).
+const SNAP_THRESHOLD_M = 120;
+
 // Map<stopId, L.Marker> — tracks active stop markers on the map
 const stopMarkers = new Map();
 
@@ -606,7 +613,6 @@ export function updateVisibleStops(routeIds) {
             // serving any child stop, pick nearest polyline point within threshold
             let markerLat = lat;
             let markerLng = lng;
-            const SNAP_THRESHOLD = 75; // meters — covers underground stations (Andrew ~64m)
             let bestSnapDist = Infinity;
             const childSet = new Set(childStopIds);
 
@@ -619,7 +625,7 @@ export function updateVisibleStops(routeIds) {
                 if (!serves) return;
                 const snapped = snapToRoutePolyline(lat, lng, rid);
                 const dist = haversineDistance(lat, lng, snapped.lat, snapped.lng);
-                if (dist < bestSnapDist && dist <= SNAP_THRESHOLD) {
+                if (dist < bestSnapDist && dist <= SNAP_THRESHOLD_M) {
                     bestSnapDist = dist;
                     markerLat = snapped.lat;
                     markerLng = snapped.lng;
@@ -691,10 +697,9 @@ export function updateVisibleStops(routeIds) {
             const color = stopColorMap.get(stopId) || '#888888';
 
             // Distance-capped snap: try ALL visible routes serving this stop,
-            // pick the nearest polyline point within 30m. No single "owner" route.
+            // pick the nearest polyline point within SNAP_THRESHOLD_M. No single "owner" route.
             let markerLat = stop.latitude;
             let markerLng = stop.longitude;
-            const SNAP_THRESHOLD = 75; // meters — covers underground stations (Andrew ~64m)
             let bestSnapDist = Infinity;
 
             new Set(routeIds).forEach((rid) => {
@@ -702,7 +707,7 @@ export function updateVisibleStops(routeIds) {
                 if (!routeStops || !routeStops.has(stopId)) return;
                 const snapped = snapToRoutePolyline(stop.latitude, stop.longitude, rid);
                 const dist = haversineDistance(stop.latitude, stop.longitude, snapped.lat, snapped.lng);
-                if (dist < bestSnapDist && dist <= SNAP_THRESHOLD) {
+                if (dist < bestSnapDist && dist <= SNAP_THRESHOLD_M) {
                     bestSnapDist = dist;
                     markerLat = snapped.lat;
                     markerLng = snapped.lng;
