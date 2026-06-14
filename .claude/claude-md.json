@@ -1,0 +1,4 @@
+{
+  "fragments": ["00-universal", "git-flow-trunk"],
+  "vars": { "TRUNK_BRANCH": "master" }
+}
