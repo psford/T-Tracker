@@ -1,24 +1,41 @@
-// src/map.js — Leaflet map initialization and layer management
+// src/map.js — MapLibre GL map initialization and layer management
 import { config } from '../config.js';
+import { buildBasemapStyle, resolveMaxZoom } from './basemap.js';
 import { decodePolyline } from './polyline.js';
 import { formatVehiclePopup } from './vehicle-popup.js';
-import { darkenHexColor, bearingToTransform, haversineDistance, nearestPointOnSegment } from './vehicle-math.js';
+import { bearingToTransform, haversineDistance, nearestPointOnSegment } from './vehicle-math.js';
 import { shouldMergePolylines, mergePolylineSegments } from './polyline-merge.js';
 import { VEHICLE_ICONS, DEFAULT_ICON } from './vehicle-icons.js';
 
+// Route lines draw below vehicle markers, which draw below stop markers.
+// Leaflet expressed this with panes (stopPane at z-index 625). MapLibre draws route
+// lines inside the WebGL canvas and markers as DOM siblings above it, so only the two
+// marker classes need ordering — but they need it explicitly, because DOM order is
+// insertion order and vehicles arrive over SSE at unpredictable times relative to
+// route hydration.
+export const Z_INDEX = {
+    routeLabel: 400,
+    vehicleMarker: 600,
+    stopMarker: 625,
+};
+
+// Route geometry, as plain [lat, lng] pairs — one array per branch.
+// Under Leaflet these were L.polyline objects doubling as the geometry store, read
+// back with getLatLngs(). They are plain data now: snapToRoutePolyline runs per
+// marker per animation frame, and it should not walk library objects to do it.
+const ROUTE_SOURCE_ID = 'routes';
+const ROUTE_LAYER_ID = 'route-lines';
+
 let map = null;
 
-// Map<vehicleId, L.Marker> — tracks active vehicle markers on the map
+// Map<vehicleId, maplibregl.Marker> — tracks active vehicle markers on the map
 const vehicleMarkers = new Map();
 
-// Map<routeId, L.Polyline[]> — stores polylines for each route (for visibility filtering)
+// Map<routeId, Array<Array<[lat, lng]>>> — branch geometry per route
 const routePolylines = new Map();
 
 // Array of route metadata [{id, color, shortName, longName, type}] — for Phase 6 UI
 let routeMetadata = [];
-
-// L.layerGroup for route polylines — added before vehicle markers to render below them
-let routeLayerGroup = null;
 
 // Set<routeId> — tracks currently visible route IDs for visibility filtering
 let visibleRoutes = new Set();
@@ -39,53 +56,122 @@ const routeStopsMap = new Map();
 // Stops NOT in this map default to both directions.
 let routeStopDirectionsMap = new Map();
 
-// Map<routeId, L.Marker[]> — route name labels placed along polylines
+// Map<routeId, maplibregl.Marker[]> — route name labels placed along polylines
 const routeLabels = new Map();
 
 // Track last updatedAt per vehicle to avoid unnecessary popup refreshes at 60fps
 const lastPopupUpdatedAt = new Map();
 
 export function initMap(containerId) {
-    map = L.map(containerId, {
-        center: config.map.center,
+    // config.map.center is [lat, lng]; MapLibre wants [lng, lat].
+    const [centerLat, centerLng] = config.map.center;
+
+    map = new maplibregl.Map({
+        container: containerId,
+        style: buildBasemapStyle(config.basemap),
+        center: [centerLng, centerLat],
         zoom: config.map.zoom,
         minZoom: config.map.minZoom,
-        maxZoom: config.map.maxZoom,
-        zoomControl: true,
+        maxZoom: resolveMaxZoom(config.basemap, config.map.maxZoom),
+        attributionControl: { compact: true },
     });
 
-    // Custom pane for stop markers — above vehicle markerPane (600), below tooltipPane (650)
-    map.createPane('stopPane');
-    map.getPane('stopPane').style.zIndex = 625;
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
 
-    const tileLayer = L.tileLayer(config.tiles.url, {
-        attribution: config.tiles.attribution,
-        subdomains: config.tiles.subdomains,
-        maxZoom: config.tiles.maxZoom,
-    }).addTo(map);
+    // The Leaflet tile-retry/backoff block that used to live here is gone on purpose:
+    // MapLibre retries failed tile requests internally, so reimplementing it would be
+    // a second retry loop fighting the first.
 
-    // Silent tile retry on error (exponential backoff: 1s, 2s, 4s, 8s, max 10s)
-    let tileRetryDelay = 1000;
-    const MAX_TILE_RETRY_DELAY = 10000;
-    tileLayer.on('tileerror', (event) => {
-        const tile = event.tile;
-        const url = event.tile.src;
-
-        setTimeout(() => {
-            // Reload the tile by setting src again
-            tile.src = url;
-        }, tileRetryDelay);
-
-        // Exponential backoff
-        tileRetryDelay = Math.min(tileRetryDelay * 2, MAX_TILE_RETRY_DELAY);
-    });
-
-    // Reset retry delay on successful tile load
-    tileLayer.on('tileload', () => {
-        tileRetryDelay = 1000;
+    // Route lines cannot be added until the style has loaded. Hydration can win that
+    // race — static data comes out of localStorage and lands almost immediately — so
+    // anything queued before the style is ready is replayed here.
+    map.on('style.load', () => {
+        styleReady = true;
+        flushPendingRouteRender();
     });
 
     return map;
+}
+
+/**
+ * True once MapLibre's style has loaded and sources/layers may be added.
+ * Adding a source before this point throws, where Leaflet accepted layers any time.
+ */
+let styleReady = false;
+let pendingRouteRender = false;
+
+function flushPendingRouteRender() {
+    if (!pendingRouteRender) return;
+    pendingRouteRender = false;
+    renderRouteLines();
+}
+
+/**
+ * Rebuilds the route-line source and layer from routePolylines + visibleRoutes.
+ *
+ * All routes live in one GeoJSON source; visibility is a layer filter rather than
+ * adding and removing objects. Colour comes off each feature so one layer draws every
+ * route in its own colour.
+ */
+function renderRouteLines() {
+    if (!map) return;
+    if (!styleReady) {
+        pendingRouteRender = true;
+        return;
+    }
+
+    const features = [];
+    routePolylines.forEach((branches, routeId) => {
+        const color = routeColorMap.get(routeId) || '#888888';
+        for (const branch of branches) {
+            if (!branch || branch.length < 2) continue;
+            features.push({
+                type: 'Feature',
+                properties: { routeId, color },
+                // Stored as [lat, lng]; GeoJSON is [lng, lat].
+                geometry: {
+                    type: 'LineString',
+                    coordinates: branch.map(([lat, lng]) => [lng, lat]),
+                },
+            });
+        }
+    });
+
+    const data = { type: 'FeatureCollection', features };
+
+    const existing = map.getSource(ROUTE_SOURCE_ID);
+    if (existing) {
+        // setData rather than remove-and-re-add: hydrateRoutes runs again on every
+        // static-data staleness refresh, and MapLibre throws on a duplicate source id.
+        existing.setData(data);
+    } else {
+        map.addSource(ROUTE_SOURCE_ID, { type: 'geojson', data });
+        map.addLayer({
+            id: ROUTE_LAYER_ID,
+            type: 'line',
+            source: ROUTE_SOURCE_ID,
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: {
+                'line-color': ['get', 'color'],
+                'line-width': getAdaptiveWeight(visibleRoutes.size),
+                'line-opacity': 0.9,
+            },
+        });
+    }
+
+    applyRouteLineVisibility();
+}
+
+/**
+ * Applies the visible-route filter and the adaptive line weight to the route layer.
+ */
+function applyRouteLineVisibility() {
+    if (!map || !styleReady || !map.getLayer(ROUTE_LAYER_ID)) return;
+
+    map.setFilter(ROUTE_LAYER_ID, [
+        'in', ['get', 'routeId'], ['literal', [...visibleRoutes]],
+    ]);
+    map.setPaintProperty(ROUTE_LAYER_ID, 'line-width', getAdaptiveWeight(visibleRoutes.size));
 }
 
 export function getMap() {
@@ -151,24 +237,70 @@ function getPopupContent(vehicle) {
  * Uses uniform size for all markers (48x32 rectangular).
  *
  * @param {object} vehicle — vehicle object with routeId
- * @returns {L.DivIcon} — divIcon instance
+ * @returns {HTMLElement} — the marker's DOM element
  */
-function createVehicleDivIcon(vehicle) {
-    const iconHtml = getVehicleIconHtml(vehicle);
-    const iconSize = [48, 32];
-    const iconAnchor = [24, 16];
+/**
+ * Builds the route-name labels placed along a route's longest branch.
+ *
+ * Both route-loading paths (the static hydrate and the MBTA API fallback) place labels
+ * identically; this is that shared code, extracted during the MapLibre port because
+ * keeping two copies of it in sync through a renderer change was not realistic.
+ *
+ * @param {string} shortName — route short name, e.g. "Red"
+ * @param {string} color — route colour
+ * @param {Array<[number, number]>} coords — the branch to label, as [lat, lng] pairs
+ * @returns {Array<object>} — MapLibre markers, not yet added to the map
+ */
+function createRouteLabels(shortName, color, coords) {
+    if (!shortName || coords.length < 20) return [];
 
-    return L.divIcon({
-        html: iconHtml,
-        className: '', // Avoid Leaflet's default icon styling
-        iconSize,
-        iconAnchor,
-    });
+    const labels = [];
+    const numLabels = Math.max(1, Math.min(5, Math.floor(coords.length / 100)));
+    const interval = Math.floor(coords.length / (numLabels + 1));
+
+    for (let n = 1; n <= numLabels; n++) {
+        const i = n * interval;
+        const [lat, lng] = coords[i];
+        const [prevLat, prevLng] = coords[Math.max(0, i - 5)];
+        const [nextLat, nextLng] = coords[Math.min(coords.length - 1, i + 5)];
+
+        // Rotate the label to the line's local angle, kept upright so text stays readable.
+        const cosLat = Math.cos(lat * Math.PI / 180);
+        const dx = (nextLng - prevLng) * cosLat;
+        const dy = nextLat - prevLat;
+        let rotation = -Math.atan2(dy, dx) * (180 / Math.PI);
+        if (rotation > 90) rotation -= 180;
+        else if (rotation < -90) rotation += 180;
+
+        const el = document.createElement('div');
+        el.innerHTML = `<span class="route-label" style="--route-color: ${color}; transform: rotate(${rotation.toFixed(1)}deg)">${shortName}</span>`;
+        el.style.zIndex = String(Z_INDEX.routeLabel);
+        el.style.pointerEvents = 'none';   // was Leaflet's interactive: false
+
+        const marker = new maplibregl.Marker({ element: el })
+            .setLngLat([lng, lat]);
+        marker._onMap = false;
+        labels.push(marker);
+    }
+
+    return labels;
+}
+
+function createVehicleElement(vehicle) {
+    // MapLibre markers take a DOM element rather than an HTML string. The icon markup
+    // itself is unchanged — getVehicleIconHtml stays the single point of change for
+    // vehicle iconography, as it was under Leaflet.
+    const el = document.createElement('div');
+    el.innerHTML = getVehicleIconHtml(vehicle);
+    el.style.width = '48px';
+    el.style.height = '32px';
+    el.style.zIndex = String(Z_INDEX.vehicleMarker);
+    return el;
 }
 
 /**
- * Creates a new vehicle marker on the map with L.divIcon.
- * Adds to vehicleMarkers Map and to Leaflet map.
+ * Creates a new vehicle marker on the map.
+ * Adds to vehicleMarkers Map and to the MapLibre map.
  * Binds a popup for hover/tap interaction.
  *
  * @param {object} vehicle — vehicle object with latitude, longitude, bearing, opacity
@@ -182,30 +314,31 @@ export function createVehicleMarker(vehicle) {
     // ride on the (potentially merged/averaged) rendered line
     const snapped = snapToRoutePolyline(vehicle.latitude, vehicle.longitude, vehicle.routeId);
 
-    const marker = L.marker(
-        [snapped.lat, snapped.lng],
-        {
-            icon: createVehicleDivIcon(vehicle),
-        }
-    ).addTo(map);
+    const element = createVehicleElement(vehicle);
+    const marker = new maplibregl.Marker({ element })
+        // [lng, lat] — the app stores [lat, lng] everywhere else.
+        .setLngLat([snapped.lng, snapped.lat])
+        .addTo(map);
 
-    // Bind popup with initial content
-    marker.bindPopup(getPopupContent(vehicle), {
+    const popup = new maplibregl.Popup({
         className: 'vehicle-popup-container',
         closeButton: false,
-        autoPan: false,
-    });
+        closeOnClick: false,
+        focusAfterOpen: false,
+    }).setHTML(getPopupContent(vehicle));
+    marker.setPopup(popup);
 
-    // Desktop: open on hover, close on mouseout
-    marker.on('mouseover', function () {
-        this.openPopup();
+    // Desktop: open on hover, close on mouseout. MapLibre has no marker-level event
+    // emitter, so these bind to the marker's own element.
+    element.addEventListener('mouseenter', () => {
+        if (!popup.isOpen()) marker.togglePopup();
     });
-    marker.on('mouseout', function () {
-        this.closePopup();
+    element.addEventListener('mouseleave', () => {
+        if (popup.isOpen()) marker.togglePopup();
     });
 
     // Apply initial rotation and opacity
-    const iconElement = marker.getElement().querySelector('.vehicle-marker');
+    const iconElement = element.querySelector('.vehicle-marker');
     if (iconElement) {
         const { rotate, scaleX } = bearingToTransform(vehicle.bearing);
         iconElement.style.transform = `scaleX(${scaleX}) rotate(${rotate}deg)`;
@@ -231,7 +364,10 @@ export function updateVehicleMarker(vehicle) {
 
     // Snap to polyline and update position
     const snapped = snapToRoutePolyline(vehicle.latitude, vehicle.longitude, vehicle.routeId);
-    marker.setLatLng([snapped.lat, snapped.lng]);
+    marker.setLngLat([snapped.lng, snapped.lat]);
+
+    // Keep the reference fresh — setVisibleRoutes reads routeId off it.
+    marker._vehicleData = vehicle;
 
     // Update rotation and opacity
     const iconElement = marker.getElement().querySelector('.vehicle-marker');
@@ -254,7 +390,7 @@ export function removeVehicleMarker(vehicleId) {
         return; // Marker doesn't exist
     }
 
-    map.removeLayer(marker);
+    marker.remove();
     vehicleMarkers.delete(vehicleId);
     lastPopupUpdatedAt.delete(vehicleId);
 }
@@ -285,11 +421,14 @@ export function syncVehicleMarkers(vehiclesMap) {
             // Update position/rotation
             updateVehicleMarker(vehicle);
 
-            // Refresh popup content if popup is open and data changed
-            if (marker.isPopupOpen()) {
+            // Refresh popup content if popup is open and data changed.
+            // The updatedAt guard is load-bearing: this runs at 60fps, and without it
+            // every open popup rewrites its DOM on every frame.
+            const popup = marker.getPopup();
+            if (popup && popup.isOpen()) {
                 const lastUpdated = lastPopupUpdatedAt.get(vehicleId);
                 if (vehicle.updatedAt !== lastUpdated) {
-                    marker.getPopup().setContent(getPopupContent(vehicle));
+                    popup.setHTML(getPopupContent(vehicle));
                     lastPopupUpdatedAt.set(vehicleId, vehicle.updatedAt);
                 }
             }
@@ -315,11 +454,10 @@ export function syncVehicleMarkers(vehiclesMap) {
 /**
  * Fetches routes from MBTA API with the full JSON:API relationship chain
  * (route → route_patterns → representative_trip → shape → polyline).
- * Decodes polylines and creates Leaflet polyline layers.
+ * Decodes polylines into branch geometry.
  * Stores metadata for Phase 6 UI and polylines for visibility filtering.
  *
- * Layer ordering: Adds route layer group to map BEFORE vehicle markers
- * so polylines render below markers.
+ * Layer ordering: route lines draw inside the WebGL canvas, below the DOM markers.
  */
 export async function loadRoutes() {
     try {
@@ -344,24 +482,14 @@ export async function loadRoutes() {
             includedMap.set(key, item);
         });
 
-        // Initialize route layer group if not already done
-        if (!routeLayerGroup) {
-            routeLayerGroup = L.layerGroup().addTo(map);
-        }
-
         // Process each route
         routes.forEach((route) => {
             const routeId = route.id;
-            let color = route.attributes.color ? `#${route.attributes.color}` : '#888888';
+            // Routes render in the colour MBTA publishes — see hydrateRoutes().
+            const color = route.attributes.color ? `#${route.attributes.color}` : '#888888';
             const shortName = route.attributes.short_name || routeId;
             const longName = route.attributes.long_name || '';
             const type = route.attributes.type;
-
-            // Darken rail colors for dark map theme
-            // Bus (type 3) and Ferry (type 4) already theme-appropriate
-            if (type === 0 || type === 1 || type === 2) {
-                color = darkenHexColor(color, 0.15);
-            }
 
             // Parse direction metadata from MBTA route attributes
             const directionNames = route.attributes.direction_names || ['Outbound', 'Inbound'];
@@ -416,78 +544,29 @@ export async function loadRoutes() {
                 const encodedPolyline = shape.attributes?.polyline;
                 if (!encodedPolyline) return;
 
-                // Decode and create polyline
-                const coords = decodePolyline(encodedPolyline);
-                const polyline = L.polyline(coords, {
-                    color,
-                    weight: 3,
-                    opacity: 0.9,
-                });
-
-                // Don't add to map yet — setVisibleRoutes() will add visible ones after UI init
-                polylines.push(polyline);
+                // Decode into plain [lat, lng] pairs — the app's geometry representation.
+                // Not drawn yet; renderRouteLines() does that once every route is built.
+                polylines.push(decodePolyline(encodedPolyline));
             });
 
-            // Snap nearby endpoints to close gaps at termini
-            // When multiple patterns share a terminus (e.g., inbound/outbound), their endpoints
-            // may differ by a few meters, creating visual discontinuities. Snap endpoints within
-            // 50m to their average position.
-            const SNAP_THRESHOLD_METERS = 50;
-            if (polylines.length > 1) {
-                const endpoints = [];
-                polylines.forEach((polyline) => {
-                    const coords = polyline.getLatLngs();
-                    if (coords.length > 0) {
-                        endpoints.push({ polyline, index: 0, point: coords[0] }); // Start
-                        endpoints.push({ polyline, index: coords.length - 1, point: coords[coords.length - 1] }); // End
-                    }
-                });
-
-                // Group endpoints that are within snap threshold
-                const snapped = new Set();
-                for (let i = 0; i < endpoints.length; i++) {
-                    if (snapped.has(i)) continue;
-
-                    const group = [endpoints[i]];
-                    for (let j = i + 1; j < endpoints.length; j++) {
-                        if (snapped.has(j)) continue;
-
-                        const distance = haversineDistance(
-                            endpoints[i].point.lat,
-                            endpoints[i].point.lng,
-                            endpoints[j].point.lat,
-                            endpoints[j].point.lng
-                        );
-
-                        if (distance <= SNAP_THRESHOLD_METERS) {
-                            group.push(endpoints[j]);
-                            snapped.add(j);
-                        }
-                    }
-
-                    // If group has 2+ endpoints, snap them to average position
-                    if (group.length > 1) {
-                        const avgLat = group.reduce((sum, e) => sum + e.point.lat, 0) / group.length;
-                        const avgLng = group.reduce((sum, e) => sum + e.point.lng, 0) / group.length;
-
-                        group.forEach(({ polyline, index }) => {
-                            const coords = polyline.getLatLngs();
-                            coords[index] = L.latLng(avgLat, avgLng);
-                            polyline.setLatLngs(coords);
-                        });
-                    }
-
-                    snapped.add(i);
-                }
-            }
+            // Snap nearby endpoints to close gaps at termini. When multiple patterns
+            // share a terminus (inbound/outbound), their endpoints can differ by a few
+            // metres and draw as a gap.
+            snapBranchEndpoints(polylines);
 
             // Rail (types 0, 1): dedup inbound/outbound copies (max nearest-vertex < 20m),
             // then segment-merge remaining polylines (shared corridors averaged at 40m threshold,
             // branches and terminus loops kept as separate segments).
             // Bus/CR/Ferry: segment-by-segment merge at 20m threshold.
+            // polyline-merge.js works in {lat, lng} objects and its own test suite pins
+            // that interface, so this path converts at the boundary rather than
+            // changing a helper three other callers depend on.
+            const toObjs = (branch) => branch.map(([lat, lng]) => ({ lat, lng }));
+            const toPairs = (objs) => objs.map(p => [p.lat, p.lng]);
+
             const isRail = (type === 0 || type === 1);
             if (isRail && polylines.length >= 2) {
-                const coords = polylines.map(pl => pl.getLatLngs());
+                const coords = polylines.map(toObjs);
                 const oriented = [coords[0]];
                 for (let pi = 1; pi < coords.length; pi++) {
                     const p = coords[pi];
@@ -551,18 +630,14 @@ export async function loadRoutes() {
                     // else: terminus loops — keep all raw polylines
                 }
                 if (resultCoords.length !== polylines.length || unique.length !== oriented.length) {
-                    const routeColor = polylines[0].options.color;
-                    const routeOpts = { color: routeColor, weight: 3, opacity: 0.9 };
-                    polylines.forEach(pl => pl.remove());
                     polylines.length = 0;
                     for (const seg of resultCoords) {
-                        const latlngs = seg.map(p => L.latLng(p.lat, p.lng));
-                        polylines.push(L.polyline(latlngs, routeOpts).addTo(map));
+                        polylines.push(toPairs(seg));
                     }
                 }
             } else if (!isRail && polylines.length === 2) {
-                const c1 = polylines[0].getLatLngs();
-                const c2raw = polylines[1].getLatLngs();
+                const c1 = toObjs(polylines[0]);
+                const c2raw = toObjs(polylines[1]);
 
                 if (c1.length >= 2 && c2raw.length >= 2) {
                     const dSame = haversineDistance(c1[0].lat, c1[0].lng, c2raw[0].lat, c2raw[0].lng);
@@ -571,68 +646,24 @@ export async function loadRoutes() {
 
                     if (shouldMergePolylines(c1, c2)) {
                         const segments = mergePolylineSegments(c1, c2, 20);
-                        const routeColor = polylines[0].options.color;
-                        const routeOpts = { color: routeColor, weight: 3, opacity: 0.9 };
-                        polylines.forEach(pl => pl.remove());
                         polylines.length = 0;
                         for (const seg of segments) {
-                            const latlngs = seg.map(p => L.latLng(p.lat, p.lng));
-                            const pl = L.polyline(latlngs, routeOpts).addTo(map);
-                            polylines.push(pl);
+                            polylines.push(toPairs(seg));
                         }
                     }
                 }
             }
 
-            // Create route name labels along the longest polyline
-            let longestCoords = [];
-            polylines.forEach((pl) => {
-                const latlngs = pl.getLatLngs();
-                if (latlngs.length > longestCoords.length) {
-                    longestCoords = latlngs;
-                }
-            });
-
-            if (shortName && longestCoords.length >= 20) {
-                const labels = [];
-                const numLabels = Math.max(1, Math.min(5, Math.floor(longestCoords.length / 100)));
-                const interval = Math.floor(longestCoords.length / (numLabels + 1));
-
-                for (let n = 1; n <= numLabels; n++) {
-                    const i = n * interval;
-                    const point = longestCoords[i];
-                    const prev = longestCoords[Math.max(0, i - 5)];
-                    const next = longestCoords[Math.min(longestCoords.length - 1, i + 5)];
-
-                    // Calculate line angle for label rotation (keep text readable)
-                    const cosLat = Math.cos(point.lat * Math.PI / 180);
-                    const dx = (next.lng - prev.lng) * cosLat;
-                    const dy = next.lat - prev.lat;
-                    let rotation = -Math.atan2(dy, dx) * (180 / Math.PI);
-                    if (rotation > 90) rotation -= 180;
-                    else if (rotation < -90) rotation += 180;
-
-                    const icon = L.divIcon({
-                        html: `<span class="route-label" style="--route-color: ${color}; transform: rotate(${rotation.toFixed(1)}deg)">${shortName}</span>`,
-                        className: '',
-                        iconSize: [0, 0],
-                        iconAnchor: [0, 0],
-                    });
-
-                    const marker = L.marker([point.lat, point.lng], {
-                        icon,
-                        interactive: false,
-                        zIndexOffset: -1000,
-                    });
-                    // Don't add to map yet — setVisibleRoutes() will add visible ones after UI init
-
-                    labels.push(marker);
-                }
-
-                routeLabels.set(routeId, labels);
-            }
+            // Route name labels along the longest branch.
+            const longestCoords = polylines.reduce(
+                (best, branch) => (branch.length > best.length ? branch : best),
+                []
+            );
+            const labels = createRouteLabels(shortName, color, longestCoords);
+            if (labels.length > 0) routeLabels.set(routeId, labels);
         });
 
+        renderRouteLines();
         console.log(`Loaded ${routes.length} routes with polylines`);
     } catch (error) {
         console.error('Failed to load routes:', error.message);
@@ -681,34 +712,22 @@ function getAdaptiveWeight(visibleCount) {
 export function setVisibleRoutes(routeIds) {
     visibleRoutes = new Set(routeIds);
 
-    // Calculate adaptive weight based on visible route count
-    const weight = getAdaptiveWeight(visibleRoutes.size);
+    // Route lines: one layer for every route, so visibility is a filter and the
+    // adaptive weight is a paint property. No layer objects are added or removed.
+    applyRouteLineVisibility();
 
-    // Show/hide polylines with adaptive weight
-    routePolylines.forEach((polylines, routeId) => {
-        const isVisible = visibleRoutes.has(routeId);
-        polylines.forEach((polyline) => {
-            if (isVisible) {
-                if (!routeLayerGroup.hasLayer(polyline)) {
-                    routeLayerGroup.addLayer(polyline);
-                }
-                polyline.setStyle({ weight, opacity: 0.9 });
-            } else {
-                routeLayerGroup.removeLayer(polyline);
-            }
-        });
-    });
-
-    // Show/hide route labels (labels are on routeLayerGroup, not map directly)
+    // Route labels are DOM markers, so they are genuinely added and removed.
     routeLabels.forEach((labels, routeId) => {
         const isVisible = visibleRoutes.has(routeId);
         labels.forEach((marker) => {
             if (isVisible) {
-                if (!routeLayerGroup.hasLayer(marker)) {
-                    routeLayerGroup.addLayer(marker);
+                if (!marker._onMap) {
+                    marker.addTo(map);
+                    marker._onMap = true;
                 }
-            } else {
-                routeLayerGroup.removeLayer(marker);
+            } else if (marker._onMap) {
+                marker.remove();
+                marker._onMap = false;
             }
         });
     });
@@ -791,12 +810,11 @@ export async function loadStops() {
  * @param {Object} [routeStopsData] - route ID → array of stop IDs
  */
 export function hydrateRoutes(routes, stopsData = null, routeStopsData = null) {
-    // Clear existing Leaflet layers
-    if (routeLayerGroup) {
-        routeLayerGroup.clearLayers();
-    } else {
-        routeLayerGroup = L.layerGroup().addTo(map);
-    }
+    // Route labels are DOM markers and must come off the map explicitly; the route
+    // lines are rebuilt wholesale by renderRouteLines() at the end of this function.
+    routeLabels.forEach(labels => labels.forEach((m) => {
+        if (m._onMap) { m.remove(); m._onMap = false; }
+    }));
 
     // Clear state maps
     routeMetadata.length = 0;
@@ -808,11 +826,9 @@ export function hydrateRoutes(routes, stopsData = null, routeStopsData = null) {
     routes.forEach((route) => {
         const { id: routeId, shortName, longName, type, directionNames, directionDestinations } = route;
 
-        // Apply same color darkening as loadRoutes() for dark map theme
-        let color = route.color || '#888888';
-        if (type === 0 || type === 1 || type === 2) {
-            color = darkenHexColor(color, 0.15);
-        }
+        // Routes render in the colour MBTA publishes. The old 15% darkening was tuned
+        // for CARTO's near-black land and muddied Green and Blue on the grey basemap.
+        const color = route.color || '#888888';
 
         routeMetadata.push({ id: routeId, color, shortName, longName, type, directionNames, directionDestinations });
         routeColorMap.set(routeId, color);
@@ -1011,96 +1027,74 @@ export function hydrateRoutes(routes, stopsData = null, routeStopsData = null) {
             }
         }
 
-        // Create Leaflet polylines from deduplicated coordinate arrays (one per branch)
-        const polylines = deduped.map(
-            pl => L.polyline(pl, { color, weight: 3, opacity: 0.9 })
-        );
+        // Branch geometry is plain [lat, lng] data from here on.
+        const branches = deduped.map(seg => seg.map(([lat, lng]) => [lat, lng]));
 
         // Snap nearby endpoints to close gaps at branch junctions (same as loadRoutes())
-        const SNAP_THRESHOLD_METERS = 50;
-        if (polylines.length > 1) {
-            const endpoints = [];
-            polylines.forEach((pl) => {
-                const c = pl.getLatLngs();
-                if (c.length > 0) {
-                    endpoints.push({ polyline: pl, index: 0, point: c[0] });
-                    endpoints.push({ polyline: pl, index: c.length - 1, point: c[c.length - 1] });
-                }
-            });
+        snapBranchEndpoints(branches);
 
-            const snapped = new Set();
-            for (let i = 0; i < endpoints.length; i++) {
-                if (snapped.has(i)) continue;
-                const group = [endpoints[i]];
-                for (let j = i + 1; j < endpoints.length; j++) {
-                    if (snapped.has(j)) continue;
-                    const distance = haversineDistance(
-                        endpoints[i].point.lat, endpoints[i].point.lng,
-                        endpoints[j].point.lat, endpoints[j].point.lng
-                    );
-                    if (distance <= SNAP_THRESHOLD_METERS) {
-                        group.push(endpoints[j]);
-                        snapped.add(j);
-                    }
-                }
-                if (group.length > 1) {
-                    const avgLat = group.reduce((sum, e) => sum + e.point.lat, 0) / group.length;
-                    const avgLng = group.reduce((sum, e) => sum + e.point.lng, 0) / group.length;
-                    group.forEach(({ polyline: pl, index }) => {
-                        const c = pl.getLatLngs();
-                        c[index] = L.latLng(avgLat, avgLng);
-                        pl.setLatLngs(c);
-                    });
-                }
-                snapped.add(i);
-            }
-        }
+        // Not drawn yet — renderRouteLines() builds the source, and setVisibleRoutes()
+        // decides which routes the filter lets through.
+        routePolylines.set(routeId, branches);
 
-        // Don't add to map yet — setVisibleRoutes() adds visible ones after UI init
-        routePolylines.set(routeId, polylines);
-
-        // Route name labels along the longest polyline branch
-        // Skip labels for routes with empty shortName (renders as tiny colored rectangles)
-        const longestPl = polylines.reduce((best, pl) =>
-            pl.getLatLngs().length > best.getLatLngs().length ? pl : best, polylines[0]);
-        const coords = longestPl ? longestPl.getLatLngs() : [];
-        if (shortName && coords.length >= 20) {
-            const labels = [];
-            const numLabels = Math.max(1, Math.min(5, Math.floor(coords.length / 100)));
-            const interval = Math.floor(coords.length / (numLabels + 1));
-
-            for (let n = 1; n <= numLabels; n++) {
-                const i = n * interval;
-                const point = coords[i];
-                const prev = coords[Math.max(0, i - 5)];
-                const next = coords[Math.min(coords.length - 1, i + 5)];
-
-                const cosLat = Math.cos(point.lat * Math.PI / 180);
-                const dx = (next.lng - prev.lng) * cosLat;
-                const dy = next.lat - prev.lat;
-                let rotation = -Math.atan2(dy, dx) * (180 / Math.PI);
-                if (rotation > 90) rotation -= 180;
-                else if (rotation < -90) rotation += 180;
-
-                const icon = L.divIcon({
-                    html: `<span class="route-label" style="--route-color: ${color}; transform: rotate(${rotation.toFixed(1)}deg)">${shortName}</span>`,
-                    className: '',
-                    iconSize: [0, 0],
-                    iconAnchor: [0, 0],
-                });
-
-                labels.push(L.marker([point.lat, point.lng], {
-                    icon,
-                    interactive: false,
-                    zIndexOffset: -1000,
-                }));
-            }
-
-            routeLabels.set(routeId, labels);
-        }
+        // Route name labels along the longest branch.
+        // Routes with an empty shortName get none — they render as tiny coloured rectangles.
+        const longest = branches.reduce(
+            (best, b) => (b.length > best.length ? b : best),
+            branches[0] || []
+        );
+        const labels = createRouteLabels(shortName, color, longest);
+        if (labels.length > 0) routeLabels.set(routeId, labels);
     });
 
+    renderRouteLines();
     console.log(`Hydrated ${routes.length} routes from static data`);
+}
+
+/**
+ * Snaps branch endpoints within 50m of each other to their shared average.
+ *
+ * Where patterns meet at a terminus or junction their endpoints can differ by a few
+ * metres, which draws as a visible gap. Mutates the branches in place.
+ *
+ * @param {Array<Array<[number, number]>>} branches
+ */
+function snapBranchEndpoints(branches) {
+    const SNAP_THRESHOLD_METERS = 50;
+    if (branches.length <= 1) return;
+
+    const endpoints = [];
+    branches.forEach((branch) => {
+        if (branch.length === 0) return;
+        endpoints.push({ branch, index: 0 });
+        endpoints.push({ branch, index: branch.length - 1 });
+    });
+
+    const pointAt = (e) => e.branch[e.index];
+
+    const snapped = new Set();
+    for (let i = 0; i < endpoints.length; i++) {
+        if (snapped.has(i)) continue;
+
+        const group = [endpoints[i]];
+        const [iLat, iLng] = pointAt(endpoints[i]);
+        for (let j = i + 1; j < endpoints.length; j++) {
+            if (snapped.has(j)) continue;
+            const [jLat, jLng] = pointAt(endpoints[j]);
+            if (haversineDistance(iLat, iLng, jLat, jLng) <= SNAP_THRESHOLD_METERS) {
+                group.push(endpoints[j]);
+                snapped.add(j);
+            }
+        }
+
+        if (group.length > 1) {
+            const avgLat = group.reduce((sum, e) => sum + pointAt(e)[0], 0) / group.length;
+            const avgLng = group.reduce((sum, e) => sum + pointAt(e)[1], 0) / group.length;
+            group.forEach((e) => { e.branch[e.index] = [avgLat, avgLng]; });
+        }
+
+        snapped.add(i);
+    }
 }
 
 /**
@@ -1217,14 +1211,14 @@ export async function fetchRouteStops(routeIds) {
             const STOP_PROXIMITY_THRESHOLD = 150; // meters
             const routePls = routePolylines.get(routeId);
             if (routePls && routePls.length > 0) {
-                const vertices = routePls.flatMap(pl => pl.getLatLngs());
+                const vertices = routePls.flat();
                 if (vertices.length > 0) {
                     for (const stopId of [...stopIds]) {
                         const stop = stopsData.get(stopId);
                         if (!stop || !stop.latitude || !stop.longitude) continue;
                         let minDist = Infinity;
-                        for (const v of vertices) {
-                            const d = haversineDistance(stop.latitude, stop.longitude, v.lat, v.lng);
+                        for (const [vLat, vLng] of vertices) {
+                            const d = haversineDistance(stop.latitude, stop.longitude, vLat, vLng);
                             if (d < minDist) minDist = d;
                             if (minDist <= STOP_PROXIMITY_THRESHOLD) break; // early exit
                         }
@@ -1318,19 +1312,18 @@ export function getRouteStopDirectionsMap() {
  * @returns {{ lat: number, lng: number }} — snapped position
  */
 export function snapToRoutePolyline(lat, lng, routeId) {
-    const polylines = routePolylines.get(routeId);
-    if (!polylines || polylines.length === 0) return { lat, lng };
+    const branches = routePolylines.get(routeId);
+    if (!branches || branches.length === 0) return { lat, lng };
 
     let bestDistSq = Infinity;
     let bestPoint = { lat, lng };
 
-    for (const polyline of polylines) {
-        const coords = polyline.getLatLngs();
+    for (const coords of branches) {
         for (let i = 0; i < coords.length - 1; i++) {
             const result = nearestPointOnSegment(
                 lat, lng,
-                coords[i].lat, coords[i].lng,
-                coords[i + 1].lat, coords[i + 1].lng
+                coords[i][0], coords[i][1],
+                coords[i + 1][0], coords[i + 1][1]
             );
             if (result.distSq < bestDistSq) {
                 bestDistSq = result.distSq;
