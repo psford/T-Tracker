@@ -20,24 +20,40 @@ html, body {
     height: 100%;
 }
 
-/* Dark theme overrides for Leaflet controls */
-.leaflet-control-zoom a {
-    background-color: #16213e !important;
-    color: #e0e0e0 !important;
-    border-color: #0f3460 !important;
+/* Dark theme overrides for MapLibre controls */
+.maplibregl-ctrl-group {
+    background: #16213e !important;
+    border: 1px solid #0f3460 !important;
 }
 
-.leaflet-control-zoom a:hover {
+.maplibregl-ctrl-group button {
+    background-color: #16213e !important;
+    color: #e0e0e0 !important;
+}
+
+.maplibregl-ctrl-group button:hover {
     background-color: #0f3460 !important;
 }
 
-.leaflet-control-attribution {
+/* MapLibre's control icons are dark SVGs drawn for a white button; on a dark one
+   they disappear. Inverting is the whole fix — there is no dark icon set. */
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+    filter: invert(1);
+}
+
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-attrib.maplibregl-compact {
     background-color: rgba(22, 33, 62, 0.8) !important;
     color: #8888aa !important;
 }
 
-.leaflet-control-attribution a {
+.maplibregl-ctrl-attrib a {
     color: #5588cc !important;
+}
+
+/* The attribution "i" toggle is the same dark-icon-on-dark problem. */
+.maplibregl-ctrl-attrib-button {
+    filter: invert(1);
 }
 
 /* Tile error message (AC1.5) */
@@ -403,32 +419,52 @@ html, body {
 }
 
 /* Vehicle popup styles (hover cards) */
-.vehicle-popup-container .leaflet-popup-content-wrapper {
+/* vehicle-popup-container — MapLibre merges Leaflet's wrapper and content into one element,
+   so the box styling and the inner padding land on the same rule. */
+.vehicle-popup-container .maplibregl-popup-content {
     background: rgba(22, 33, 62, 0.95);
     border: 1px solid #0f3460;
     border-radius: 8px;
     color: #e0e0e0;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-}
-
-.vehicle-popup-container .leaflet-popup-tip {
-    background: rgba(22, 33, 62, 0.95);
-    border: 1px solid #0f3460;
-    box-shadow: none;
-}
-
-.vehicle-popup-container .leaflet-popup-content {
-    margin: 8px 10px;
+    padding: 8px 10px;
     font-size: 13px;
     line-height: 1.4;
 }
 
-.vehicle-popup-container .leaflet-popup-close-btn {
-    color: #8888aa;
+/* The tip is a CSS border triangle, not a filled box: only the border facing the
+   popup is coloured, and which border that is depends on the anchor. Setting
+   `background` here does nothing, which is why every anchor is named. */
+.vehicle-popup-container.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.vehicle-popup-container.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.vehicle-popup-container.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+    border-bottom-color: rgba(22, 33, 62, 0.95);
 }
 
-.vehicle-popup-container .leaflet-popup-close-btn:hover {
+.vehicle-popup-container.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.vehicle-popup-container.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.vehicle-popup-container.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+    border-top-color: rgba(22, 33, 62, 0.95);
+}
+
+.vehicle-popup-container.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+    border-right-color: rgba(22, 33, 62, 0.95);
+}
+
+.vehicle-popup-container.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+    border-left-color: rgba(22, 33, 62, 0.95);
+}
+
+.vehicle-popup-container .maplibregl-popup-close-button {
+    color: #8888aa;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 6px;
+}
+
+.vehicle-popup-container .maplibregl-popup-close-button:hover {
     color: #e0e0e0;
+    background-color: transparent;
 }
 
 .vehicle-popup__header {
@@ -484,24 +520,52 @@ html, body {
 }
 
 /* Stop popup styles (click cards for stop info and notification config) */
-.stop-popup-container .leaflet-popup-content-wrapper {
+/* stop-popup-container — MapLibre merges Leaflet's wrapper and content into one element,
+   so the box styling and the inner padding land on the same rule. */
+.stop-popup-container .maplibregl-popup-content {
     background: rgba(22, 33, 62, 0.95);
     border: 1px solid #0f3460;
     border-radius: 8px;
     color: #e0e0e0;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-}
-
-.stop-popup-container .leaflet-popup-tip {
-    background: rgba(22, 33, 62, 0.95);
-    border: 1px solid #0f3460;
-    box-shadow: none;
-}
-
-.stop-popup-container .leaflet-popup-content {
-    margin: 8px 10px;
+    padding: 8px 10px;
     font-size: 13px;
     line-height: 1.4;
+}
+
+/* The tip is a CSS border triangle, not a filled box: only the border facing the
+   popup is coloured, and which border that is depends on the anchor. Setting
+   `background` here does nothing, which is why every anchor is named. */
+.stop-popup-container.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.stop-popup-container.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.stop-popup-container.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+    border-bottom-color: rgba(22, 33, 62, 0.95);
+}
+
+.stop-popup-container.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.stop-popup-container.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.stop-popup-container.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+    border-top-color: rgba(22, 33, 62, 0.95);
+}
+
+.stop-popup-container.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+    border-right-color: rgba(22, 33, 62, 0.95);
+}
+
+.stop-popup-container.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+    border-left-color: rgba(22, 33, 62, 0.95);
+}
+
+.stop-popup-container .maplibregl-popup-close-button {
+    color: #8888aa;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 6px;
+}
+
+.stop-popup-container .maplibregl-popup-close-button:hover {
+    color: #e0e0e0;
+    background-color: transparent;
 }
 
 .stop-popup__header {
@@ -544,14 +608,6 @@ html, body {
     border-radius: 50%;
     flex-shrink: 0;
     display: inline-block;
-}
-
-.stop-popup-container .leaflet-popup-close-btn {
-    color: #8888aa;
-}
-
-.stop-popup-container .leaflet-popup-close-btn:hover {
-    color: #e0e0e0;
 }
 
 /* Stop popup direction alert buttons (inline with route row) */

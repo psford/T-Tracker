@@ -21,11 +21,25 @@ export const config = {
         minZoom: 10,
         maxZoom: 18,
     },
-    tiles: {
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 20,
+    // Basemap provider. Swapping supplier is a change HERE and nowhere else —
+    // src/basemap.js turns this descriptor into a MapLibre style, and nothing else
+    // in the app knows who supplies the tiles.
+    //
+    // kind: 'vector' — style is a MapLibre style JSON URL.
+    // kind: 'raster' — url is a {z}/{x}/{y} tile template; {s} subdomains supported.
+    //
+    // A raster provider needs no code change, only this block. For example:
+    //   basemap: {
+    //       kind: 'raster',
+    //       url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    //       attribution: 'Tiles &copy; Esri',
+    //       maxZoom: 16,
+    //   }
+    basemap: {
+        kind: 'vector',
+        style: 'https://tiles.versatiles.org/assets/styles/shadow/style.json',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, tiles by <a href="https://versatiles.org">VersaTiles</a>',
+        maxZoom: 18,
     },
     routes: {
         defaultVisible: ['Green-B', 'Green-C', 'Green-D', 'Green-E', 'Red', 'Orange', 'Blue'],

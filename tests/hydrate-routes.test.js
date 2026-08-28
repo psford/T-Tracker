@@ -7,11 +7,11 @@ import assert from 'assert';
 const mockConfig = {
     api: { baseUrl: 'https://api-v3.mbta.com', key: 'test-api-key' },
     map: { center: [42.3601, -71.0589], zoom: 13, minZoom: 11, maxZoom: 18 },
-    tiles: {
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        attribution: 'CartoDB',
-        subdomains: ['a', 'b', 'c'],
-        maxZoom: 19,
+    basemap: {
+        kind: 'vector',
+        style: 'https://tiles.example.test/styles/shadow/style.json',
+        attribution: 'Test tiles',
+        maxZoom: 18,
     },
 };
 
@@ -24,77 +24,26 @@ Module.prototype.require = function (id) {
     return originalRequire.apply(this, arguments);
 };
 
-// ── Captured polyline coordinate arrays ───────────────────────────────────────
-// Each call to L.polyline(coords) pushes the coords array here.
+// ── Branch geometry produced by the last hydrateRoutes() call ─────────────────
+// Was: every coords array passed to L.polyline(). There is no such call now, so
+// the geometry hydrateRoutes stored IS the observation point. Same assertions.
 const capturedPolylines = [];
 
-// ── Leaflet mock ──────────────────────────────────────────────────────────────
-// Mirrors the pattern used in tests/map-hydrate.test.js.
-// L.polyline captures latlngs and provides getLatLngs / setLatLngs / options.
-// L.latLng(lat, lng) returns {lat, lng} so haversineDistance comparisons work.
-globalThis.L = {
-    map: () => ({
-        addLayer: () => {},
-        on: () => {},
-        createPane: () => {},
-        getPane: () => ({ style: {} }),
-    }),
-    tileLayer: () => ({
-        addTo: () => ({ on: () => {} }),
-        on: () => {},
-    }),
-    layerGroup: () => {
-        const obj = {
-            addTo: () => obj,
-            clearLayers: () => {},
-            addLayer: () => {},
-            removeLayer: () => {},
-            hasLayer: () => false,
-        };
-        return obj;
-    },
-    polyline: (coords, opts) => {
-        // Normalise: if coords are [lat, lng] arrays → convert to {lat, lng} objects
-        // (hydrateRoutes passes [lat, lng] arrays from the static bundle;
-        //  the mock just stores them so getLatLngs returns the same shape)
-        let latlngs = coords.map(c => Array.isArray(c) ? { lat: c[0], lng: c[1] } : { lat: c.lat, lng: c.lng });
-        capturedPolylines.push(latlngs);
-        const pl = {
-            options: opts || { color: '#888888', weight: 3, opacity: 0.9 },
-            getLatLngs: () => latlngs,
-            setLatLngs: (newCoords) => {
-                latlngs = newCoords.map(c => Array.isArray(c) ? { lat: c[0], lng: c[1] } : c);
-                // Also update what captured entry points to — replace last pushed
-                // (setLatLngs is called on the same pl object, so the capture index
-                //  can't be updated in place; tests should check the returned pl's getLatLngs())
-                pl._latlngs = latlngs;
-            },
-            addTo: function () { return this; },
-            remove: () => {},
-            setStyle: () => {},
-        };
-        return pl;
-    },
-    latLng: (lat, lng) => ({ lat, lng }),
-    marker: () => ({
-        bindPopup: () => ({ on: () => {} }),
-        addTo: () => {},
-        remove: () => {},
-        setIcon: () => {},
-        setOpacity: () => {},
-        setLatLng: () => {},
-    }),
-    divIcon: () => ({}),
-    icon: () => ({}),
-    circleMarker: () => ({
-        bindPopup: () => ({ on: () => {} }),
-        addTo: () => {},
-        remove: () => {},
-    }),
-};
+// ── MapLibre stub ─────────────────────────────────────────────────────────────
+// Shared with the other map-touching suites so the stubs cannot drift apart.
+import { installMapLibreStub } from './helpers/maplibre-stub.js';
+installMapLibreStub();
 
 // ── Import module under test ───────────────────────────────────────────────────
-import { initMap, hydrateRoutes } from '../src/map.js';
+import { initMap, hydrateRoutes as hydrateRoutesRaw, getRoutePolylines } from '../src/map.js';
+
+// Hydrate, then refill capturedPolylines from what was actually stored.
+function hydrateRoutes(routes, ...rest) {
+    const result = hydrateRoutesRaw(routes, ...rest);
+    capturedPolylines.length = 0;
+    for (const branches of getRoutePolylines().values()) capturedPolylines.push(...branches);
+    return result;
+}
 
 // ── Coordinate helpers ─────────────────────────────────────────────────────────
 // ~111m per 0.001 degree latitude.

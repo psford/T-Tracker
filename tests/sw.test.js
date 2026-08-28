@@ -83,10 +83,10 @@ function testCrossOriginMBTANotIntercepted() {
 }
 
 /**
- * Test: Cross-origin CDN (Leaflet) is NOT intercepted
+ * Test: Cross-origin CDN (MapLibre GL) is NOT intercepted
  */
 function testCrossOriginCDNNotIntercepted() {
-    const event = makeFetchEvent('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js');
+    const event = makeFetchEvent('https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js');
     fetchHandler(event);
     assert.strictEqual(respondWithCalled, false, 'Cross-origin CDN must NOT be intercepted');
     console.log('  ok — cross-origin CDN not intercepted');
@@ -96,7 +96,7 @@ function testCrossOriginCDNNotIntercepted() {
  * Test: Cross-origin tile server is NOT intercepted
  */
 function testCrossOriginTilesNotIntercepted() {
-    const event = makeFetchEvent('https://a.basemaps.cartocdn.com/dark_all/12/1234/567.png');
+    const event = makeFetchEvent('https://tiles.versatiles.org/tiles/osm/12/1234/567');
     fetchHandler(event);
     assert.strictEqual(respondWithCalled, false, 'Cross-origin tile server must NOT be intercepted');
     console.log('  ok — cross-origin tile server not intercepted');

@@ -145,14 +145,14 @@ const INTERACTION_TESTS = [
             }
 
             // Check if popup appeared
-            const popup = await page.$('.leaflet-popup');
+            const popup = await page.$('.maplibregl-popup');
             if (!popup) {
                 // Click instead of hover (might be touch mode)
                 if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
                 await page.waitForTimeout(500);
             }
 
-            const popupVisible = await page.$('.leaflet-popup');
+            const popupVisible = await page.$('.maplibregl-popup');
             if (!popupVisible) {
                 results.push('WARNING: Could not trigger popup (may need real data loaded)');
                 return { pass: true, warnings: results }; // Don't fail — data may not be loaded
@@ -215,11 +215,11 @@ const INTERACTION_TESTS = [
             }
 
             // Check popup opened
-            let popup = await page.$('.leaflet-popup');
+            let popup = await page.$('.maplibregl-popup');
             if (!popup && box) {
                 await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
                 await page.waitForTimeout(500);
-                popup = await page.$('.leaflet-popup');
+                popup = await page.$('.maplibregl-popup');
             }
             if (!popup) {
                 return { pass: true, warnings: ['Could not open popup — skipping chip test'] };
@@ -296,7 +296,7 @@ const INTERACTION_TESTS = [
                 await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
                 await page.waitForTimeout(500);
 
-                const popup = await page.$('.leaflet-popup');
+                const popup = await page.$('.maplibregl-popup');
                 if (!popup) continue;
 
                 const btns = await page.$$('.stop-popup__btn');
@@ -404,8 +404,8 @@ async function run() {
     });
 
     await mapPage.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'domcontentloaded' });
-    await mapPage.waitForSelector('#map .leaflet-pane', { timeout: 15000 }).catch(() => {
-        console.warn('  WARNING: Map pane not found within 15s');
+    await mapPage.waitForSelector('#map .maplibregl-canvas', { timeout: 15000 }).catch(() => {
+        console.warn('  WARNING: Map canvas not found within 15s');
     });
     await mapPage.waitForTimeout(3000); // Let tiles and polylines settle
 
@@ -414,16 +414,11 @@ async function run() {
 
         // Pan map to region
         await mapPage.evaluate(({ center, zoom }) => {
-            const mapEl = document.getElementById('map');
-            if (mapEl && mapEl._leaflet_id) {
-                // Access Leaflet map instance via internal lookup
-                for (const key of Object.keys(mapEl)) {
-                    if (key.startsWith('_leaflet') && mapEl[key] && mapEl[key].setView) {
-                        mapEl[key].setView(center, zoom, { animate: false });
-                        break;
-                    }
-                }
-            }
+            // initMap parks the instance on the container; see src/map.js.
+            const map = document.getElementById('map')?.__maplibreMap;
+            // center is [lat, lng] here as everywhere else in the app; MapLibre wants
+            // [lng, lat].
+            if (map) map.jumpTo({ center: [center[1], center[0]], zoom });
         }, { center: region.center, zoom: region.zoom });
 
         await mapPage.waitForTimeout(2000);
@@ -464,19 +459,12 @@ async function run() {
         page.on('console', () => {}); // Suppress console noise
 
         await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'domcontentloaded' });
-        await page.waitForSelector('#map .leaflet-pane', { timeout: 15000 }).catch(() => {});
+        await page.waitForSelector('#map .maplibregl-canvas', { timeout: 15000 }).catch(() => {});
 
         // Pan to test location
         await page.evaluate(({ center, zoom }) => {
-            const mapEl = document.getElementById('map');
-            if (mapEl && mapEl._leaflet_id) {
-                for (const key of Object.keys(mapEl)) {
-                    if (key.startsWith('_leaflet') && mapEl[key] && mapEl[key].setView) {
-                        mapEl[key].setView(center, zoom, { animate: false });
-                        break;
-                    }
-                }
-            }
+            const map = document.getElementById('map')?.__maplibreMap;
+            if (map) map.jumpTo({ center: [center[1], center[0]], zoom });
         }, { center: test.center, zoom: test.zoom });
 
         await page.waitForTimeout(2000);
