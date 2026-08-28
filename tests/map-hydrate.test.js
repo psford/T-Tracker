@@ -13,11 +13,11 @@ const mockConfig = {
         minZoom: 11,
         maxZoom: 18,
     },
-    tiles: {
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        attribution: 'CartoDB',
-        subdomains: ['a', 'b', 'c'],
-        maxZoom: 19,
+    basemap: {
+        kind: 'vector',
+        style: 'https://tiles.example.test/styles/shadow/style.json',
+        attribution: 'Test tiles',
+        maxZoom: 18,
     },
 };
 

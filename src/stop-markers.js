@@ -1,5 +1,5 @@
 // src/stop-markers.js — Renders stop markers on map for visible routes
-import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, getVisibleRoutes, getRouteStopDirectionsMap, isTerminusStop, getDirectionDestinations, snapToRoutePolyline } from './map.js';
+import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, getVisibleRoutes, getRouteStopDirectionsMap, isTerminusStop, getDirectionDestinations, snapToRoutePolyline, Z_INDEX } from './map.js';
 import { formatStopPopup, escapeHtml, buildChipPickerHtml } from './stop-popup.js';
 import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';
 import { updateStatus as updateNotificationStatus, renderPanel } from './notification-ui.js';
@@ -12,21 +12,19 @@ import { haversineDistance } from './vehicle-math.js';
 // instead of floating. Also covers underground stations (Andrew ~64m).
 const SNAP_THRESHOLD_M = 120;
 
-// Map<stopId, L.Marker> — tracks active stop markers on the map
+// Map<stopId, maplibregl.Marker> — tracks active stop markers on the map
 const stopMarkers = new Map();
 
 // Map<childStopId, parentStopId> — reverse lookup for merged stops
 // When a child stop is part of a merged group, this maps child → parent marker key
 const childToParentMap = new Map();
 
-// L.LayerGroup for stop markers — organized as layer for batch show/hide
-let stopLayerGroup = null;
 
 // Map<stopId, Array<routeId>> — cache of which routes serve each stop
 // Computed lazily on first popup open, invalidated on route visibility change
 let stopRoutesMap = null;
 
-// Leaflet map instance — stored for popup event delegation and popup close/open
+// MapLibre map instance — markers are added to it directly
 let mapInstance = null;
 
 /**
@@ -51,24 +49,110 @@ function buildStopRoutesMap() {
 }
 
 /**
- * Create a stop marker with divIcon and stopPane assignment.
+ * Create a stop marker element and its MapLibre marker.
  * Extracted for testability (touch-targets.AC1.1, AC1.2, AC2.1, AC4.1).
  *
  * @param {number} lat — latitude
  * @param {number} lng — longitude
  * @param {string} color — hex color string (e.g., '#DA291C')
- * @returns {L.Marker} — marker with divIcon and stopPane set
+ * @returns {object} — MapLibre marker with this module's popup behaviour attached
  */
 export function createStopMarker(lat, lng, color) {
-    return L.marker([lat, lng], {
-        icon: L.divIcon({
-            className: 'stop-marker',
-            iconSize: [44, 44],
-            iconAnchor: [22, 22],
-            html: `<div class="stop-dot" style="--stop-color: ${color}"></div>`,
-        }),
-        pane: 'stopPane',
-    });
+    const el = document.createElement('div');
+    el.className = 'stop-marker';
+    el.style.width = '44px';
+    el.style.height = '44px';
+    // Leaflet put these in a pane above vehicles; MapLibre markers are DOM siblings,
+    // so the ordering is explicit. Z_INDEX is map.js's single source for it.
+    el.style.zIndex = String(Z_INDEX.stopMarker);
+    el.innerHTML = `<div class="stop-dot" style="--stop-color: ${color}"></div>`;
+
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+        .setLngLat([lng, lat]);   // [lat, lng] in, [lng, lat] out
+
+    return addPopupBehaviour(marker, el);
+}
+
+/**
+ * Gives a MapLibre marker the four popup methods this module's 700 lines of hover,
+ * highlight and chip-picker logic are written against: on(), bindPopup(),
+ * openPopup(), closePopup().
+ *
+ * This is a compatibility shim and worth naming as one. The alternative was
+ * rewriting every hover and popup interaction in this file during a renderer swap,
+ * which would have put the risky part of the change in the part nobody was reviewing.
+ * The map library is incidental to what this module does; the shim keeps it that way.
+ *
+ * Two real differences from Leaflet are handled here rather than at each call site:
+ * Leaflet accepts a *function* as popup content and calls it lazily at open time,
+ * and Leaflet fires popupopen/popupclose on the map. MapLibre does neither.
+ */
+function addPopupBehaviour(marker, el) {
+    const handlers = { mouseover: [], mouseout: [], popupclose: [] };
+    let popup = null;
+    let contentSource = null;
+
+    el.addEventListener('mouseenter', () => handlers.mouseover.forEach(fn => fn.call(marker)));
+    el.addEventListener('mouseleave', () => handlers.mouseout.forEach(fn => fn.call(marker)));
+
+    marker.on = (type, fn) => {
+        if (handlers[type]) handlers[type].push(fn);
+        return marker;
+    };
+
+    marker.bindPopup = (content, opts = {}) => {
+        contentSource = content;
+        popup = new maplibregl.Popup({
+            className: opts.className,
+            closeButton: opts.closeButton !== false,
+            closeOnClick: false,
+            focusAfterOpen: false,
+            maxWidth: opts.maxWidth ? `${opts.maxWidth}px` : undefined,
+        });
+        popup.on('close', () => {
+            if (openPopupRecord && openPopupRecord.popup === popup) openPopupRecord = null;
+            handlers.popupclose.forEach(fn => fn.call(marker));
+            emitPopupEvent('popupclose', { popup, marker });
+        });
+        marker.setPopup(popup);
+        return marker;
+    };
+
+    marker.openPopup = () => {
+        if (!popup || popup.isOpen()) return marker;
+        // Leaflet's lazy function content: evaluated per open, not once at bind.
+        const html = typeof contentSource === 'function' ? contentSource(marker) : contentSource;
+        popup.setHTML(html);
+        marker.togglePopup();
+        openPopupRecord = { popup, marker };
+        emitPopupEvent('popupopen', { popup, marker });
+        return marker;
+    };
+
+    marker.closePopup = () => {
+        if (popup && popup.isOpen()) marker.togglePopup();
+        return marker;
+    };
+
+    return marker;
+}
+
+// Leaflet fired popupopen/popupclose on the map object. MapLibre has no such events,
+// so this module carries its own small bus for them, plus the identity of whatever
+// popup is currently open (Leaflet's map.closePopup()).
+const popupListeners = { popupopen: [], popupclose: [] };
+let openPopupRecord = null;
+
+function emitPopupEvent(type, event) {
+    popupListeners[type].forEach(fn => fn(event));
+}
+
+function onPopupEvent(type, fn) {
+    popupListeners[type].push(fn);
+}
+
+function closeOpenPopup() {
+    if (openPopupRecord) openPopupRecord.marker.closePopup();
 }
 
 /**
@@ -312,7 +396,7 @@ function handleAlertResult(result, stopId, container) {
         highlightConfiguredStop(stopId);
         updateNotificationStatus();
         renderPanel();
-        mapInstance.closePopup();
+        closeOpenPopup();
     }
 }
 
@@ -321,7 +405,7 @@ function handleAlertResult(result, stopId, container) {
  * Encapsulates: on hover show popup, on mouseout hide (with delay), on popupclose reset sticky flag.
  * Shared between merged markers and individual markers (touch-targets.AC2.3).
  *
- * @param {L.Marker} marker — marker to attach hover behavior to
+ * @param {object} marker — marker to attach hover behavior to
  */
 function attachHoverBehavior(marker) {
     marker.on('mouseover', function () {
@@ -413,12 +497,13 @@ export function refreshAllHighlights() {
  * Initialize stop markers module.
  * Creates layer group, stores map instance for event delegation, and sets up popup event handling.
  *
- * @param {L.Map} map — Leaflet map instance
+ * @param {object} map — MapLibre map instance
  * @param {EventTarget} [apiEventsTarget=null] — EventTarget for listening to notification:pair-expired events
  */
 export function initStopMarkers(map, apiEventsTarget = null) {
     mapInstance = map;
-    stopLayerGroup = L.layerGroup().addTo(map);
+    // MapLibre has no layer group for DOM markers; they are added and removed
+    // individually, and mapInstance is what they are added to.
 
     // Listen for pair auto-delete to refresh stop highlights
     if (apiEventsTarget) {
@@ -431,14 +516,14 @@ export function initStopMarkers(map, apiEventsTarget = null) {
     // AbortController prevents listener stacking across repeated popupopen events
     let popupAbort = null;
 
-    mapInstance.on('popupclose', () => {
+    onPopupEvent('popupclose', () => {
         if (popupAbort) {
             popupAbort.abort();
             popupAbort = null;
         }
     });
 
-    mapInstance.on('popupopen', (e) => {
+    onPopupEvent('popupopen', (e) => {
         const container = e.popup.getElement();
         if (!container) return;
 
@@ -451,7 +536,7 @@ export function initStopMarkers(map, apiEventsTarget = null) {
         const { signal } = popupAbort;
 
         // Keep popup open when mouse enters popup area (cancel marker's mouseout timer)
-        const sourceMarker = e.popup._source;
+        const sourceMarker = e.marker;
         if (sourceMarker) {
             container.addEventListener('mouseenter', () => {
                 if (sourceMarker._hoverCloseTimer) {
@@ -462,7 +547,7 @@ export function initStopMarkers(map, apiEventsTarget = null) {
             container.addEventListener('mouseleave', () => {
                 // Don't auto-close if user has engaged with chip picker
                 if (sourceMarker._popupSticky) return;
-                mapInstance.closePopup();
+                closeOpenPopup();
             }, { signal });
         }
 
@@ -589,7 +674,7 @@ export function updateVisibleStops(routeIds) {
     // Remove markers for stops no longer visible
     stopsToRemove.forEach((stopId) => {
         const marker = stopMarkers.get(stopId);
-        stopLayerGroup.removeLayer(marker);
+        marker.remove();
         stopMarkers.delete(stopId);
     });
 
@@ -682,7 +767,7 @@ export function updateVisibleStops(routeIds) {
             }
 
             stopMarkers.set(parentId, marker);
-            stopLayerGroup.addLayer(marker);
+            marker.addTo(mapInstance);
         }
     });
 
@@ -749,7 +834,7 @@ export function updateVisibleStops(routeIds) {
             }
 
             stopMarkers.set(stopId, marker);
-            stopLayerGroup.addLayer(marker);
+            marker.addTo(mapInstance);
         }
     });
 }

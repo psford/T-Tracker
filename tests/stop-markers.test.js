@@ -1,42 +1,10 @@
 // tests/stop-markers.test.js — Unit tests for stop marker management
 import assert from 'assert';
 
-// Mock Leaflet L global BEFORE importing stop-markers.js
-// Following pattern from map-hydrate.test.js
-const mockDivIconCalls = [];
-const mockMarkerCalls = [];
-const mockCircleMarkerCalls = [];
-
-globalThis.L = {
-    marker: function(latlng, options) {
-        mockMarkerCalls.push({ latlng, options });
-        return {
-            _latlng: latlng,
-            _options: options,
-            bindPopup: () => ({ on: () => {} }),
-            addTo: () => {},
-            remove: () => {},
-            setIcon: () => {},
-            getElement: () => null,
-            on: () => {},
-        };
-    },
-    divIcon: function(options) {
-        mockDivIconCalls.push(options);
-        return { ...options };
-    },
-    circleMarker: function(latlng, options) {
-        mockCircleMarkerCalls.push({ latlng, options });
-        return {};
-    },
-    layerGroup: () => ({
-        addLayer: () => {},
-        removeLayer: () => {},
-    }),
-    polyline: () => ({
-        addTo: () => {},
-    }),
-};
+// Shared MapLibre stub — see tests/helpers/maplibre-stub.js. One stub for every
+// map-touching suite, so they cannot drift apart the way the three L mocks did.
+import { installMapLibreStub } from './helpers/maplibre-stub.js';
+const mapStub = installMapLibreStub();
 
 // Mock window.matchMedia for hover detection
 globalThis.window = {
@@ -67,7 +35,7 @@ globalThis.localStorage = {
 
 // Now import the functions we're testing
 import { computeVisibleStops, createStopMarker, resolveMarkerKey, updateVisibleStops, refreshAllHighlights, getStopConfigState } from '../src/stop-markers.js';
-import { hydrateRouteStopsMap, getRouteStopsMap } from '../src/map.js';
+import { hydrateRouteStopsMap, getRouteStopsMap, Z_INDEX } from '../src/map.js';
 import { getNotificationPairs } from '../src/notifications.js';
 
 /**
@@ -146,15 +114,16 @@ function testComputeVisibleStops() {
  * Verifies touch-targets.AC1.1 (marker type supports 44px touch target)
  */
 function testCreateStopMarkerUsesMarkerNotCircle() {
-    mockMarkerCalls.length = 0;
-    mockCircleMarkerCalls.length = 0;
+    mapStub.reset();
 
     createStopMarker(42.35, -71.06, '#DA291C');
 
-    assert.strictEqual(mockMarkerCalls.length, 1, 'L.marker should be called exactly once');
-    assert.strictEqual(mockCircleMarkerCalls.length, 0, 'L.circleMarker should NOT be called');
+    // A DOM-element marker is what makes a 44px touch target possible; MapLibre's
+    // only other option is a canvas-drawn circle layer, which cannot carry one.
+    assert.strictEqual(mapStub.markers.length, 1, 'exactly one marker should be created');
+    assert(mapStub.markers[0].element, 'marker should be backed by a DOM element');
 
-    console.log('✓ createStopMarker creates L.marker (not L.circleMarker)');
+    console.log('✓ createStopMarker creates a DOM-element marker');
 }
 
 /**
@@ -162,17 +131,19 @@ function testCreateStopMarkerUsesMarkerNotCircle() {
  * Verifies touch-targets.AC1.1 (44px icon) and AC1.2 (stop-dot class for 12px visual)
  */
 function testCreateStopMarkerDivIconConfig() {
-    mockDivIconCalls.length = 0;
-    mockMarkerCalls.length = 0;
+    mapStub.reset();
 
     createStopMarker(42.35, -71.06, '#DA291C');
 
-    assert.strictEqual(mockDivIconCalls.length, 1, 'L.divIcon should be called exactly once');
-    const divIconOptions = mockDivIconCalls[0];
+    assert.strictEqual(mapStub.markers.length, 1, 'exactly one marker should be created');
+    const marker = mapStub.markers[0];
+    const divIconOptions = { html: marker.element.innerHTML };
 
-    assert.strictEqual(divIconOptions.className, 'stop-marker', 'className should be "stop-marker"');
-    assert.deepStrictEqual(divIconOptions.iconSize, [44, 44], 'iconSize should be [44, 44]');
-    assert.deepStrictEqual(divIconOptions.iconAnchor, [22, 22], 'iconAnchor should be [22, 22]');
+    assert.strictEqual(marker.element.className, 'stop-marker', 'className should be "stop-marker"');
+    assert.strictEqual(marker.element.style.width, '44px', 'touch target should be 44px wide');
+    assert.strictEqual(marker.element.style.height, '44px', 'touch target should be 44px tall');
+    // Leaflet centred the 44px icon with iconAnchor [22, 22]; MapLibre does it with anchor.
+    assert.strictEqual(marker.options.anchor, 'center', 'marker should be centred on its point');
 
     // Verify HTML contains stop-dot class and style
     assert(divIconOptions.html, 'html property should exist');
@@ -187,17 +158,26 @@ function testCreateStopMarkerDivIconConfig() {
  * Verifies touch-targets.AC2.1 (stops render above vehicles)
  */
 function testCreateStopMarkerAssignsPane() {
-    mockMarkerCalls.length = 0;
+    mapStub.reset();
 
     createStopMarker(42.35, -71.06, '#003DA5');
 
-    assert.strictEqual(mockMarkerCalls.length, 1, 'L.marker should be called once');
-    const markerCall = mockMarkerCalls[0];
+    assert.strictEqual(mapStub.markers.length, 1, 'one marker should be created');
+    const el = mapStub.markers[0].element;
 
-    assert(markerCall.options, 'marker options should exist');
-    assert.strictEqual(markerCall.options.pane, 'stopPane', 'pane should be "stopPane"');
+    // Leaflet's stopPane (z-index 625) is now an explicit z-index on the element.
+    // The ordering itself is the criterion, not the number: stops above vehicles.
+    assert.strictEqual(el.style.zIndex, String(Z_INDEX.stopMarker), 'stop marker z-index');
+    assert(
+        Z_INDEX.stopMarker > Z_INDEX.vehicleMarker,
+        'stop markers must draw above vehicle markers'
+    );
+    assert(
+        Z_INDEX.vehicleMarker > Z_INDEX.routeLabel,
+        'vehicle markers must draw above route labels'
+    );
 
-    console.log('✓ createStopMarker assigns stopPane');
+    console.log('✓ createStopMarker draws above vehicle markers');
 }
 
 /**
@@ -205,13 +185,12 @@ function testCreateStopMarkerAssignsPane() {
  * Verifies touch-targets.AC1.2 (configured visual state CSS contract)
  */
 function testCreateStopMarkerHTMLSupportsClassModifier() {
-    mockDivIconCalls.length = 0;
+    mapStub.reset();
 
     createStopMarker(42.35, -71.06, '#ED8936');
 
-    assert.strictEqual(mockDivIconCalls.length, 1, 'L.divIcon should be called');
-    const divIconOptions = mockDivIconCalls[0];
-    const html = divIconOptions.html;
+    assert.strictEqual(mapStub.markers.length, 1, 'one marker should be created');
+    const html = mapStub.markers[0].element.innerHTML;
 
     // Verify the HTML structure allows adding stop-dot--configured class
     // The element should be a div with class="stop-dot"
@@ -230,33 +209,35 @@ function testCreateStopMarkerHTMLSupportsClassModifier() {
  * Test createStopMarker returns marker with correct latlng
  */
 function testCreateStopMarkerLatLng() {
-    mockMarkerCalls.length = 0;
+    mapStub.reset();
 
+    // The app stores [lat, lng]; MapLibre wants [lng, lat]. Boston transposed lands
+    // in the South Atlantic, so this cannot pass by coincidence.
     const lat = 42.3601;
     const lng = -71.0589;
     createStopMarker(lat, lng, '#00843D');
 
-    assert.strictEqual(mockMarkerCalls.length, 1, 'L.marker should be called once');
-    const markerCall = mockMarkerCalls[0];
+    assert.strictEqual(mapStub.markers.length, 1, 'one marker should be created');
+    assert.deepStrictEqual(
+        mapStub.markers[0].lngLat,
+        [lng, lat],
+        'marker must be placed at [lng, lat], not the transposed pair'
+    );
 
-    assert.deepStrictEqual(markerCall.latlng, [lat, lng], 'marker should be created with correct [lat, lng]');
-
-    console.log('✓ createStopMarker returns marker with correct latlng');
+    console.log('✓ createStopMarker places the marker at [lng, lat]');
 }
 
 /**
  * Test createStopMarker with different colors
  */
 function testCreateStopMarkerColors() {
-    mockDivIconCalls.length = 0;
-
     const colors = ['#DA291C', '#003DA5', '#ED8936', '#00843D', '#7C878E'];
     colors.forEach(color => {
-        mockDivIconCalls.length = 0;
+        mapStub.reset();
         createStopMarker(42.35, -71.06, color);
 
-        const divIconOptions = mockDivIconCalls[0];
-        assert(divIconOptions.html.includes(`--stop-color: ${color}`), `html should contain color ${color}`);
+        const html = mapStub.markers[0].element.innerHTML;
+        assert(html.includes(`--stop-color: ${color}`), `html should contain color ${color}`);
     });
 
     console.log('✓ createStopMarker works with all MBTA route colors');

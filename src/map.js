@@ -78,6 +78,12 @@ export function initMap(containerId) {
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
 
+    // Leaflet hung its instance off the container element, and the Playwright suite
+    // drove the map through it. MapLibre does not, so put it back deliberately rather
+    // than reaching into library internals from the tests.
+    const container = map.getContainer();
+    if (container) container.__maplibreMap = map;
+
     // The Leaflet tile-retry/backoff block that used to live here is gone on purpose:
     // MapLibre retries failed tile requests internally, so reimplementing it would be
     // a second retry loop fighting the first.
@@ -1104,6 +1110,19 @@ function snapBranchEndpoints(branches) {
  */
 export function getVisibleRoutes() {
     return visibleRoutes;
+}
+
+/**
+ * Branch geometry per route, as [lat, lng] pairs.
+ *
+ * Exposed so the merge/dedup/trim behaviour in hydrateRoutes stays observable. Under
+ * Leaflet the suite watched L.polyline() calls to see what geometry came out; there is
+ * no library call to watch any more, so the geometry itself is the observation point.
+ *
+ * @returns {Map<string, Array<Array<[number, number]>>>}
+ */
+export function getRoutePolylines() {
+    return routePolylines;
 }
 
 /**
