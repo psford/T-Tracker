@@ -5,7 +5,7 @@
 // editing a file under src/, these tests could not be written at all.
 import assert from 'assert';
 import { test } from 'node:test';
-import { buildBasemapStyle, expandSubdomains, resolveMaxZoom } from '../src/basemap.js';
+import { buildBasemapStyle, expandSubdomains, resolveMaxZoom, resolveZoom, zoomOffset } from '../src/basemap.js';
 
 const SHADOW = {
     kind: 'vector',
@@ -75,8 +75,31 @@ test("AC2: the provider's zoom ceiling reaches the map when it is lower than the
     // A provider that goes higher than the app wants does not raise the app's limit.
     assert.strictEqual(resolveMaxZoom({ kind: 'raster', maxZoom: 22 }, 18), 18);
 
-    // A provider that states no ceiling leaves the app's preference alone.
-    assert.strictEqual(resolveMaxZoom({ kind: 'vector' }, 18), 18);
+    // A vector provider states no ceiling, but its 512px tiles still shift the scale,
+    // so the app's 18 becomes 17 in the provider's terms.
+    assert.strictEqual(resolveMaxZoom({ kind: 'vector' }, 18), 17);
+});
+
+test('zoom is translated into the provider\'s terms, so a swap keeps the same view', () => {
+    // Measured against the running app, not assumed: MapLibre at z11 and Leaflet at
+    // z12 both span 0.4395 degrees of longitude across a 1280px viewport. A vector
+    // style ships 512px tiles, so every configured zoom is one level tighter unless
+    // something corrects for it — which is how the whole app silently zoomed in.
+    assert.strictEqual(zoomOffset({ kind: 'vector' }), 1);
+    assert.strictEqual(zoomOffset({ kind: 'raster' }), 0);
+    assert.strictEqual(zoomOffset({ kind: 'raster', tileSize: 512 }), 1);
+
+    // config.map keeps meaning what it always meant, whoever supplies the tiles.
+    assert.strictEqual(resolveZoom(SHADOW, 12), 11);
+    assert.strictEqual(resolveZoom({ kind: 'raster', url: 'x' }, 12), 12);
+
+    // The point of the seam: the same configured view survives a provider swap.
+    const vectorView = resolveZoom({ kind: 'vector' }, 12);
+    const rasterView = resolveZoom({ kind: 'raster' }, 12);
+    assert.strictEqual(
+        2 ** vectorView * 512, 2 ** rasterView * 256,
+        'both providers should cover the same ground at the app\'s configured zoom'
+    );
 });
 
 test('a malformed descriptor is refused with a message naming the problem', () => {

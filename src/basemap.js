@@ -86,6 +86,36 @@ export function buildBasemapStyle(basemap) {
 }
 
 /**
+ * How many zoom levels this provider's tiles are offset from the 256px convention.
+ *
+ * Zoom is not comparable across tile sizes. A vector style ships 512px tiles, so it
+ * covers the same ground at zoom N that a 256px raster provider covers at N+1 —
+ * measured, not assumed: MapLibre z11 and Leaflet z12 both span 0.4395 degrees of
+ * longitude across a 1280px viewport.
+ *
+ * config.map keeps meaning what it has always meant. This is what stops a provider
+ * swap from quietly rescaling the whole app.
+ *
+ * @param {object} basemap — config.basemap
+ * @returns {number} — levels to subtract from a configured zoom
+ */
+export function zoomOffset(basemap) {
+    const tileSize = basemap?.tileSize || (basemap?.kind === 'vector' ? 512 : 256);
+    return Math.log2(tileSize / 256);
+}
+
+/**
+ * Translates a zoom expressed in the app's terms into this provider's terms.
+ *
+ * @param {object} basemap — config.basemap
+ * @param {number} zoom — a zoom from config.map
+ * @returns {number}
+ */
+export function resolveZoom(basemap, zoom) {
+    return zoom - zoomOffset(basemap);
+}
+
+/**
  * The highest zoom the map should allow.
  *
  * The provider's ceiling wins when it is lower than the app's: a raster provider that
@@ -99,7 +129,8 @@ export function buildBasemapStyle(basemap) {
  * @returns {number}
  */
 export function resolveMaxZoom(basemap, appMaxZoom) {
+    const appMax = resolveZoom(basemap, appMaxZoom);
     const providerMax = basemap?.maxZoom;
-    if (typeof providerMax !== 'number') return appMaxZoom;
-    return Math.min(providerMax, appMaxZoom);
+    if (typeof providerMax !== 'number') return appMax;
+    return Math.min(providerMax, appMax);
 }

@@ -1,6 +1,6 @@
 // src/map.js — MapLibre GL map initialization and layer management
 import { config } from '../config.js';
-import { buildBasemapStyle, resolveMaxZoom } from './basemap.js';
+import { buildBasemapStyle, resolveMaxZoom, resolveZoom } from './basemap.js';
 import { decodePolyline } from './polyline.js';
 import { formatVehiclePopup } from './vehicle-popup.js';
 import { bearingToTransform, haversineDistance, nearestPointOnSegment } from './vehicle-math.js';
@@ -70,8 +70,10 @@ export function initMap(containerId) {
         container: containerId,
         style: buildBasemapStyle(config.basemap),
         center: [centerLng, centerLat],
-        zoom: config.map.zoom,
-        minZoom: config.map.minZoom,
+        // Zoom goes through the seam: a 512px vector style covers the same ground
+        // at zoom N that a 256px raster provider does at N+1.
+        zoom: resolveZoom(config.basemap, config.map.zoom),
+        minZoom: resolveZoom(config.basemap, config.map.minZoom),
         maxZoom: resolveMaxZoom(config.basemap, config.map.maxZoom),
         attributionControl: { compact: true },
     });

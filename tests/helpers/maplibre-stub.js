@@ -133,7 +133,15 @@ export function installMapLibreStub() {
         }
         addControl() { return this; }
         getContainer() { return (this._container ||= makeElement()); }
-        addSource(id, source) { this.sources.set(id, { ...source, setData(d) { this.data = d; } }); }
+        addSource(id, source) {
+            // The real MapLibre throws here. Leaflet silently added a second layer,
+            // so a lenient stub would hide the exact regression the port can cause:
+            // hydrateRoutes runs again on every static-data refresh.
+            if (this.sources.has(id)) {
+                throw new Error(`There is already a source with the ID "${id}".`);
+            }
+            this.sources.set(id, { ...source, setData(d) { this.data = d; } });
+        }
         getSource(id) { return this.sources.get(id); }
         addLayer(layer) { this.layers.set(layer.id, layer); }
         getLayer(id) { return this.layers.get(id); }
