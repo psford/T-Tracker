@@ -186,6 +186,52 @@ export function getMap() {
     return map;
 }
 
+// ── One popup at a time ───────────────────────────────────────────────────────
+// Leaflet's map enforced this: opening a popup closed the one before it. MapLibre
+// shows any number at once, so without a registry the cards accumulate — reported
+// three-at-a-time after moving the cursor around the map.
+//
+// It matters more here than it would in a static map because both marker kinds move
+// or get rebuilt underneath the cursor: vehicles are repositioned every animation
+// frame, and stop markers are torn down and rebuilt whenever route visibility
+// changes. A marker that moves out from under a stationary pointer never receives
+// mouseleave, so its popup has nothing left to close it. Closing on open bounds that
+// to one stale card instead of an unbounded pile.
+let openPopupEntry = null;
+
+/**
+ * Records the popup that is now open, closing whichever was open before it.
+ *
+ * @param {object} popup — the MapLibre popup being opened
+ * @param {function} close — closes that popup and cleans up its owner's state
+ */
+export function registerOpenPopup(popup, close) {
+    if (openPopupEntry && openPopupEntry.popup !== popup) {
+        const previous = openPopupEntry;
+        openPopupEntry = null;
+        previous.close();
+    }
+    openPopupEntry = { popup, close };
+}
+
+/** Closes whatever popup is open, if any. Leaflet's map.closePopup(). */
+export function closeOpenPopup() {
+    if (!openPopupEntry) return;
+    const entry = openPopupEntry;
+    openPopupEntry = null;
+    entry.close();
+}
+
+/** Forgets a popup that closed on its own, so the registry cannot go stale. */
+export function forgetOpenPopup(popup) {
+    if (openPopupEntry && openPopupEntry.popup === popup) openPopupEntry = null;
+}
+
+/** The popup currently registered as open, or null. Exposed for tests. */
+export function getOpenPopup() {
+    return openPopupEntry ? openPopupEntry.popup : null;
+}
+
 // Fallback SVG polygon if icon data is missing (icons.AC6.6)
 // Scaled from original arrow (12,2 22,20 12,16 2,20) in 24x24 viewBox
 // to fit 0 0 48 32 viewBox: 2x horizontal, 1.333x vertical
@@ -338,12 +384,17 @@ export function createVehicleMarker(vehicle) {
 
     // Desktop: open on hover, close on mouseout. MapLibre has no marker-level event
     // emitter, so these bind to the marker's own element.
-    element.addEventListener('mouseenter', () => {
-        if (!popup.isOpen()) marker.togglePopup();
-    });
-    element.addEventListener('mouseleave', () => {
+    const closeThis = () => {
         if (popup.isOpen()) marker.togglePopup();
+        forgetOpenPopup(popup);
+    };
+    element.addEventListener('mouseenter', () => {
+        if (popup.isOpen()) return;
+        marker.togglePopup();
+        registerOpenPopup(popup, closeThis);
     });
+    element.addEventListener('mouseleave', closeThis);
+    popup.on('close', () => forgetOpenPopup(popup));
 
     // Apply initial rotation and opacity
     const iconElement = element.querySelector('.vehicle-marker');

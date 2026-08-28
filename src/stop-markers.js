@@ -1,5 +1,5 @@
 // src/stop-markers.js — Renders stop markers on map for visible routes
-import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, getVisibleRoutes, getRouteStopDirectionsMap, isTerminusStop, getDirectionDestinations, snapToRoutePolyline, Z_INDEX } from './map.js';
+import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, getVisibleRoutes, getRouteStopDirectionsMap, isTerminusStop, getDirectionDestinations, snapToRoutePolyline, Z_INDEX, registerOpenPopup, closeOpenPopup, forgetOpenPopup } from './map.js';
 import { formatStopPopup, escapeHtml, buildChipPickerHtml } from './stop-popup.js';
 import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';
 import { updateStatus as updateNotificationStatus, renderPanel } from './notification-ui.js';
@@ -110,7 +110,7 @@ function addPopupBehaviour(marker, el) {
             maxWidth: opts.maxWidth ? `${opts.maxWidth}px` : undefined,
         });
         popup.on('close', () => {
-            if (openPopupRecord && openPopupRecord.popup === popup) openPopupRecord = null;
+            forgetOpenPopup(popup);
             handlers.popupclose.forEach(fn => fn.call(marker));
             emitPopupEvent('popupclose', { popup, marker });
         });
@@ -120,28 +120,53 @@ function addPopupBehaviour(marker, el) {
 
     marker.openPopup = () => {
         if (!popup || popup.isOpen()) return marker;
+
+        // ONE POPUP AT A TIME. Leaflet's map enforced this for free — opening a popup
+        // closed the previous one. MapLibre happily shows any number at once, and
+        // without this the cards pile up on the map: three at a time was reported
+        // after moving the cursor around, which is impossible under Leaflet.
+        //
+        // A marker whose close is missed (its element moved out from under a
+        // stationary cursor, or it was removed and rebuilt by a visibility refresh)
+        // leaves a popup nothing will ever close. registerOpenPopup below closes the
+        // previous one, which bounds that to a single stale card.
+
         // Leaflet's lazy function content: evaluated per open, not once at bind.
         const html = typeof contentSource === 'function' ? contentSource(marker) : contentSource;
         popup.setHTML(html);
         marker.togglePopup();
-        openPopupRecord = { popup, marker };
+        registerOpenPopup(popup, () => marker.closePopup());
         emitPopupEvent('popupopen', { popup, marker });
         return marker;
     };
 
     marker.closePopup = () => {
         if (popup && popup.isOpen()) marker.togglePopup();
+        forgetOpenPopup(popup);
+        if (marker._hoverCloseTimer) {
+            clearTimeout(marker._hoverCloseTimer);
+            marker._hoverCloseTimer = null;
+        }
         return marker;
+    };
+
+    // Taking a marker off the map must take its popup with it. A stop marker is
+    // removed and rebuilt whenever route visibility changes, and an orphaned popup
+    // has no marker left to close it.
+    const removeMarker = marker.remove.bind(marker);
+    marker.remove = () => {
+        marker.closePopup();
+        return removeMarker();
     };
 
     return marker;
 }
 
-// Leaflet fired popupopen/popupclose on the map object. MapLibre has no such events,
-// so this module carries its own small bus for them, plus the identity of whatever
-// popup is currently open (Leaflet's map.closePopup()).
+// Leaflet fired popupopen/popupclose on the map object; MapLibre has no such events,
+// so this module carries its own small bus for them. The "which popup is open"
+// registry lives in map.js instead, because vehicle popups need the same one-at-a-time
+// rule and two separate registries would each think they were the only one.
 const popupListeners = { popupopen: [], popupclose: [] };
-let openPopupRecord = null;
 
 function emitPopupEvent(type, event) {
     popupListeners[type].forEach(fn => fn(event));
@@ -149,10 +174,6 @@ function emitPopupEvent(type, event) {
 
 function onPopupEvent(type, fn) {
     popupListeners[type].push(fn);
-}
-
-function closeOpenPopup() {
-    if (openPopupRecord) openPopupRecord.marker.closePopup();
 }
 
 /**

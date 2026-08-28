@@ -111,7 +111,13 @@ export function installMapLibreStub() {
             return this;
         }
         addTo() { this.onMap = true; return this; }
-        remove() { this.onMap = false; return this; }
+        remove() {
+            // Real MapLibre takes the marker's popup with it. A stub that leaves the
+            // popup open would hide a stranded-popup bug rather than expose one.
+            if (this.popup?.isOpen()) this.popup.remove();
+            this.onMap = false;
+            return this;
+        }
     }
 
     class Map_ {
