@@ -1,5 +1,8 @@
 // tests/helpers/maplibre-stub.js — one MapLibre stub for every test that needs one.
 //
+// History (TT-1.1 -> TT-1.4): comments below compare this stub's behaviour with
+// Leaflet's, the renderer TT-1.1 replaced; see docs/decisions.md.
+//
 // This replaces three separately hand-rolled `globalThis.L` stubs that had already
 // drifted apart from each other. Three stubs diverging is how a green suite stops
 // describing the app: each one only had to satisfy its own file, so none of them had

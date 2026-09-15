@@ -1,5 +1,9 @@
 // tests/map-maplibre.test.js — TT-1.1 AC3-AC8.
 //
+// History (TT-1.1 -> TT-1.4): assertions below compare current MapLibre behaviour
+// with Leaflet's and CARTO's, the renderer and basemap this port replaced; see
+// docs/decisions.md.
+//
 // These cover the behaviours the MapLibre port could plausibly break silently:
 // coordinate order, route colour, visibility, stacking, the 60fps popup guard, and
 // the bearing transform.

@@ -1,4 +1,7 @@
 // src/stop-markers.js — Renders stop markers on map for visible routes
+//
+// History (TT-1.1 -> TT-1.4): several comments below contrast current MapLibre
+// behaviour with Leaflet's, the renderer this file replaced; see docs/decisions.md.
 import { getStopData, getRouteStopsMap, getRouteColorMap, getRouteMetadata, getVisibleRoutes, getRouteStopDirectionsMap, isTerminusStop, getDirectionDestinations, snapToRoutePolyline, Z_INDEX, registerOpenPopup, closeOpenPopup, forgetOpenPopup } from './map.js';
 import { formatStopPopup, escapeHtml, buildChipPickerHtml } from './stop-popup.js';
 import { addNotificationPair, getNotificationPairs, MAX_PAIRS } from './notifications.js';

@@ -7,6 +7,9 @@
 // This module exists because it did not. T-Tracker hardcoded a CARTO raster URL,
 // CARTO retired the keyless endpoint without warning, and the live site was defaced
 // with "API KEY REQUIRED" watermarks until someone edited application code.
+//
+// History (TT-1.1 -> TT-1.4): comments in this file compare the current MapLibre
+// seam against the Leaflet/CARTO setup it replaced; see docs/decisions.md.
 
 /**
  * Expands a Leaflet-style {s} subdomain placeholder into one URL per subdomain.

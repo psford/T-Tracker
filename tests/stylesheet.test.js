@@ -1,5 +1,8 @@
 // tests/stylesheet.test.js — the styles must target the renderer the app uses.
 //
+// History (TT-1.1 -> TT-1.4): the regression this test guards against was dead
+// `.leaflet-*` selectors left behind after the MapLibre port; see docs/decisions.md.
+//
 // This exists because of a real regression: the MapLibre port left every popup and
 // control rule in styles.css pointing at .leaflet-* class names that are no longer
 // in the DOM. Nothing errored. The rules simply stopped matching, MapLibre's white

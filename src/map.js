@@ -1,4 +1,7 @@
 // src/map.js — MapLibre GL map initialization and layer management
+//
+// History (TT-1.1 -> TT-1.4): several comments below contrast current MapLibre
+// behaviour with Leaflet's, the renderer this file replaced; see docs/decisions.md.
 import { config } from '../config.js';
 import { buildBasemapStyle, resolveMaxZoom, resolveZoom } from './basemap.js';
 import { decodePolyline } from './polyline.js';

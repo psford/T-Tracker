@@ -1,6 +1,7 @@
 // src/polyline-merge.js
 // Pure function for deciding whether two polylines should be merged.
-// No Leaflet dependency — works in Node.js (prebake script) and browser.
+// No Leaflet dependency (history: Leaflet was the renderer pre-TT-1.1) — works in
+// Node.js (prebake script) and browser, regardless of which renderer draws the result.
 
 import { haversineDistance } from './vehicle-math.js';
 

@@ -1,4 +1,7 @@
 // tests/stop-markers.test.js — Unit tests for stop marker management
+//
+// History (TT-1.1 -> TT-1.4): a few comments below compare current MapLibre
+// behaviour with Leaflet's, the renderer this file's markers replaced.
 import assert from 'assert';
 
 // Shared MapLibre stub — see tests/helpers/maplibre-stub.js. One stub for every

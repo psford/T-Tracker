@@ -3,6 +3,11 @@
 // The point of these tests is that they are written entirely from outside src/.
 // Every descriptor is passed in as an argument. If swapping provider ever required
 // editing a file under src/, these tests could not be written at all.
+//
+// History (TT-1.1 -> TT-1.4): several comments and assertions below, including the
+// AC4 scan test at the bottom of this file, name Leaflet or CARTO — the renderer
+// and basemap this app replaced — for migration-comparison context, not as a claim
+// that either is current; see docs/decisions.md.
 import assert from 'assert';
 import { test } from 'node:test';
 import { readFileSync } from 'fs';

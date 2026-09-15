@@ -3,10 +3,11 @@
 Last verified: 2026-03-13
 
 ## Purpose
-Fifteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
-rendering (Leaflet markers/polylines/stop markers), user controls (route filtering), polyline decoding,
-polyline merging, route organization, popup content formatting, vehicle icon data, stop popup formatting,
-and notification engine, notification UI management, and static data loading.
+Sixteen ES6 modules that separate data acquisition (SSE), state management (interpolation),
+rendering (MapLibre markers/polylines/stop markers), the basemap provider seam, user controls
+(route filtering), polyline decoding, polyline merging, route organization, popup content
+formatting, vehicle icon data, stop popup formatting, and notification engine, notification UI
+management, and static data loading.
 
 ## Data Flow
 ```
@@ -49,7 +50,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Pauses animation when tab is hidden (Page Visibility API).
 - **Expects**: apiEvents EventTarget emitting vehicles:* events
 
-### map.js -- Leaflet Rendering
+### map.js -- MapLibre GL Rendering
 - **Exposes**: `initMap(containerId)`, `loadRoutes()`, `loadStops()`,
   `fetchRouteStops(routeIds)`, `hydrateRouteStopsMap(routeId, stopIds)`,
   `hydrateRoutes(routes)`, `hydrateStops(stops)`, `getVisibleRoutes()`,
@@ -65,12 +66,12 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   limits concurrency to 3 simultaneous requests to avoid browser connection limits and rate limiting.
   `hydrateRouteStopsMap(routeId, stopIds)` populates the internal route-stops map from cached data without making network calls,
   accepts stopIds as either an Array or Set and stores as a Set.
-- **Expects**: Leaflet `L` global available. `config.map.*`, `config.tiles.*` set.
-  Creates custom `stopPane` (z-index 625) between markerPane (600) and tooltipPane (650) for stop marker layering.
+- **Expects**: MapLibre GL `maplibregl` global available. `config.map.*`, `config.basemap.*` set.
+  Stop-marker-above-vehicle stacking is CSS z-index on marker DOM elements; MapLibre has no pane concept to create.
 
 ### stop-markers.js -- Stop Marker Rendering & Notification Config
 - **Exposes**: `initStopMarkers(map, apiEventsTarget)`, `updateVisibleStops(routeIds)`, `computeVisibleStops(visibleRouteIds, routeStopsMap, routeColorMap, stopsData = null)`, `createStopMarker(lat, lng, color)`, `refreshAllHighlights()`, `resolveMarkerKey(stopId)`, `getStopConfigState(stopId, childStopIds = null)`
-- **Guarantees**: Renders stop markers as `L.marker` + `L.divIcon` with 44×44px touch targets in a custom `stopPane` (z-index 625) above vehicles.
+- **Guarantees**: Renders stop markers as `maplibregl.Marker` with 44×44px touch target DOM elements, stacked above vehicles via CSS z-index.
   Creates one marker per unique stop (deduplication for stops on multiple routes, AC1.5).
   First visible route to claim a stop sets its color (no visual stacking).
   Only creates/removes markers on route visibility changes, not on every update (AC1.4 performance).
@@ -85,7 +86,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   `getStopConfigState(stopId, childStopIds)` computes popup config state. When childStopIds is provided, aggregates routes and existing alerts across all children; adds `stopId` field to each routeDirection entry identifying which child stop to configure.
   `highlightConfiguredStop()` resolves child stop IDs to parent-keyed markers via childToParentMap, applying stop-dot--configured class to merged markers when any child has a configured alert.
   Implements Phase 2 two-tap notification alert creation workflow via chip picker: first tap on direction button reveals chip picker with count options below the button (AC1.1), second tap on a chip updates the "Set Alert" button's data-count attribute and visually selects the chip (AC1.3), tapping "Set Alert" button creates the alert (AC1.3, AC1.4, AC1.5).
-  Delegates chip picker interactions via event delegation on popupopen Leaflet event listener.
+  Delegates chip picker interactions via event delegation on `popupopen`, an app-internal event this module fires itself (MapLibre has no built-in popup-open event).
   On successful pair creation, calls `highlightConfiguredStop()` to visually enlarge configured stop markers.
   On page load, restores highlights for all previously-configured stops from localStorage.
   Computes fresh `configState` on each popup open with current pair count, existing alerts, and per-route direction info.
@@ -96,7 +97,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
   Imports `buildChipPickerHtml` from `stop-popup.js` for chip picker HTML generation on direction button click.
   Centralized success/error handling for alert creation: after `addNotificationPair()` resolves, calls `highlightConfiguredStop()`, `updateNotificationStatus()`, `renderPanel()`, and closes popup on success; shows inline error message on failure.
   Listens for `notification:pair-expired` CustomEvent on apiEventsTarget to refresh stop highlights when pairs auto-delete.
-- **Expects**: Leaflet `L` global available. `map.js` exports for stop data, route-stop mapping, and route colors. `stop-popup.js` for popup content formatting (`formatStopPopup`), chip picker HTML generation (`buildChipPickerHtml`), and HTML escaping (`escapeHtml`). `notifications.js` for pair management (`addNotificationPair`, `getNotificationPairs`), MAX_PAIRS constant. `notification-ui.js` for status/panel updates (`updateStatus`, `renderPanel`). `vehicle-math.js` for `haversineDistance()` (200m proximity check for parent station merging). `apiEventsTarget` EventTarget for listening to `notification:pair-expired` events (optional, defaults to null).
+- **Expects**: MapLibre GL `maplibregl` global available. `map.js` exports for stop data, route-stop mapping, and route colors. `stop-popup.js` for popup content formatting (`formatStopPopup`), chip picker HTML generation (`buildChipPickerHtml`), and HTML escaping (`escapeHtml`). `notifications.js` for pair management (`addNotificationPair`, `getNotificationPairs`), MAX_PAIRS constant. `notification-ui.js` for status/panel updates (`updateStatus`, `renderPanel`). `vehicle-math.js` for `haversineDistance()` (200m proximity check for parent station merging). `apiEventsTarget` EventTarget for listening to `notification:pair-expired` events (optional, defaults to null).
   `stopsData` Map must contain stop objects with `parentStopId`, `latitude`, `longitude`, and `name` properties for merged marker support.
 
 ### vehicle-math.js -- Pure Math
@@ -133,7 +134,7 @@ MBTA API (SSE) -> api.js (parse) -> vehicles.js (interpolate) -> map.js (render)
 
 ### polyline-merge.js -- Polyline Merge Decision and Segment Merging
 - **Exposes**: `shouldMergePolylines(coords1, coords2, thresholdMeters = 50)`, `mergePolylineSegments(coordsA, coordsB, threshold = 20)`
-- **Guarantees**: Pure functions, no side effects. Works in both browser and Node.js (no Leaflet dependency).
+- **Guarantees**: Pure functions, no side effects. Works in both browser and Node.js (no dependency on the map renderer).
   `shouldMergePolylines`: Samples 30 points along coords1 at equal arc-length intervals using binary search. For each sample, finds the nearest vertex in coords2 via exhaustive search. Returns true if the median of those distances is ≤ thresholdMeters (default 50m). Used as a gate to decide whether two polylines represent the same physical route.
   `mergePolylineSegments`: Segment-by-segment merge of two oriented polylines. For each vertex, finds nearest vertex on the other polyline. Where distance < threshold (default 20m), averages the vertex pairs (same street/track). Where distance ≥ threshold, keeps both paths as separate segments (different streets, terminus loops). Applies hysteresis smoothing: short divergent runs (< 3 consecutive vertices) are reclassified as "close" to prevent noise from threshold boundary oscillation. Returns array of polyline coordinate arrays (multiple segments per merged pair). Filters segments with < 2 vertices.
 - **Expects**: Two arrays of coordinate objects with {lat, lng} properties. Both polylines should be oriented in the same direction before calling `mergePolylineSegments`.
