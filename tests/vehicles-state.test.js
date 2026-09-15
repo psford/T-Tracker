@@ -198,6 +198,93 @@ function testMetadataUpdated() {
     console.log('  ok — metadata updated on vehicles:update');
 }
 
+/**
+ * A stand-in for maplibre-gl 5.24.0's LngLatBounds.contains(). Real MapLibre
+ * routes its argument through LngLat.convert, which reads an array as
+ * [lng, lat] and an object via `lng` (or `lon`) and `lat`
+ * (maplibre-gl-js src/geo/lng_lat.ts:161-162), then checks it against the
+ * sw/ne corners (maplibre-gl-js src/geo/lng_lat_bounds.ts:279-280).
+ */
+function makeMapLibreBounds(sw, ne) {
+    return {
+        contains(input) {
+            let lng, lat;
+            if (Array.isArray(input)) {
+                lng = input[0];
+                lat = input[1];
+            } else {
+                lng = 'lng' in input ? input.lng : input.lon;
+                lat = input.lat;
+            }
+            return sw.lat <= lat && lat <= ne.lat && sw.lng <= lng && lng <= ne.lng;
+        },
+    };
+}
+
+/**
+ * Test: a vehicle inside MapLibre viewport bounds keeps interpolating
+ */
+function testMapLibreBoundsInterpolates() {
+    const events = new EventTarget();
+
+    // A Boston-area viewport, expressed the way map.getBounds() would be
+    const bostonBounds = makeMapLibreBounds(
+        { lng: -71.2, lat: 42.2 },
+        { lng: -70.9, lat: 42.5 }
+    );
+
+    // Capture the rAF callback vehicles.js schedules instead of letting it no-op
+    let capturedCallback = null;
+    const originalRAF = globalThis.requestAnimationFrame;
+    globalThis.requestAnimationFrame = (cb) => {
+        capturedCallback = cb;
+        return 1;
+    };
+
+    initVehicles(events, () => bostonBounds);
+
+    // Inside vehicle: Boston coordinates, well within bostonBounds
+    const inside = makeVehicle({ id: 'inside', latitude: 42.3601, longitude: -71.0589 });
+    // Outside vehicle: far south of Boston, outside bostonBounds
+    const outside = makeVehicle({ id: 'outside', latitude: 40.0, longitude: -71.0589 });
+
+    events.dispatchEvent(new CustomEvent('vehicles:reset', { detail: [inside, outside] }));
+
+    const insideStart = getVehicles().get('inside');
+    const insideStartLat = insideStart.latitude;
+    const insideStartLon = insideStart.longitude;
+    const outsideStart = getVehicles().get('outside');
+    const outsideStartLat = outsideStart.latitude;
+    const outsideStartLon = outsideStart.longitude;
+
+    // Nearby update for both vehicles, below the snap threshold
+    events.dispatchEvent(new CustomEvent('vehicles:update', {
+        detail: makeVehicle({ id: 'inside', latitude: 42.3602, longitude: -71.0589 }),
+    }));
+    events.dispatchEvent(new CustomEvent('vehicles:update', {
+        detail: makeVehicle({ id: 'outside', latitude: 40.0001, longitude: -71.0589 }),
+    }));
+
+    assert.ok(typeof capturedCallback === 'function', 'vehicles.js should have scheduled an animation frame');
+
+    // Advance the clock and run the captured animation frame
+    _now += 400;
+    capturedCallback(_now);
+
+    globalThis.requestAnimationFrame = originalRAF;
+
+    const insideState = getVehicles().get('inside');
+    const outsideState = getVehicles().get('outside');
+
+    const insideMoved = insideState.latitude !== insideStartLat || insideState.longitude !== insideStartLon;
+    const outsideMoved = outsideState.latitude !== outsideStartLat || outsideState.longitude !== outsideStartLon;
+
+    assert.ok(insideMoved, 'Vehicle inside MapLibre bounds should have moved toward its target after the frame');
+    assert.ok(!outsideMoved, 'Vehicle outside MapLibre bounds should still be skipped for this frame');
+
+    console.log('  ok — a vehicle inside MapLibre viewport bounds keeps interpolating');
+}
+
 function runTests() {
     try {
         console.log('vehicles.js state management tests:\n');
@@ -209,6 +296,7 @@ function runTests() {
         testNearbyUpdateInterpolates();
         testFarUpdateSnaps();
         testMetadataUpdated();
+        testMapLibreBoundsInterpolates();
         console.log('\n  All vehicles state management tests passed\n');
     } catch (err) {
         console.error('FAIL:', err.message);
