@@ -148,14 +148,15 @@ function onRemove(eventDetail) {
 
 /**
  * Check if a vehicle position is within viewport bounds
- * Handles both a MapLibre LngLatBounds-shaped object and custom {north, south, east, west} objects
+ * Handles both MapLibre LngLatBounds and custom {north, south, east, west} objects
  */
 function isWithinBounds(vehicle, bounds) {
     if (!bounds) return true; // No bounds filter = all vehicles visible
 
-    // MapLibre LngLatBounds object (map.getBounds())
+    // MapLibre LngLatBounds object — pass an {lng, lat} object rather than an
+    // array, since LngLat.convert reads a plain array as [lng, lat]
     if (typeof bounds.contains === 'function') {
-        return bounds.contains([vehicle.latitude, vehicle.longitude]);
+        return bounds.contains({ lng: vehicle.longitude, lat: vehicle.latitude });
     }
 
     // Custom {north, south, east, west} object
