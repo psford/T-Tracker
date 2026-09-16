@@ -5,7 +5,7 @@
 
 ## Architecture Overview
 
-T-Tracker is a pure client-side web application with zero server-side logic. It consists of vanilla ES6 modules loaded directly by the browser -- no bundler, no transpiler, no npm. The only external runtime dependency is Leaflet (loaded from CDN). All data comes from the MBTA V3 API.
+T-Tracker is a pure client-side web application with zero server-side logic. It consists of vanilla ES6 modules loaded directly by the browser -- no bundler, no transpiler, no npm. The only external runtime dependency is MapLibre GL JS (loaded from CDN); the basemap it renders (VersaTiles Shadow) is a swappable config descriptor, not a code dependency. All data comes from the MBTA V3 API.
 
 ```
 Browser
@@ -17,7 +17,8 @@ Browser
        ├── vehicles.js    State management, animation loop
        ├── vehicle-math.js    Pure math (lerp, easing, haversine, color, bearing)
        ├── vehicle-icons.js   SVG silhouette data (pure data, no logic)
-       ├── map.js         Leaflet rendering, markers, polylines
+       ├── map.js         MapLibre GL rendering, markers, polylines
+       ├── basemap.js     Basemap provider seam (config descriptor -> MapLibre style)
        ├── ui.js          Route selection panel, localStorage
        ├── polyline.js    Google polyline decoder
        ├── polyline-merge.js  Polyline merging (remove duplicates, merge parallel)
@@ -45,7 +46,7 @@ MBTA API (SSE) → api.js (parse + validate) → vehicles.js (interpolate + anim
 1. `api.js` opens an SSE connection to the MBTA `/vehicles` endpoint
 2. Incoming events (`reset`, `add`, `update`, `remove`) are parsed from JSON:API format into flat objects
 3. `vehicles.js` manages a `Map<vehicleId, VehicleState>` and runs a `requestAnimationFrame` loop that interpolates positions between API updates
-4. Each frame, `map.js` receives the full vehicles Map and reconciles it with Leaflet markers (create, update position/rotation, remove stale)
+4. Each frame, `map.js` receives the full vehicles Map and reconciles it with MapLibre markers (create, update position/rotation, remove stale)
 5. `ui.js` controls which routes are visible; `map.js` filters vehicles by route before rendering
 
 ### Module Dependency Graph
@@ -69,8 +70,8 @@ No circular dependencies. Pure modules (`vehicle-math.js`, `vehicle-icons.js`, `
 | Layer | Technology | Version | Source |
 |-------|-----------|---------|--------|
 | Language | JavaScript (ES6 modules) | ES2020+ | Native browser |
-| Map | Leaflet | 1.9.4 | CDN (unpkg) with SRI hash |
-| Basemap tiles | CartoDB Dark Matter | -- | cartocdn.com |
+| Map | MapLibre GL JS | 5.24.0 | CDN (unpkg) with SRI hash |
+| Basemap tiles | VersaTiles Shadow (vector) | -- | tiles.versatiles.org, via `config.basemap` |
 | Data API | MBTA V3 | v3 | api-v3.mbta.com |
 | Streaming | Server-Sent Events (SSE) | -- | Native EventSource |
 | Hosting | Cloudflare Pages | -- | Free tier |
@@ -93,9 +94,9 @@ No circular dependencies. Pure modules (`vehicle-math.js`, `vehicle-icons.js`, `
 
 | Dependency | Purpose | Loaded From | Integrity |
 |-----------|---------|-------------|-----------|
-| Leaflet 1.9.4 CSS | Map styling | unpkg.com CDN | SRI hash in index.html |
-| Leaflet 1.9.4 JS | Map rendering, markers, popups, polylines | unpkg.com CDN | SRI hash in index.html |
-| CartoDB Dark Matter tiles | Basemap imagery | basemaps.cartocdn.com | Subdomains a-d |
+| MapLibre GL JS 5.24.0 CSS | Map styling | unpkg.com CDN | SRI hash in index.html |
+| MapLibre GL JS 5.24.0 JS | Map rendering, markers, popups, polylines | unpkg.com CDN | SRI hash in index.html |
+| VersaTiles Shadow style | Basemap imagery (vector) | tiles.versatiles.org | No API key; fair-use terms unconfirmed, see `docs/decisions.md` |
 | MBTA V3 API | Vehicle positions, routes, stops | api-v3.mbta.com | API key required |
 
 ### Build-Time (Cloudflare Pages)
@@ -226,7 +227,7 @@ DNS management is transferred from Hover to Cloudflare. Hover's nameservers are 
 | Route visibility | localStorage (`ttracker-visible-routes`) | Persistent across visits |
 | Service toggles | localStorage (`ttracker-service-toggles`) | Persistent across visits |
 | Notification pairs | localStorage (`ttracker-notifications-config`) | Persistent across visits |
-| Leaflet map instance | `map.js` variable | Session |
+| MapLibre map instance | `map.js` variable | Session |
 | Vehicle markers | `map.js` Map | Session |
 | Stop markers | `map.js` Map | Session |
 
@@ -295,7 +296,7 @@ Tests use Node.js `assert` module with `--experimental-vm-modules` for ES module
 | `map-hydrate.test.js` | map.js | Static data hydration, polyline loading |
 | `sw.test.js` | sw.js | Service worker fetch handler, origin guard validation |
 
-All pure functions have unit tests. Browser-dependent modules (DOM manipulation, Leaflet rendering) are tested via human test plans.
+All pure functions have unit tests. Browser-dependent modules (DOM manipulation, MapLibre rendering) are tested via human test plans.
 
 ### Running Tests
 
@@ -368,7 +369,7 @@ Each notification pair stores `remainingCount` (number of alerts left) and `tota
 
 **Pure HTML generation:** `stop-popup.js` exports `buildChipPickerHtml(stopId, routeId, directionId)` — a pure function that generates the chip picker HTML structure without side effects.
 
-**Event delegation:** `stop-markers.js` handles all chip picker interactions via event delegation on the popup `popupopen` Leaflet event:
+**Event delegation:** `stop-markers.js` handles all chip picker interactions via event delegation on `popupopen`, an app-internal event that `stop-markers.js` fires itself (MapLibre has no built-in popup-open event):
 - Direction button tap (`data-action="show-chips"`) inserts chip picker HTML below the button
 - Chip tap updates the "Set Alert" button's `data-count` attribute and visual selection state
 - Custom chip (#) reveals inline number input for 1-99
@@ -450,7 +451,7 @@ Existing pairs without count fields are automatically upgraded to unlimited (rem
 
 - **API key exposure:** The MBTA API key is visible in client-side JavaScript. This is acceptable because MBTA keys are free and have no billing implications. The key is not committed to Git -- it's injected at build time from an encrypted Cloudflare environment variable.
 - **XSS prevention:** `vehicle-popup.js` and `stop-popup.js` escape all user-facing strings (stop names, vehicle labels, direction labels) with `escapeHtml()` before HTML interpolation. `buildChipPickerHtml()` escapes stopId and routeId in data attributes.
-- **CDN integrity:** Leaflet is loaded with Subresource Integrity (SRI) hashes to prevent CDN tampering.
+- **CDN integrity:** MapLibre GL JS is loaded with Subresource Integrity (SRI) hashes to prevent CDN tampering.
 - **No authentication:** The app has no user accounts, no server, no stored user data.
 
 ## File Inventory
@@ -466,7 +467,7 @@ Existing pairs without count fields are automatically upgraded to unlimited (rem
 | `src/vehicles.js` | 294 | Vehicle state, animation loop, viewport culling |
 | `src/vehicle-math.js` | 107 | Pure math functions |
 | `src/vehicle-icons.js` | 130 | SVG silhouette data |
-| `src/map.js` | 579 | Leaflet rendering, markers, polylines, popups |
+| `src/map.js` | 579 | MapLibre GL rendering, markers, polylines, popups |
 | `src/ui.js` | 365 | Route selection panel, localStorage |
 | `src/polyline.js` | 50 | Google polyline decoder |
 | `src/route-sorter.js` | 123 | Route grouping and sorting |

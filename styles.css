@@ -1,4 +1,6 @@
-/* styles.css — Dark theme base styles */
+/* styles.css — Dark theme base styles
+   History (TT-1.1 -> TT-1.4): a few rules below compare current MapLibre-generated
+   markup with Leaflet's, the renderer this app replaced; see docs/decisions.md. */
 
 * {
     margin: 0;

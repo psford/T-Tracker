@@ -90,7 +90,7 @@ All data flows through dedicated modules with clear responsibilities:
 - `vehicle-popup.js`: Pure formatting for vehicle popup content (HTML escaping, status strings)
 - `polyline.js`: Pure function for Google polyline decoding
 - `polyline-merge.js`: Pure function for deciding whether two polylines should be merged (arc-length sampling, nearest-vertex distance)
-- `map.js`: Leaflet rendering, marker management, route visibility filtering, stop data fetching
+- `map.js`: MapLibre GL rendering, marker management, route visibility filtering, stop data fetching
 - `route-sorter.js`: Pure function for grouping and sorting route metadata by type and name
 - `static-data.js`: Static data loader with localStorage caching and background staleness check
 - `ui.js`: Route selection UI, localStorage persistence, grouping/sorting orchestration
@@ -101,8 +101,8 @@ All data flows through dedicated modules with clear responsibilities:
 
 ## Tech Stack
 - Language: JavaScript (ES6 modules, no build tools)
-- Map: Leaflet 1.9.4 (CDN with SRI hash)
-- Tiles: CartoDB Dark Matter (dark theme basemap)
+- Map: MapLibre GL JS 5.24.0 (CDN with SRI hash)
+- Tiles: VersaTiles Shadow (vector, dark theme basemap; provider is a swappable config descriptor — see `config.basemap` and `src/basemap.js`)
 - Data: MBTA V3 API via Server-Sent Events (SSE)
 - Tests: Node.js assert module (`node --experimental-vm-modules`)
 
@@ -126,7 +126,7 @@ All data flows through dedicated modules with clear responsibilities:
 - ES6 modules require HTTP server; `file://` protocol will not work
 
 ## Project Structure
-- `index.html` -- Entry point, wires modules together, loads Leaflet CDN, notification DOM elements, SW registration
+- `index.html` -- Entry point, wires modules together, loads MapLibre GL CDN, notification DOM elements, SW registration
 - `styles.css` -- Dark theme, responsive layout, vehicle marker styles, stop/notification styles
 - `config.js` -- All configuration (API key, map center, animation timing, route defaults)
 - `config.example.js` -- Template for config.js (committed; config.js is gitignored)
@@ -204,7 +204,8 @@ the shared **git-flow-trunk** fragment above (trunk = `master`). T-Tracker adds:
 ## Boundaries
 - Safe to edit: `src/`, `styles.css`, `index.html`, `config.example.js`
 - Never commit: `config.js` (contains MBTA API key), `.env`
-- CDN dependency: Leaflet loaded via `<script>` tag with SRI hash, not bundled
+- CDN dependency: MapLibre GL JS loaded via `<script>` tag with SRI hash, not bundled
+- Basemap provider is a config descriptor (`config.basemap`), swappable without touching `src/` — see `docs/decisions.md`
 
 ## Deployment (Cloudflare Pages)
 - **URL**: `https://supertra.in`

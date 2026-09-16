@@ -22,11 +22,11 @@ The app works on desktop browsers and mobile devices. No account or installation
 
 ### F1. Interactive Map
 
-The map fills the full browser viewport with a dark-themed basemap (CartoDB Dark Matter). Users can pan, zoom, and interact with the map using standard mouse/touch gestures.
+The map fills the full browser viewport with a dark-themed vector basemap (VersaTiles Shadow, rendered by MapLibre GL). Users can pan, zoom, and interact with the map using standard mouse/touch gestures. The basemap provider is a config descriptor and can be swapped without changing app code — see `docs/decisions.md`.
 
 - **Center:** Boston, MA (42.3601, -71.0589)
 - **Zoom range:** 10 (metro area) to 18 (street level), default 12
-- **Tile error handling:** If map tiles fail to load, the app silently retries with exponential backoff (1s, 2s, 4s, 8s, max 10s). No error message is shown to avoid cluttering the UI.
+- **Tile error handling:** MapLibre GL retries failed tile fetches internally; the app does not implement its own retry/backoff loop.
 
 ### F2. Live Vehicle Positions
 

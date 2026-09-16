@@ -1,4 +1,9 @@
 // tests/map-hydrate.test.js — Unit tests for hydrateRouteStopsMap and getRouteStopsMap
+//
+// History note (TT-1.4): this file still stubs a Leaflet-shaped `globalThis.L`
+// rather than the shared MapLibre stub (tests/helpers/maplibre-stub.js) the other
+// map-touching suites use since TT-1.1. Filed separately rather than changed here —
+// this ticket only cleans up stale Leaflet/CARTO mentions, not test infrastructure.
 import assert from 'assert';
 
 // Mock config before importing map.js

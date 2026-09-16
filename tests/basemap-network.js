@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // tests/basemap-network.js — TT-1.1 AC1.
 //
+// History (TT-1.1 -> TT-1.4): asserts the map requests VersaTiles, not the CARTO
+// endpoint this port replaced; see docs/decisions.md.
+//
 // Asserts on the REQUEST LOG, not on config. Reading config back proves only that
 // config says what config says; it proves nothing about what the map fetched, and
 // the bug this whole epic exists for was a request going somewhere nobody checked.

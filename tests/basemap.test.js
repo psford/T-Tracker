@@ -3,8 +3,17 @@
 // The point of these tests is that they are written entirely from outside src/.
 // Every descriptor is passed in as an argument. If swapping provider ever required
 // editing a file under src/, these tests could not be written at all.
+//
+// History (TT-1.1 -> TT-1.4): several comments and assertions below, including the
+// AC4 scan test at the bottom of this file, name Leaflet or CARTO — the renderer
+// and basemap this app replaced — for migration-comparison context, not as a claim
+// that either is current; see docs/decisions.md.
 import assert from 'assert';
 import { test } from 'node:test';
+import { readFileSync } from 'fs';
+import { execFileSync } from 'child_process';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { buildBasemapStyle, expandSubdomains, resolveMaxZoom, resolveZoom, zoomOffset } from '../src/basemap.js';
 
 const SHADOW = {
@@ -107,4 +116,93 @@ test('a malformed descriptor is refused with a message naming the problem', () =
     assert.throws(() => buildBasemapStyle({ kind: 'vector' }), /requires a style URL/);
     assert.throws(() => buildBasemapStyle({ kind: 'raster' }), /requires a .* url template/);
     assert.throws(() => buildBasemapStyle({ kind: 'wms' }), /unknown kind "wms"/);
+});
+
+// TT-1.4 AC4 — a stale "the app renders on Leaflet / CartoDB" claim misleads the next
+// session silently: nothing errors, nobody notices, and the wrong mental model spreads.
+// This scans every tracked file (outside the dated history directories, which are
+// allowed to describe what was true when they were written) for a mention of Leaflet
+// or CARTO, and requires each one to be either fixed to describe the current renderer
+// (MapLibre GL + VersaTiles Shadow) or explicitly marked as historical.
+//
+// "Marked as historical" means the word "history" appears on the same line, or —
+// for a Markdown file — in the nearest heading above it. A file with no Markdown
+// headings of its own (every .js/.css/.html file here) has no closer heading than
+// its own leading comment block, so that block, if it says "history", governs every
+// line below it — the same way an H1 with no other heading governs a whole document.
+test('no live file describes Leaflet or CARTO as the current renderer or basemap', () => {
+    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+    const HISTORY_DIRS = [
+        'docs/design-plans/',
+        'docs/implementation-plans/',
+        'docs/test-plans/',
+        'docs/retro-archive/',
+    ];
+    const MENTION = /leaflet|carto/i;
+    const HISTORY = /history/i;
+    const MD_HEADING = /^#{1,6}\s+(.*)$/;
+
+    // The leading run of blank/comment lines at the top of a non-Markdown file —
+    // its only "heading", in the absence of any closer one.
+    function leadingHeader(lines) {
+        let header = '';
+        let inBlock = false;
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (inBlock) {
+                header += line + '\n';
+                if (trimmed.includes('*/') || trimmed.includes('-->')) inBlock = false;
+                continue;
+            }
+            if (trimmed === '' || trimmed.startsWith('#!') || trimmed.startsWith('//')) {
+                header += line + '\n';
+                continue;
+            }
+            if (trimmed.startsWith('/*') || trimmed.startsWith('<!--')) {
+                header += line + '\n';
+                if (!trimmed.includes('*/') && !trimmed.includes('-->')) inBlock = true;
+                continue;
+            }
+            break; // first line of real content ends the header
+        }
+        return header;
+    }
+
+    const files = execFileSync('git', ['ls-files'], { cwd: repoRoot, encoding: 'utf8' })
+        .split('\n')
+        .filter(Boolean)
+        .filter((f) => !HISTORY_DIRS.some((dir) => f.startsWith(dir)));
+
+    const violations = [];
+
+    for (const file of files) {
+        let content;
+        try {
+            content = readFileSync(path.join(repoRoot, file), 'utf8');
+        } catch {
+            continue; // tracked but not present in this checkout (e.g. a submodule) — not this test's concern
+        }
+        const lines = content.split('\n');
+        const isMarkdown = file.endsWith('.md');
+        const fileGovernedByHistory = !isMarkdown && HISTORY.test(leadingHeader(lines));
+
+        let currentHeading = '';
+        lines.forEach((line, idx) => {
+            if (isMarkdown) {
+                const heading = line.match(MD_HEADING);
+                if (heading) currentHeading = heading[1];
+            }
+            if (!MENTION.test(line)) return;
+            if (HISTORY.test(line)) return;
+            if (isMarkdown && HISTORY.test(currentHeading)) return;
+            if (fileGovernedByHistory) return;
+            violations.push(`${file}:${idx + 1}: ${line.trim()}`);
+        });
+    }
+
+    assert.deepStrictEqual(
+        violations,
+        [],
+        `Leaflet/CARTO mentioned without a history marker, in ${new Set(violations.map((v) => v.split(':')[0])).size} file(s):\n${violations.join('\n')}`
+    );
 });

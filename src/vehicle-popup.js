@@ -1,5 +1,6 @@
 // src/vehicle-popup.js — Pure formatting functions for vehicle popup content
-// No imports, no DOM access, no Leaflet dependency
+// No imports, no DOM access, no dependency on the map renderer (history: Leaflet
+// was the renderer pre-TT-1.1; this module never depended on it either)
 
 /**
  * Escape HTML special characters to prevent injection

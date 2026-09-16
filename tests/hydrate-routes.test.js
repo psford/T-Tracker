@@ -1,5 +1,8 @@
 // tests/hydrate-routes.test.js — Unit tests for hydrateRoutes() from map.js
-// Tests that Leaflet polylines receive the correct coordinate arrays
+// History (TT-1.1 -> TT-1.4): this file's name and comments once referred to
+// Leaflet polylines; hydrateRoutes() now builds MapLibre GeoJSON sources, and
+// this test asserts on the coordinate arrays fed into them, unchanged.
+// Tests that route polylines receive the correct coordinate arrays
 // after bus/rail processing (concatenation, dedup, bypass).
 import assert from 'assert';
 

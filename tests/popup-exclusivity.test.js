@@ -1,6 +1,6 @@
 // tests/popup-exclusivity.test.js — only one popup may be open at a time.
 //
-// Leaflet's map enforced this for free: opening a popup closed the previous one.
+// History: Leaflet's map enforced this for free: opening a popup closed the previous one.
 // MapLibre shows any number at once, and the port dropped the invariant without
 // anything failing — the cards piled up on the map, three at a time, while every
 // test stayed green.
