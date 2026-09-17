@@ -1,7 +1,7 @@
 // tests/map-hydrate.test.js — Unit tests for hydrateRouteStopsMap and getRouteStopsMap
 //
-// History note (TT-1.1): this file tests hydrateRouteStopsMap and getRouteStopsMap.
-// After TT-1.6, no test infrastructure stubs are used.
+// This file tests hydrateRouteStopsMap and getRouteStopsMap.
+// It mocks config.js; it needs no map global since TT-1.6.
 import assert from 'assert';
 
 // Mock config before importing map.js
