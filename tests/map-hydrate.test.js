@@ -1,9 +1,7 @@
 // tests/map-hydrate.test.js — Unit tests for hydrateRouteStopsMap and getRouteStopsMap
 //
-// History note (TT-1.4): this file still stubs a Leaflet-shaped `globalThis.L`
-// rather than the shared MapLibre stub (tests/helpers/maplibre-stub.js) the other
-// map-touching suites use since TT-1.1. Filed separately rather than changed here —
-// this ticket only cleans up stale Leaflet/CARTO mentions, not test infrastructure.
+// History note (TT-1.1): this file tests hydrateRouteStopsMap and getRouteStopsMap.
+// After TT-1.6, no test infrastructure stubs are used.
 import assert from 'assert';
 
 // Mock config before importing map.js
@@ -44,41 +42,6 @@ Module.prototype.require = function(id) {
     return originalRequire.apply(this, arguments);
 };
 
-// Mock Leaflet L global
-globalThis.L = {
-    map: () => ({
-        addLayer: () => {},
-        on: () => {},
-    }),
-    tileLayer: () => ({
-        addTo: () => ({ on: () => {} }),
-        on: () => {},
-    }),
-    layerGroup: () => ({
-        addLayer: () => {},
-        removeLayer: () => {},
-        clearLayers: () => {},
-    }),
-    marker: () => ({
-        bindPopup: () => ({ on: () => {} }),
-        addTo: () => {},
-        remove: () => {},
-        setIcon: () => {},
-        setOpacity: () => {},
-        setLatLng: () => {},
-    }),
-    polyline: () => ({
-        addTo: () => {},
-        remove: () => {},
-    }),
-    circleMarker: () => ({
-        bindPopup: () => ({ on: () => {} }),
-        addTo: () => {},
-        remove: () => {},
-    }),
-    divIcon: () => ({}),
-    icon: () => ({}),
-};
 
 // Now import the functions we're testing
 import { hydrateRouteStopsMap, getRouteStopsMap } from '../src/map.js';
