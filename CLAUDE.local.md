@@ -8,6 +8,8 @@
 
 Last verified: 2026-06-13
 
+A rule written as `specs/<file>.md#<section>` is held by that section of the spec corpus, in claude-harness's `plugins/psford-tickets/specs/`. Read the section before acting on the rule.
+
 ## Data Flow Architecture
 
 ```
@@ -100,32 +102,16 @@ All data flows through dedicated modules with clear responsibilities:
   - `screenshots/` -- Generated screenshots (gitignored)
 
 ## Conventions
-- Pure ES6 modules with `import`/`export` (no build step, no npm)
-- Functional module exports (no classes)
-- Event-driven communication between modules (CustomEvent on EventTarget)
-- camelCase for JS, kebab-case for CSS classes (BEM-lite: `block--modifier`)
-- All API data flattened from JSON:API format at the api.js boundary
+- **Build-free ES6 modules, functional exports, events between modules, naming, and the JSON:API boundary:** `specs/code.md#t-tracker-conventions`
 
 ## Development Workflow (SDLC)
-**NEVER create throwaway prototype files** (e.g., `index-new.html`, `test-feature.html`)
-**ALWAYS work on production files in feature branches**
+- **Production files in a branch, never throwaway prototypes:** `specs/code.md#t-tracker-conventions`
 
 ### Branching (T-Tracker specifics)
 The general `feature/* → PR → master` flow, commit protocol, and PR rules come from
 the shared **git-flow-trunk** fragment above (trunk = `master`). T-Tracker adds:
 - `dev/*` branches for experiments or multi-feature work (alongside `feature/*`).
-- `master` **auto-deploys to supertra.in on push** — so a merge to `master` IS a deploy.
-- Test locally (`python -m http.server 8000`) before merging.
-
-### What NOT to Do
-- ❌ Don't create `index-v2.html`, `map-enhanced.html`, or similar duplicates
-- ❌ Don't build features in separate throwaway files
-- ❌ Don't prototype outside the production file structure
-- ✅ DO work on actual production files in branches
-- ✅ DO commit frequently to save progress
-- ✅ DO use feature branches to isolate work
-
-**Rationale**: Throwaway files create technical debt, confusion, and merge conflicts. Feature branches provide isolation without duplication.
+- **A merge to `master` deploys supertra.in, so test locally first:** `specs/deployment.md#t-tracker-deploys`
 
 ### Visual Review (CSS Testing)
 - The `visual-review` Claude Code skill captures screenshots of mock pages for CSS review
@@ -135,17 +121,14 @@ the shared **git-flow-trunk** fragment above (trunk = `master`). T-Tracker adds:
 - Mock pages are NOT throwaway prototypes -- they are committed test fixtures for ongoing visual regression
 
 ## Worktrees
-- After creating a worktree, **copy `config.js`** from main repo root into the worktree (it's gitignored, so worktrees get a placeholder with a dummy API key)
-- Dummy API keys cause silent SSE failures ("Rate limited — retrying...") that look like rate limits but are actually auth failures
+- **Copy `config.js` into a new worktree:** `specs/git.md#dev-worktrees`
 
 ## Retrospective
 - Retro items are logged in `docs/retro-items.md` (not `.claude/retrospective-log.md`)
 
 ## Decisions
 - Architectural and product decisions are recorded in `docs/decisions.md`
-- Read this file at session start before proposing solutions related to polylines, merging, or rendering
-- REJECTED entries must never be re-proposed — check before suggesting alternatives
-- When Patrick makes a UX/product decision, implement it; technical objections only for data loss, security, or irreversibility
+- **Read it before polyline, merging or rendering work, never re-propose a REJECTED entry, and implement Patrick's decisions:** `specs/code.md#implement-the-agreed-design`
 
 ## Configuration
 - `config.js` holds API key, map settings, animation timing, route defaults
@@ -156,7 +139,7 @@ the shared **git-flow-trunk** fragment above (trunk = `master`). T-Tracker adds:
 
 ## Boundaries
 - Safe to edit: `src/`, `styles.css`, `index.html`, `config.example.js`
-- Never commit: `config.js` (contains MBTA API key), `.env`
+- **Never commit `config.js` or `.env`:** `specs/security.md#secrets`
 - CDN dependency: MapLibre GL JS loaded via `<script>` tag with SRI hash, not bundled
 - Basemap provider is a config descriptor (`config.basemap`), swappable without touching `src/` — see `docs/decisions.md`
 
