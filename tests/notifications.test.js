@@ -19,6 +19,15 @@ globalThis.localStorage = {
     },
 };
 
+// TT-3.3. src/notifications.js reads the global `navigator`, which every
+// browser has and Node has only from v21. Without it, the read throws inside
+// the vehicles:update listener, EventTarget swallows the error, and no
+// countdown decrements. A stand-in with no service worker is what Node 21+
+// supplies, so the suite runs the same on every Node.
+if (typeof globalThis.navigator === 'undefined') {
+    globalThis.navigator = {};
+}
+
 import {
     validatePair,
     addNotificationPair,
